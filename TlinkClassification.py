@@ -13,14 +13,22 @@ import gensim
 import eventime as Tlink
 
 torch.manual_seed(2)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-dct_inputs = torch.LongTensor(500, 1, 3).random_(0, 100)
-time_inputs = torch.LongTensor(500, 1, 2, 3).random_(0, 100)
+dct_inputs = torch.randint(0, 100, (500, 1, 3), dtype=torch.long, device=device)
+time_inputs = torch.randint(0, 100, (500, 1, 2, 3), dtype=torch.long, device=device)
 
-targets = torch.LongTensor(500, 1).random_(0, 2)
+targets = torch.randint(0, 2, (500, 1), dtype=torch.long, device=device)
+
+# dct_inputs = torch.LongTensor(500, 1, 3).random_(0, 100)
+# time_inputs = torch.LongTensor(500, 1, 2, 3).random_(0, 100)
+#
+# targets = torch.Tensor(500, 3).random_(0, 2)
 
 BATCH_SIZE = 100
 # EPOCH_NUM = 100
+
+print(dct_inputs.size(), time_inputs.size(), targets.size())
 
 dataset = Tlink.MultipleDatasets(dct_inputs, time_inputs, targets)
 
@@ -46,13 +54,16 @@ class DCTClassifier(nn.Module):
         self.batch_size = batch_size
         self.embedding_dim = embedding_dim
         self.word_embeddings = nn.Embedding(vocab_size, embedding_dim)
-        self.dct_detector = Tlink.DCTDetector(self.word_embeddings,
-                                        self.embedding_dim,
-                                        self.dct_hidden_dim,
-                                        action_size,
-                                        batch_size)
+        self.embedding_dropout = nn.Dropout(p=0.5)
+        self.dct_detector = Tlink.DCTDetector(self.embedding_dim,
+                                              self.dct_hidden_dim,
+                                              action_size,
+                                              batch_size)
     def forward(self, dct_in):
-        dct_out = self.dct_detector(dct_in)
+        dct_var = dct_input.view(self.batch_size, -1)
+        dct_embeds = self.word_embeddings(dct_var).view(self.batch_size, dct_input.size()[-1], -1)
+        dct_embeds = self.embedding_dropout(dct_embeds)
+        dct_out = self.dct_detector(dct_embeds)
         return dct_out
 
 
@@ -61,7 +72,11 @@ model = DCTClassifier(EMBEDDING_DIM, DCT_HIDDEN_DIM, VOCAB_SIZE, ACTION_SIZE, BA
 loss_function = nn.NLLLoss()
 optimizer = optim.RMSprop(model.parameters())
 print(model)
-a = list(model.parameters())[1]
+for name, param in model.named_parameters():
+    if not param.requires_grad:
+        print(name)
+    else:
+        print('*', name)
 
 for epoch in range(EPOCH_NUM):
     total_loss = torch.Tensor([0])
@@ -72,6 +87,8 @@ for epoch in range(EPOCH_NUM):
         loss.backward(retain_graph=True)
         optimizer.step()
         total_loss += loss.data.item() * dct_out.size()[0]
-    b = list(model.parameters())[1]
-    print(model.word_embeddings(torch.LongTensor([[0, ]])).squeeze()[:5])
-    print(total_loss, torch.equal(a.data, b.data))
+    for name, param in model.named_parameters():
+        if param.requires_grad and name == 'dct_detector.dct_hidden2action.weight':
+            print(param[0][:5])
+    # print(model.word_embeddings(torch.LongTensor([[0, ]])).squeeze()[:5])
+    print(total_loss)
