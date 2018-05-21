@@ -7,13 +7,14 @@ import torch.utils.data as Data
 from IPython.display import clear_output
 import numpy as np
 import random
-import time
+import time as timer
 import pdb
 import gensim
 from itertools import count
 from torch.distributions import Categorical
 
 import eventime as Tlink
+
 
 GAMMA = 0.99
 
@@ -54,12 +55,14 @@ policy = Tlink.DqnInferrer(EMBEDDING_DIM, DCT_HIDDEN_DIM, TIME_HIDDEN_DIM, VOCAB
 optimizer = optim.Adam(policy.parameters(), lr=1e-2)
 eps = np.finfo(np.float32).eps.item()
 
+
 def select_action(state_i, dpath_input):
     probs = policy(state_i, dpath_input)
     m = Categorical(probs)
     action = m.sample()
     policy.saved_log_probs.append(m.log_prob(action))
     return action.item()
+
 
 def finish_episode():
 
@@ -73,7 +76,7 @@ def finish_episode():
     # print(rewards, eps, rewards.mean(), rewards.std())
     rewards = (rewards - rewards.mean()) / (rewards.std() + eps) # reward normalization
     for log_prob, reward in zip(policy.saved_log_probs, rewards):
-        # pr  int(log_prob, reward, -log_prob * reward)
+        # print(log_prob, reward, -log_prob * reward)
         policy_loss.append(-log_prob * reward)
     optimizer.zero_grad()
     # print('finish:', policy.rewards, policy.saved_log_probs, torch.cat(policy_loss))
@@ -97,9 +100,9 @@ def step(state_i, action, anchor, target):
                                       [0, 1, 1],
                                       [1, 0, 1],
                                       [1, 1, 1]], dtype=torch.long, device=device)
-    time = torch.tensor([0, 0, 0], dtype=torch.long, device=device) \
+    timex = torch.tensor([0, 0, 0], dtype=torch.long, device=device) \
         if state_i == 0 else torch.tensor([1, 1, 1], dtype=torch.long, device=device)
-    anchor = update_strategies[action] * time \
+    anchor = update_strategies[action] * timex \
              + (torch.ones_like(update_strategies[action], dtype=torch.long, device=device) - update_strategies[action]) \
              * anchor
     # print(anchor, target)
@@ -110,7 +113,6 @@ def step(state_i, action, anchor, target):
 
 
 def main():
-    import time as timer
 
     for epoch in range(EPOCH_NUM):
         start_time = timer.time()
@@ -127,8 +129,8 @@ def main():
             policy.rewards.append(reward)
 
             ## time states
-            for time in range(time_inputs.size()[1]):
-                time_input = time_inputs[:, time, :, :]
+            for timex in range(time_inputs.size()[1]):
+                time_input = time_inputs[:, timex, :, :]
                 time_action = select_action(state_i, time_input)
                 state_i, reward, anchor = step(state_i, time_action, anchor, target)
                 # print('time action:', time_action, anchor, reward)
@@ -136,8 +138,6 @@ def main():
             total_reward += reward
             total_loss += finish_episode()
         print('epoch:', epoch, ', loss: %.4f' % (total_loss.item()/50), ', reward: %.4f' % (total_reward.item() / 50), ", %.4s seconds" % (timer.time() - start_time))
-        # print('*' * 20)
-
 
 
 if __name__ == '__main__':
