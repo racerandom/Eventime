@@ -73,19 +73,19 @@ class TimeMLDoc:
         if event.category == 'Event':
             self.events.append(event)
         else:
-            raise Exception('fail to add a non-Event object...')
+            raise Exception('fail to add a non-Event object...%s' % (type(event)))
 
     def addTimex(self, timex):
         if timex.category == 'Timex':
             self.timexs.append(timex)
         else:
-            raise Exception('fail to add a non-Event object...')
+            raise Exception('fail to add a non-Timex object...%s' % (type(timex)))
 
     def addSignal(self, signal):
         if signal.category == 'Signal':
             self.signals.append(signal)
         else:
-            raise Exception('fail to add a non-Event object...')
+            raise Exception('fail to add a non-Signal object...%s' % (signal.category))
 
     def addTlink(self, link):
         if isinstance(link, TempLink):
@@ -93,8 +93,21 @@ class TimeMLDoc:
         else:
             raise Exception('fail to add a non-TempLink object...')
 
-    def appendTokens(self, tokens):
+    def extendTokens(self, tokens):
         self.tokens.extend(tokens)
+        
+    def geneInterTokens(self, source, target):
+        left_id = source.tok_ids[0]
+        right_id = target.tok_ids[-1]
+        toks = self.tokens[left_id: right_id + 1]
+        return [ tok.content for tok in toks]
+    
+    def geneInterPostion(self, source, target):
+        left_id = source.tok_ids[0]
+        right_id = target.tok_ids[-1]
+        toks = self.tokens[left_id: right_id + 1]
+        return [ (tok.tok_id - left_id, tok.tok_id - right_id) for tok in toks ]
+        
 
 class TempLink:
 

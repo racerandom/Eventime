@@ -13,7 +13,7 @@ import gensim
 from itertools import count
 from torch.distributions import Categorical
 
-import eventime as Tlink
+import TempModules as Tlink
 
 
 GAMMA = 0.99
@@ -27,7 +27,6 @@ targets = torch.randint(0, 2, (50, 3), dtype=torch.long, device=device)
 
 # dct_inputs = torch.LongTensor(500, 1, 3).random_(0, 100)
 # time_inputs = torch.LongTensor(500, 1, 2, 3).random_(0, 100)
-#
 # targets = torch.Tensor(500, 3).random_(0, 2)
 
 BATCH_SIZE = 1

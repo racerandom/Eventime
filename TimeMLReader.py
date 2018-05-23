@@ -3,11 +3,57 @@ import os, sys
 from nltk import sent_tokenize, word_tokenize
 from nltk.tokenize.stanford import StanfordTokenizer
 
-from Mention import *
-from TempLink import *
+from Mention import Token, Timex, Event, Signal
+from TempLink import TimeMLDoc
 
-def load_timeml(filename):
-    root = ET.parse(filename).getroot()
+def load_extraml(file_name):
+    root = ET.parse(file_name).getroot()
+    doc = None
+
+    ## read DOCID and DCT information
+    for elem in root.iter():
+        if elem.tag == "DOCID" or "DOCNO":
+            doc = TimeMLDoc(docid=elem.text)
+        if elem.tag == "DCT":
+            for step_elem in elem:
+                doc.dct = Timex(content=step_elem.text, **step_elem.attrib)
+    if not doc:
+        raise Exception("%s cannot find docid information" % file_name)
+
+    ## read text information
+    for elem in root.iter():
+        if elem.tag == 'TEXT':
+            sent_id = 0
+            for sent_elem in elem:
+                if sent_elem.text:
+                    toks = sent_elem.text.split()
+                    for i in range(len(toks)):
+                        tokc = Token(content=toks[i], tok_id=len(doc.tokens)+i, sent_id=sent_id)
+                        doc.tokens.append(tokc)              
+                for mention_elem in sent_elem:
+                    toks = mention_elem.text.split()
+                    tok_ids = [len(doc.tokens) + i for i in range(len(toks))]
+                    for i in range(len(toks)):
+                        tokc = Token(content=toks[i], tok_id=len(doc.tokens)+i, sent_id=sent_id)
+                        doc.tokens.append(tokc)
+                    if mention_elem.tag == "EVENT":
+                        doc.addEvent(Event(content=' '.join(toks), tok_ids=tok_ids, sent_id=sent_id, **mention_elem.attrib))
+                    elif mention_elem.tag == "TIMEX3":
+                        doc.addTimex(Timex(content=' '.join(toks), tok_ids=tok_ids, sent_id=sent_id, **mention_elem.attrib))
+                    elif mention_elem.tag == "SIGNAL":
+                        doc.addSignal(Signal(content=' '.join(toks), tok_ids=tok_ids, sent_id=sent_id, **mention_elem.attrib))
+                    else:
+                        raise Exception("Unknown mention type: %s" % (step_elem.tag))
+                    if mention_elem.tail:
+                        toks = mention_elem.tail.split()
+                        for i in range(len(toks)):
+                            tokc = Token(content=toks[i], tok_id=len(doc.tokens)+i, sent_id=sent_id)
+                            doc.tokens.append(tokc)
+                sent_id += 1
+    return doc
+
+def load_timeml(file_name):
+    root = ET.parse(file_name).getroot()
     doc = None
 
     ## read DOCID and DCT information
@@ -18,7 +64,7 @@ def load_timeml(filename):
             for step_elem in elem:
                 doc.dct = Timex(content=step_elem.text, **step_elem.attrib)
     if not doc:
-        raise Exception("%s cannot find docid information" % filename)
+        raise Exception("%s cannot find docid information" % file_name)
 
     ## read text information
     for elem in root.iter():
@@ -26,11 +72,11 @@ def load_timeml(filename):
         if elem.tag == 'TEXT':
             if elem.text:
                 toks = elem.text.split()
-                doc.appendTokens(toks)
+                doc.extendTokens(toks)
             for step_elem in elem:
                 toks = step_elem.text.split()
                 tok_ids = [ len(doc.tokens) + i for i in range(len(toks))]
-                doc.appendTokens(toks)
+                doc.extendTokens(toks)
                 if step_elem.tag == "EVENT":
                     doc.addEvent(Event(content=' '.join(toks), tok_ids=tok_ids, **step_elem.attrib))
                 elif step_elem.tag == "TIMEX3":
@@ -41,7 +87,7 @@ def load_timeml(filename):
                     raise Exception("Unknown mention type: %s" % (step_elem.tag))
                 if step_elem.tail:
                     toks = step_elem.tail.split()
-                    doc.appendTokens(toks)
+                    doc.extendTokens(toks)
     return doc
 
 def batch_load(file_dir):
@@ -128,6 +174,17 @@ class TestTimeMLReader(unittest.TestCase):
         file_dir = "/Users/fei-c/Resources/timex/TimeAnchor2/DNS"
         out_file = "tanchor.txt"
         save_batch_load(file_dir, out_file)
+
+    def test_load_extra(self):
+        doc = load_extraml("/Users/fei-c/Resources/timex/納品0521jsa/ALL/ALL044_wsj_0173.tml")
+#        print([ tok.content for tok in doc.tokens])
+        event1 = doc.events[0]
+        event2 = doc.events[1]
+        print(event1.content, event1.tok_ids)
+        print(event2.content, event2.tok_ids)
+        print(doc.geneInterTokens(event1, event2))
+        print([tok.content for tok in doc.tokens[:25]])
+        print(doc.geneInterPostion(event1, event2))
 
     def test_compare_annotations(self):
 

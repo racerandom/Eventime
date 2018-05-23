@@ -1,7 +1,42 @@
+class Token:
+    def __init__(self, **args):
+        self.content = args.setdefault('content', None)
+        self.tok_id = args.setdefault('tok_id', None)
+        self.sent_id = args.setdefault('sent_id', None)
+
+    @property
+    def content(self):
+        return self.__content
+
+    @content.setter
+    def content(self, content):
+        self.__content = content
+
+    @property
+    def tok_id(self):
+        return self.__tok_id
+
+    @tok_id.setter
+    def tok_id(self, tok_id):
+        self.__tok_id = tok_id
+
+    @property
+    def sent_id(self):
+        return self.__sent_id
+
+    @sent_id.setter
+    def sent_id(self, sent_id):
+        self.__sent_id = sent_id
+    
+    @property
+    def category(self):
+        return type(self)
+    
 class Mention:
     def __init__(self, **args):
         self.content = args.setdefault('content', None)
         self.tok_ids = args.setdefault('tok_ids', None)
+        self.sent_id = args.setdefault('sent_id', None)
 
     @property
     def content(self):
@@ -19,6 +54,15 @@ class Mention:
     def tok_ids(self, tok_ids):
         self.__tok_ids = tok_ids
 
+    @property
+    def sent_id(self):
+        return self.__sent_id
+
+    @sent_id.setter
+    def sent_id(self, sent_id):
+        self.__sent_id = sent_id
+    
+    @property
     def category(self):
         return type(self)
 
@@ -34,6 +78,10 @@ class Signal(Mention):
     @sid.setter
     def sid(self, sid):
         self.__sid = sid
+        
+    @property
+    def category(self):
+        return "Signal"
 
 class Timex(Mention):
     def __init__(self, **args):

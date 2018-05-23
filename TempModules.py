@@ -241,6 +241,49 @@ class distance_loss(nn.Module):
 
 
 # In[43]:
+class DCTCNN(nn.Module):
+    def __init__(self, input_dim, c1_dim, seq_len, fc1_dim, action_size, window):
+        super(DCTCNN, self).__init__()
+        self.c1 = nn.Conv1d(input_dim, c1_dim, window)
+        self.p1 = nn.MaxPool1d(seq_len - window + 1)
+        self.fc1 = nn.Linear(c1_dim, fc1_dim)
+        self.fc2 = nn.Linear(fc1_dim, action_size)
+
+    def forward(self, dct_input):
+
+        ## dct_input (batch_size, seq_len, input_dim)
+        # print(dct_input.transpose(1, 2).size())
+        c1_out = F.relu(self.c1(dct_input.transpose(1, 2)))
+        # print('c1_out size:', c1_out.size())
+        p1_out = F.dropout(self.p1(c1_out)).squeeze(-1)
+        # print('p1_out size:', p1_out.size())
+        fc1_out = F.relu(self.fc1(p1_out))
+        # print('fc1_out size:', fc1_out.size())
+        fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
+        return fc2_out
+
+
+class TimexCNN(nn.Module):
+    def __init__(self, input_dim, c1_dim, seq_len, fc1_dim, action_size, window):
+        super(TimexCNN, self).__init__()
+        self.cl1 = nn.Conv1d(input_dim, c1_dim, window)
+        self.pl1 = nn.MaxPool1d(seq_len - window + 1)
+        self.cl2 = nn.Conv1d(input_dim, c1_dim, window)
+        self.pl2 = nn.MaxPool1d(seq_len - window + 1)
+        self.fc1 = nn.Linear(c1_dim, fc1_dim)
+        self.fc2 = nn.Linear(fc1_dim, action_size)
+
+    def forward(self, left_input, right_input):
+        ## dct_input (batch_size, seq_len, input_dim)
+        cl1_out = F.relu(self.cl1(left_input.transpose(1, 2)))
+        pl1_out = F.dropout(self.p1(cl1_out))
+        cr1_out = F.relu(self.cr1(right_input.transpose(1, 2)))
+        pr1_out = F.dropout(self.p1(cr1_out))
+
+        cat_out = torch.cat((pl1_out, pr1_out), 1)
+        fc1_out = F.relu(self.fc1(cat_out))
+        fc2_out = F.log_softmax(fc1_out, dim=1)
+        return fc2_out
 
 
 class DCTDetector(nn.Module):
@@ -262,6 +305,7 @@ class DCTDetector(nn.Module):
           
     def forward(self, dct_embeds):
         # print(dct_embeds)
+        self.init_dct_hidden()
         dct_out, self.dct_hidden = self.dct_tagger(dct_embeds, self.dct_hidden)
         dct_out = self.dct_hidden2action(dct_out[:, -1, :])
         # print(dct_out)
