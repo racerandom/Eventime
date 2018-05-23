@@ -15,11 +15,12 @@ import TempModules as Tlink
 
 torch.manual_seed(2)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print('device:', device)
 
-dct_inputs = torch.randint(0, 100, (500, 1, 10), dtype=torch.long, device=device)
-time_inputs = torch.randint(0, 100, (500, 1, 2, 3), dtype=torch.long, device=device)
+dct_inputs = torch.randint(0, 100, (500, 1, 10), dtype=torch.long)
+time_inputs = torch.randint(0, 100, (500, 1, 2, 3), dtype=torch.long)
 
-targets = torch.randint(0, 2, (500, 1), dtype=torch.long, device=device)
+targets = torch.randint(0, 2, (500, 1), dtype=torch.long)
 
 # dct_inputs = torch.LongTensor(500, 1, 3).random_(0, 100)
 # time_inputs = torch.LongTensor(500, 1, 2, 3).random_(0, 100)
@@ -83,6 +84,7 @@ for epoch in range(EPOCH_NUM):
     total_loss = torch.Tensor([0])
     a = list(model.parameters())[param_id].clone()
     for step, (dct_input, time_input, target) in enumerate(loader):
+        dct_input, time_input, target = dct_input.to(device), time_input.to(device), target.to(device)
         start_time = time.time()
         model.zero_grad()
         dct_out = model(dct_input)
