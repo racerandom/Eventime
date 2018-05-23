@@ -241,22 +241,25 @@ class distance_loss(nn.Module):
 
 
 # In[43]:
-class DCTCNN(nn.Module):
-    def __init__(self, input_dim, c1_dim, seq_len, fc1_dim, action_size, window):
-        super(DCTCNN, self).__init__()
-        self.c1 = nn.Conv1d(input_dim, c1_dim, window)
+class TempCNN(nn.Module):
+    def __init__(self, word_dim, pos_dim, c1_dim, seq_len, fc1_dim, action_size, window):
+        super(TempCNN, self).__init__()
+        self.c1 = nn.Conv1d(word_dim+2*pos_dim, c1_dim, window)
         self.p1 = nn.MaxPool1d(seq_len - window + 1)
         self.fc1 = nn.Linear(c1_dim, fc1_dim)
         self.fc2 = nn.Linear(fc1_dim, action_size)
 
-    def forward(self, dct_input):
+    def forward(self, word_input, position_input):
 
         ## dct_input (batch_size, seq_len, input_dim)
-        # print(dct_input.transpose(1, 2).size())
-        c1_out = F.relu(self.c1(dct_input.transpose(1, 2)))
+        cat_input = torch.cat((word_input, position_input), dim=2).transpose(1, 2)
+        # print(cat_input.size())
+        c1_out = F.relu(self.c1(cat_input))
         # print('c1_out size:', c1_out.size())
         p1_out = F.dropout(self.p1(c1_out)).squeeze(-1)
         # print('p1_out size:', p1_out.size())
+        cat_out = torch.cat((p1_out, position_input[:, 0, :], position_input[:, -1, :]), dim=1)
+        # print('cat_out size:', cat_out.size())
         fc1_out = F.relu(self.fc1(p1_out))
         # print('fc1_out size:', fc1_out.size())
         fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
