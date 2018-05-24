@@ -1,13 +1,13 @@
-from Mention import Mention,Event,Timex
+from TempMention import Mention,Event,Timex
 
 class TimeMLDoc:
     def __init__(self, **args):
         self.docid = args['docid']
         self.dct = None
         self.tokens = []
-        self.events = []
-        self.timexs = []
-        self.signals = []
+        self.events = {}
+        self.timexs = {}
+        self.signals = {}
         self.tlinks = []
 
     @property
@@ -71,19 +71,19 @@ class TimeMLDoc:
 
     def addEvent(self, event):
         if event.category == 'Event':
-            self.events.append(event)
+            self.events[event.eid] = event
         else:
             raise Exception('fail to add a non-Event object...%s' % (type(event)))
 
     def addTimex(self, timex):
-        if timex.category == 'Timex':
-            self.timexs.append(timex)
+        if timex.category in ['Timex', 'DCT']:
+            self.timexs[timex.tid] = timex
         else:
             raise Exception('fail to add a non-Timex object...%s' % (type(timex)))
 
     def addSignal(self, signal):
         if signal.category == 'Signal':
-            self.signals.append(signal)
+            self.signals[signal.sid] = signal
         else:
             raise Exception('fail to add a non-Signal object...%s' % (signal.category))
 
@@ -95,18 +95,25 @@ class TimeMLDoc:
 
     def extendTokens(self, tokens):
         self.tokens.extend(tokens)
-        
-    def geneInterTokens(self, source, target):
+
+    def getMentionById(self, mention_id):
+        if mention_id[0] == 'e':
+            return self.events[mention_id]
+        elif mention_id[0] == 't':
+            return self.timexs[mention_id]
+        elif mention_id[0] == 's':
+            return self.signals[mention_id]
+        else:
+            raise Exception('[ERROR]: Unrecognized Mention Id...')
+
+    def geneInterTokens(self, source_id, target_id):
+        source = self.getMentionById(source_id)
+        target = self.getMentionById(target_id)
         left_id = source.tok_ids[0]
         right_id = target.tok_ids[-1]
         toks = self.tokens[left_id: right_id + 1]
         return [ tok.content for tok in toks]
-    
-    def geneInterPostion(self, source, target):
-        left_id = source.tok_ids[0]
-        right_id = target.tok_ids[-1]
-        toks = self.tokens[left_id: right_id + 1]
-        return [ (tok.tok_id - left_id, tok.tok_id - right_id) for tok in toks ]
+
         
 
 class TempLink:
@@ -115,7 +122,7 @@ class TempLink:
         self.lid = args.setdefault('lid', None)
         self.sour = args.setdefault('sour', None)
         self.targ = args.setdefault('targ', None)
-        self.relType = args.setdefault('relType', None)
+        self.rel = args.setdefault('rel', None)
         self.check()
 
     def check(self):
@@ -129,6 +136,46 @@ class TempLink:
     @lid.setter
     def lid(self, lid):
         self.__lid = lid
+
+    @property
+    def sour(self):
+        return self.__sour
+
+    @sour.setter
+    def sour(self, sour):
+        self.__sour = sour
+
+    @property
+    def targ(self):
+        return self.__targ
+
+    @targ.setter
+    def targ(self, targ):
+        self.__targ = targ
+
+    @property
+    def rel(self):
+        return self.__rel
+
+    @rel.setter
+    def rel(self, rel):
+        self.__rel = rel
+
+    @property
+    def interwords(self):
+        return self.__interwords
+
+    @interwords.setter
+    def interwords(self, interwords):
+        self.__interwords = interwords
+
+    @property
+    def interpos(self):
+        return self.__interpos
+
+    @interpos.setter
+    def interpos(self, interpos):
+        self.__interpos = interpos
 
     @property
     def category(self):

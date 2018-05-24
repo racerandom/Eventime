@@ -17,18 +17,18 @@ def load_pre(file_name='/Users/fei-c/Resources/embed/giga-aacw.d200.bin', binary
 
 def pre2embed(pre_model):
     pre_weights = torch.FloatTensor(pre_model.vectors)
-    print(pre_weights.size())
-    pre_embed = nn.Embedding.from_pretrained(pre_weights, freeze=True)
-    return pre_embed
+    print("[Pre-trained embeddings] weight size: ", pre_weights.size())
+    return nn.Embedding.from_pretrained(pre_weights, freeze=True)
 
 
-def padding(inputs, pad=0, direct='right'):
-    max_len = max([len(x) for x in inputs])
-    for x in inputs:
-        for i in range(0, max_len - len(x)):
-            if direct in ['right']:
-                x.append(pad)
-            else:
-                x.insert(0, pad)
-    return torch.LongTensor(inputs)
+
+
+
+def geneInterPostion(word_list):
+    position_list = []
+    word_len = len(word_list)
+    for i in range(word_len):
+        position_list.append((i - 0, i - word_len + 1))
+    return position_list
+
 

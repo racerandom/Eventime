@@ -13,32 +13,30 @@ import time
 
 import TempModules as Tlink
 import TempUtils
+import TempData
 
 torch.manual_seed(2)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print('device:', device)
 
-VOCAB_SIZE = 100
-POS_SIZE = 10
-MAX_LEN = 10
-ACTION_SIZE = 2
 
-dct_inputs = torch.randint(0, VOCAB_SIZE, (500, 1, MAX_LEN), dtype=torch.long)
-position_inputs = torch.randint(0, POS_SIZE, (500, MAX_LEN, 2), dtype=torch.long)
-time_inputs = torch.randint(0, VOCAB_SIZE, (500, 1, 2, 3), dtype=torch.long)
 
-targets = torch.randint(0, ACTION_SIZE, (500, 1), dtype=torch.long)
+word_in, pos_in, rel_in, max_len, pos_idx, word_idx, rel_idx = TempData.prepare()
 
-# dct_inputs = torch.LongTensor(500, 1, 3).random_(0, 100)
-# time_inputs = torch.LongTensor(500, 1, 2, 3).random_(0, 100)
-#
-# targets = torch.Tensor(500, 3).random_(0, 2)
+print(word_in.size(), pos_in.size(), rel_in.unsqueeze(1).size())
+print(word_in.dtype, pos_in.dtype, rel_in.unsqueeze(1).dtype)
 
-BATCH_SIZE = 100
 
-print(dct_inputs.size(), time_inputs.size(), targets.size())
 
-dataset = Tlink.MultipleDatasets(dct_inputs, position_inputs, time_inputs, targets)
+VOCAB_SIZE = len(word_idx)
+POS_SIZE = len(pos_idx)
+MAX_LEN = max_len
+ACTION_SIZE = len(rel_idx)
+BATCH_SIZE = 20
+
+
+
+dataset = Tlink.MultipleDatasets(word_in, pos_in, rel_in)
 
 loader = Data.DataLoader(
                         dataset=dataset,
@@ -49,33 +47,27 @@ loader = Data.DataLoader(
 
 EMBEDDING_DIM = 200
 POSITION_DIM = 20
-DCT_HIDDEN_DIM = 60
+DCT_HIDDEN_DIM = 100
 TIME_HIDDEN_DIM = 50
-FC1_DIM = 30
+FC1_DIM = 100
 WINDOW = 3
 EPOCH_NUM = 50
 learning_rate = 0.01
 
 
 class TempClassifier(nn.Module):
-    def __init__(self, pre_model, embedding_dim, position_dim, hidden_dim, vocab_size, pos_size, max_len, fc1_dim, action_size, batch_size, window):
+    def __init__(self, embedding_dim, position_dim, hidden_dim, vocab_size, pos_size, seq_len, fc1_dim, action_size,
+                 batch_size, window, pre_model=None):
         super(TempClassifier, self).__init__()
         self.batch_size = batch_size
-        # self.word_embeddings = nn.Embedding(vocab_size, embedding_dim)
-        self.pre2embed(pre_model)
-        self.position_embeddings = nn.Embedding(10, position_dim)
+        self.word_embeddings = TempUtils.pre2embed(pre_model) if pre_model else nn.Embedding(vocab_size, embedding_dim)
+        self.position_embeddings = nn.Embedding(pos_size, position_dim)
         self.embedding_dropout = nn.Dropout(p=0.5)
         # self.dct_detector = Tlink.DCTDetector(embedding_dim,
         #                                       dct_hidden_dim,
         #                                       action_size,
         #                                       batch_size)
-        self.dct_detector = Tlink.TempCNN(embedding_dim, position_dim, hidden_dim, max_len, fc1_dim, action_size, window)
-
-    def pre2embed(self, pre_model):
-        pre_weights = torch.FloatTensor(pre_model.vectors)
-        print("[Pre-trained embeddings] weight size: ",pre_weights.size())
-        self.word_embeddings = nn.Embedding.from_pretrained(pre_weights, freeze=True)
-        self.word_embeddings.weight.requires_grad = False
+        self.dct_detector = Tlink.TempCNN(embedding_dim, position_dim, hidden_dim, seq_len, fc1_dim, action_size, window)
 
     def forward(self, dct_in, pos_in):
         # print(dct_input.size(), pos_in.size())
@@ -93,10 +85,11 @@ class TempClassifier(nn.Module):
         return dct_out
 
 
-pre_model, word2ix = TempUtils.load_pre()
-model = TempClassifier(pre_model, EMBEDDING_DIM, POSITION_DIM, DCT_HIDDEN_DIM, VOCAB_SIZE, POS_SIZE, MAX_LEN, FC1_DIM, ACTION_SIZE, BATCH_SIZE, WINDOW).to(device=device)
+# pre_model, word2ix = TempUtils.load_pre()
+model = TempClassifier(EMBEDDING_DIM, POSITION_DIM, DCT_HIDDEN_DIM, VOCAB_SIZE, POS_SIZE, MAX_LEN, FC1_DIM, ACTION_SIZE,
+                       BATCH_SIZE, WINDOW, pre_model=None).to(device=device)
 loss_function = nn.NLLLoss()
-optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate)
+optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate) ##  fixed a error when using pre-trained embeddings
 print(model)
 for name, param in model.named_parameters():
     if param.requires_grad:
@@ -104,17 +97,18 @@ for name, param in model.named_parameters():
 
 param_id = 3
 for epoch in range(EPOCH_NUM):
-    total_loss = torch.Tensor([0])
+    total_loss = []
     a = list(model.parameters())[param_id].clone()
-    for step, (dct_input, position_input, time_input, target) in enumerate(loader):
-        dct_input, position_input, time_input, target = dct_input.to(device), position_input.to(device), time_input.to(device), target.to(device)
-        start_time = time.time()
+    start_time = time.time()
+    for step, (dct_input, position_input, target) in enumerate(loader):
+        dct_input, position_input, target = dct_input.to(device), position_input.to(device), target.to(device)
+
         model.zero_grad()
         dct_out = model(dct_input, position_input)
-        loss = loss_function(dct_out, target.squeeze(1))
+        loss = loss_function(dct_out, target)
         loss.backward(retain_graph=True)
         optimizer.step()
-        total_loss += loss.data.item() * dct_out.size()[0]
+        total_loss.append(loss.data.item())
         # print('epoch %.4f' % loss.item(), '%.5s seconds' % (time.time() - start_time))
     # for name, param in model.named_parameters():
     #     if param.requires_grad and name == 'dct_detector.c1.weight':
@@ -123,4 +117,4 @@ for epoch in range(EPOCH_NUM):
         b = list(model.parameters())[param_id].clone()
 
         # print(torch.equal(a.data, b.data))
-    print('Epoch %i' % epoch, ',loss: %.4f' % (total_loss.item()), ', %.5s seconds' % (time.time() - start_time))
+    print('Epoch %i' % epoch, ',loss: %.4f' % (sum(total_loss) / float(len(total_loss))), ', %.5s seconds' % (time.time() - start_time))

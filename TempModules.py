@@ -253,16 +253,12 @@ class TempCNN(nn.Module):
 
         ## dct_input (batch_size, seq_len, input_dim)
         cat_input = torch.cat((word_input, position_input), dim=2).transpose(1, 2)
-        # print(cat_input.size())
         c1_out = F.relu(self.c1(cat_input))
-        # print('c1_out size:', c1_out.size())
         p1_out = F.dropout(self.p1(c1_out)).squeeze(-1)
-        # print('p1_out size:', p1_out.size())
         cat_out = torch.cat((p1_out, position_input[:, 0, :], position_input[:, -1, :]), dim=1)
-        # print('cat_out size:', cat_out.size())
         fc1_out = F.relu(self.fc1(p1_out))
-        # print('fc1_out size:', fc1_out.size())
         fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
+
         return fc2_out
 
 
@@ -540,10 +536,7 @@ def main():
 
             loss = new_loss(time_scores, target, BATCH, update_strategies)
             print(time_scores.size(), target.size())
-    #         print(loss)
-    #         print(list(model.parameters())[0].grad)
-    #         print(loss)
-    #         print(loss.grad)
+            
             loss.backward(retain_graph=True)
             optimizer.step()
             ## check if the model parameters being updated
