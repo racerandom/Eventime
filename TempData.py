@@ -1,6 +1,6 @@
 from TempMention import Token, Mention, Event, Timex, Signal
 from TempLink import TimeMLDoc, TempLink
-import TempUtils
+from TempUtils import *
 
 import torch
 import pickle
@@ -29,73 +29,6 @@ TBD_TEST = ['APW19980227.0489',
             'PRI19980306.2000.1675']
 
 
-def prepare_sequence(seq_2d, to_ix):
-    idxs = [ [ to_ix[w] for w in seq_1d ] for seq_1d in seq_2d]
-    return idxs
-
-
-def prepare_sequence_pos(seq_2d, to_ix):
-    idxs = [ [ [to_ix[p_l], to_ix[p_r]] for p_l, p_r in seq_1d ] for seq_1d in seq_2d]
-    return idxs
-
-def prepare_sequence_rel(seq_1d, to_ix):
-    idxs = [ to_ix[rel] for rel in seq_1d ]
-    return idxs
-
-def padding(seq_2d, max_len, pad=0, direct='right'):
-
-    for seq_1d in seq_2d:
-        for i in range(0, max_len - len(seq_1d)):
-            if direct in ['right']:
-                seq_1d.append(pad)
-            else:
-                seq_1d.insert(0, pad)
-    return seq_2d
-
-def padding_pos(seq_2d, max_len, pad=[0, 0], direct='right'):
-
-    for seq_1d in seq_2d:
-        for i in range(0, max_len - len(seq_1d)):
-            if direct in ['right']:
-                seq_1d.append(pad)
-            else:
-                seq_1d.insert(0, pad)
-    return seq_2d
-
-
-def pos2idx(doc_dic):
-    tok_idx = {'UNK':0}
-    for doc in doc_dic.values():
-        for tlink in doc.tlinks:
-            for tok_l, tok_r in tlink.interpos:
-                tok_idx.setdefault(tok_l, len(tok_idx))
-                tok_idx.setdefault(tok_r, len(tok_idx))
-    return tok_idx
-
-
-def word2idx(doc_dic):
-    tok_idx = {'UNK':0}
-    for doc in doc_dic.values():
-        for tlink in doc.tlinks:
-            for tok in tlink.interwords:
-                tok_idx.setdefault(tok, len(tok_idx))
-    return tok_idx
-
-
-def rel2idx(doc_dic):
-    tok_idx = {}
-    for doc in doc_dic.values():
-        for tlink in doc.tlinks:
-            tok_idx.setdefault(tlink.rel, len(tok_idx))
-    return tok_idx
-
-
-def max_length(doc_dic):
-    word_list = []
-    for doc in doc_dic.values():
-        for tlink in doc.tlinks:
-            word_list.append(len(tlink.interwords))
-    return max(word_list)
 
 def load_doc(pickle_file):
     with open(pickle_file, 'rb') as f:
@@ -103,17 +36,20 @@ def load_doc(pickle_file):
     return doc_list
 
 
-def prepare_data(doc_dic, file_list, types=['Event-Timex', 'Timex-Event']):
+def prepare_data(doc_dic, data_set, word_idx, pos_idx, rel_idx, max_len, types=['Event-Timex', 'Timex-Event']):
     words, pos, rels = [], [], []
     for doc_id, doc in doc_dic.items():
-        if doc_id not in file_list:
+        if doc_id not in data_set:
             continue
         for tlink in doc.tlinks:
             if tlink.category in types:
                 words.append(tlink.interwords)
                 pos.append(tlink.interpos)
                 rels.append(tlink.rel)
-    return words, pos, rels
+    train_w_in = torch.tensor(padding(prepare_sequence(words, word_idx), max_len))
+    train_p_in = torch.tensor(padding_pos(prepare_sequence_pos(pos, pos_idx), max_len))
+    train_r_in = torch.tensor(prepare_sequence_rel(rels, rel_idx))
+    return train_w_in, train_p_in, train_r_in
 
 def prepare_artificial_classification():
     VOCAB_SIZE = 100
@@ -128,12 +64,9 @@ def prepare_artificial_classification():
 
     return dct_inputs, position_inputs, time_inputs, targets
 
-def prepare():
-    doc_dic = load_doc('data/doc_list.pkl')
-    max_len = max_length(doc_dic)
-    pos_idx = pos2idx(doc_dic)
-    word_idx = word2idx(doc_dic)
-    rel_idx = rel2idx(doc_dic)
+def prepare(is_pretrained=False):
+
+    doc_dic, max_len, pos_idx, word_idx, rel_idx, pre_model = prepare_global(is_pretrained)
 
     train_words, train_pos, train_rels = prepare_data(doc_dic, TBD_TRAIN,
                                                       types=['Event-Event']
@@ -148,7 +81,21 @@ def prepare():
     train_w_in = torch.tensor(padding(prepare_sequence(train_words, word_idx), max_len))
     train_p_in = torch.tensor(padding_pos(prepare_sequence_pos(train_pos, pos_idx), max_len))
     train_r_in = torch.tensor(prepare_sequence_rel(train_rels, rel_idx))
-    return train_w_in, train_p_in, train_r_in, max_len, pos_idx, word_idx, rel_idx
+    return train_w_in, train_p_in, train_r_in, max_len, pos_idx, word_idx, rel_idx, pre_model
+
+def prepare_global(is_pretrained):
+    doc_dic = load_doc('data/doc_list.pkl')
+    max_len = max_length(doc_dic)
+    pos_idx = pos2idx(doc_dic)
+    if is_pretrained:
+        pre_model, word_idx = load_pre()
+    else:
+        pre_model = None
+        word_idx = word2idx(doc_dic)
+    rel_idx = rel2idx(doc_dic)
+    return doc_dic, word_idx, pos_idx, rel_idx, max_len, pre_model
+
+
 
 def main():
     doc_dic = load_doc('data/doc_list.pkl')

@@ -460,11 +460,6 @@ class TimeInferrer(nn.Module):
         return out_scores
 
 
-# In[98]:
-
-
-
-
 def score2pred_2(out_scores, norm_times, BATCH_SIZE, update_strategies):
     norm_times = torch.tensor([[0, 0, 0], [1, 1, 1]], dtype=torch.long)
     preds_out = torch.ones((BATCH_SIZE, 3), dtype=torch.long) * -1
@@ -536,7 +531,7 @@ def main():
 
             loss = new_loss(time_scores, target, BATCH, update_strategies)
             print(time_scores.size(), target.size())
-            
+
             loss.backward(retain_graph=True)
             optimizer.step()
             ## check if the model parameters being updated
