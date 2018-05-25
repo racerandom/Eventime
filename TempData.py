@@ -2,6 +2,7 @@ from TempMention import Token, Mention, Event, Timex, Signal
 from TempLink import TimeMLDoc, TempLink
 from TempUtils import *
 
+import os
 import torch
 import pickle
 
@@ -51,6 +52,7 @@ def prepare_data(doc_dic, data_set, word_idx, pos_idx, rel_idx, max_len, types=[
     train_r_in = torch.tensor(prepare_sequence_rel(rels, rel_idx))
     return train_w_in, train_p_in, train_r_in
 
+
 def prepare_artificial_classification():
     VOCAB_SIZE = 100
     POS_SIZE = 10
@@ -63,6 +65,7 @@ def prepare_artificial_classification():
     targets = torch.randint(0, ACTION_SIZE, (500, 1), dtype=torch.long)
 
     return dct_inputs, position_inputs, time_inputs, targets
+
 
 def prepare(is_pretrained=False):
 
@@ -83,12 +86,14 @@ def prepare(is_pretrained=False):
     train_r_in = torch.tensor(prepare_sequence_rel(train_rels, rel_idx))
     return train_w_in, train_p_in, train_r_in, max_len, pos_idx, word_idx, rel_idx, pre_model
 
+
 def prepare_global(is_pretrained):
+    embed_file = os.path.join(os.getenv("HOME"), 'Resources/embed/giga-aacw.d200.bin')
     doc_dic = load_doc('data/doc_list.pkl')
     max_len = max_length(doc_dic)
     pos_idx = pos2idx(doc_dic)
     if is_pretrained:
-        pre_model, word_idx = load_pre()
+        pre_model, word_idx = load_pre(embed_file)
     else:
         pre_model = None
         word_idx = word2idx(doc_dic)

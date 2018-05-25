@@ -5,13 +5,13 @@ import gensim
 import time
 
 
-def load_pre(file_name='/Users/fei-c/Resources/embed/giga-aacw.d200.bin', binary=True):
+def load_pre(embed_file, binary=True):
     word2ix = {}
     start_time = time.time()
-    pre_model = gensim.models.KeyedVectors.load_word2vec_format(file_name, binary=binary)
+    pre_model = gensim.models.KeyedVectors.load_word2vec_format(embed_file, binary=binary)
     for word, value in pre_model.vocab.items():
         word2ix[word] = value.index
-    print("[Pre-trained embeddings] file='%s' loaded, took %.5s seconds...]" % (file_name, time.time() - start_time))
+    print("[Pre-trained embeddings] file='%s' loaded, took %.5s seconds...]" % (embed_file, time.time() - start_time))
     return pre_model, word2ix
 
 

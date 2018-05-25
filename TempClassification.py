@@ -10,6 +10,7 @@ import random
 import pdb
 import gensim
 import time
+from sklearn.metrics import classification_report
 
 import TempModules as Tlink
 import TempUtils
@@ -98,7 +99,7 @@ class TempClassifier(nn.Module):
 model = TempClassifier(EMBEDDING_DIM, POSITION_DIM, HIDDEN_DIM, VOCAB_SIZE, POS_SIZE, MAX_LEN, FC1_DIM, ACTION_SIZE,
                        BATCH_SIZE, WINDOW, pre_model=pre_model).to(device=device)
 loss_function = nn.NLLLoss()
-optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate, weight_decay=0.1) ##  fixed a error when using pre-trained embeddings
+optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate, weight_decay=1e-4) ##  fixed a error when using pre-trained embeddings
 print(model)
 for name, param in model.named_parameters():
     if param.requires_grad:
@@ -125,6 +126,8 @@ for epoch in range(EPOCH_NUM):
     dev_diff = torch.eq(torch.argmax(dev_out, dim=1), dev_rel_in)
     dev_ac = dev_diff.sum().item() / float(dev_diff.numel())
 
+    print(classification_report(torch.argmax(dev_out, dim=1).numpy(), dev_rel_in.numpy(), labels=np.unique(torch.argmax(dev_out, dim=1).numpy())))
+
     test_out = model(test_word_in, test_pos_in)
     test_diff = torch.eq(torch.argmax(test_out, dim=1), test_rel_in)
     test_ac = test_diff.sum().item() / float(test_diff.numel())
@@ -134,3 +137,4 @@ for epoch in range(EPOCH_NUM):
           ', %.5s seconds' % (time.time() - start_time),
           ', dev accuracy: %.4f' % (dev_ac),
           ', test accuracy: %.4f' % (test_ac))
+
