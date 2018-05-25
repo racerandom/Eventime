@@ -20,14 +20,14 @@ torch.manual_seed(2)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print('device:', device)
 
-is_pretrained = False
+is_pretrained = True
 
 rel_types = ['Event-Event']
 # rel_types = ['Event-Timex', 'Timex-Event']
 
 doc_dic, word_idx, pos_idx, rel_idx, max_len, pre_model = prepare_global(is_pretrained, types=rel_types)
 
-print(max_len)
+print('max seq length:', max_len, ', vocab size:', len(word_idx), ', position size:', len(pos_idx), ', relation categories:', len(rel_idx))
 
 word_in, pos_in, rel_in = prepare_data(doc_dic, TBD_TRAIN, word_idx, pos_idx, rel_idx, max_len, types=rel_types)
 
@@ -46,7 +46,7 @@ VOCAB_SIZE = len(word_idx)
 POS_SIZE = len(pos_idx)
 MAX_LEN = max_len
 ACTION_SIZE = len(rel_idx)
-BATCH_SIZE = 50
+BATCH_SIZE = 128
 
 
 
@@ -61,11 +61,11 @@ loader = Data.DataLoader(
 
 EMBEDDING_DIM = 200
 POSITION_DIM = 20
-HIDDEN_DIM = 100
+HIDDEN_DIM = 200
 TIME_HIDDEN_DIM = 50
-FC1_DIM = 100
-WINDOW = 2
-EPOCH_NUM = 50
+FC1_DIM = 200
+WINDOW = 3
+EPOCH_NUM = 15
 learning_rate = 0.01
 
 
@@ -103,7 +103,7 @@ model = TempClassifier(EMBEDDING_DIM, POSITION_DIM, HIDDEN_DIM, VOCAB_SIZE, POS_
                        BATCH_SIZE, WINDOW, pre_model=pre_model).to(device=device)
 
 loss_function = nn.NLLLoss()
-optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate, weight_decay=1e-4) ##  fixed a error when using pre-trained embeddings
+optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate, weight_decay=1e-3) ##  fixed a error when using pre-trained embeddings
 print(model)
 for name, param in model.named_parameters():
     if param.requires_grad:
