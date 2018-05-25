@@ -81,11 +81,12 @@ def rel2idx(doc_dic):
     return tok_idx
 
 
-def max_length(doc_dic):
+def max_length(doc_dic, types):
     word_list = []
     for doc in doc_dic.values():
         for tlink in doc.tlinks:
-            word_list.append(len(tlink.interwords))
+            if tlink.category in types:
+                word_list.append(len(tlink.interwords))
     return max(word_list)
 
 

@@ -87,10 +87,10 @@ def prepare(is_pretrained=False):
     return train_w_in, train_p_in, train_r_in, max_len, pos_idx, word_idx, rel_idx, pre_model
 
 
-def prepare_global(is_pretrained):
+def prepare_global(is_pretrained, types=['Event-Timex', 'Timex-Event']):
     embed_file = os.path.join(os.getenv("HOME"), 'Resources/embed/giga-aacw.d200.bin')
     doc_dic = load_doc('data/doc_list.pkl')
-    max_len = max_length(doc_dic)
+    max_len = max_length(doc_dic, types)
     pos_idx = pos2idx(doc_dic)
     if is_pretrained:
         pre_model, word_idx = load_pre(embed_file)

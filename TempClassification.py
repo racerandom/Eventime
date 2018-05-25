@@ -20,17 +20,20 @@ torch.manual_seed(2)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print('device:', device)
 
-is_pretrained = True
+is_pretrained = False
 
-doc_dic, word_idx, pos_idx, rel_idx, max_len, pre_model = prepare_global(is_pretrained)
+rel_types = ['Event-Event']
+# rel_types = ['Event-Timex', 'Timex-Event']
 
+doc_dic, word_idx, pos_idx, rel_idx, max_len, pre_model = prepare_global(is_pretrained, types=rel_types)
 
+print(max_len)
 
-word_in, pos_in, rel_in = prepare_data(doc_dic, TBD_TRAIN, word_idx, pos_idx, rel_idx, max_len, types=['Event-Event'])
+word_in, pos_in, rel_in = prepare_data(doc_dic, TBD_TRAIN, word_idx, pos_idx, rel_idx, max_len, types=rel_types)
 
-dev_word_in, dev_pos_in, dev_rel_in = prepare_data(doc_dic, TBD_DEV, word_idx, pos_idx, rel_idx, max_len, types=['Event-Event'])
+dev_word_in, dev_pos_in, dev_rel_in = prepare_data(doc_dic, TBD_DEV, word_idx, pos_idx, rel_idx, max_len, types=rel_types)
 
-test_word_in, test_pos_in, test_rel_in = prepare_data(doc_dic, TBD_TEST, word_idx, pos_idx, rel_idx, max_len, types=['Event-Event'])
+test_word_in, test_pos_in, test_rel_in = prepare_data(doc_dic, TBD_TEST, word_idx, pos_idx, rel_idx, max_len, types=rel_types)
 
 dev_word_in, dev_pos_in, dev_rel_in = dev_word_in.to(device=device), dev_pos_in.to(device=device), dev_rel_in.to(device=device)
 test_word_in, test_pos_in, test_rel_in = test_word_in.to(device=device), test_pos_in.to(device=device), test_rel_in.to(device=device)
@@ -128,13 +131,14 @@ for epoch in range(EPOCH_NUM):
 
     print(classification_report(torch.argmax(dev_out, dim=1).numpy(), dev_rel_in.numpy(), labels=np.unique(torch.argmax(dev_out, dim=1).numpy())))
 
-    test_out = model(test_word_in, test_pos_in)
-    test_diff = torch.eq(torch.argmax(test_out, dim=1), test_rel_in)
-    test_ac = test_diff.sum().item() / float(test_diff.numel())
+    # test_out = model(test_word_in, test_pos_in)
+    # test_diff = torch.eq(torch.argmax(test_out, dim=1), test_rel_in)
+    # test_ac = test_diff.sum().item() / float(test_diff.numel())
 
     print('Epoch %i' % epoch, ',loss: %.4f' % (sum(total_loss) / float(len(total_loss))),
           ', accuracy: %.4f' % (sum(total_ac) / float(len(total_ac))),
           ', %.5s seconds' % (time.time() - start_time),
           ', dev accuracy: %.4f' % (dev_ac),
-          ', test accuracy: %.4f' % (test_ac))
+          # ', test accuracy: %.4f' % (test_ac)
+          )
 
