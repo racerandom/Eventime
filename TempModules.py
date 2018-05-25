@@ -212,24 +212,7 @@ def batch_action2out(out_scores, norm_times, IX_TO_ACTION, BATCH_SIZE):
             action2out(action, preds_out[i], 0 if i == 0 else 1, IX_TO_ACTION)
     return preds_out
             
-        
-# class diff_elem_loss(nn.Module):
-    
-#     def __init__(self):
-#         super(diff_elem_loss, self).__init__()
-    
-#     def forward(self, pred_out, target):
-#         diff_t = torch.eq(pred_out, target)
-#         sum_elem = pred_out.numel()
-#         loss = ( sum_elem - diff_t.sum().item() ) / sum_elem
-#         return autograd.Variable(torch.FloatTensor([loss]), requires_grad=True)
 
-    
-# def diff_elem_loss(pred_out, target)
-#     diff_t = torch.eq(pred_out, target)
-#     sum_elem = pred_out.nelement()
-#     loss = ( sum_elem - diff_t.sum().item() ) / sum_elem
-#     return autograd.Variable(torch.FloatTensor([loss]), requires_grad=True)
     
 class distance_loss(nn.Module):
     
@@ -240,7 +223,7 @@ class distance_loss(nn.Module):
         pass
 
 
-# In[43]:
+
 class TempCNN(nn.Module):
     def __init__(self, word_dim, pos_dim, c1_dim, seq_len, fc1_dim, action_size, window):
         super(TempCNN, self).__init__()
@@ -251,11 +234,14 @@ class TempCNN(nn.Module):
 
     def forward(self, word_input, position_input):
 
-        ## dct_input (batch_size, seq_len, input_dim)
+        ## input (batch_size, seq_len, input_dim) => (batch_size, input_dim, seq_len)
         cat_input = torch.cat((word_input, position_input), dim=2).transpose(1, 2)
+
         c1_out = F.relu(self.c1(cat_input))
         p1_out = F.dropout(self.p1(c1_out)).squeeze(-1)
+
         cat_out = torch.cat((p1_out, position_input[:, 0, :], position_input[:, -1, :]), dim=1)
+
         fc1_out = F.relu(self.fc1(p1_out))
         fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
 

@@ -131,11 +131,11 @@ for epoch in range(EPOCH_NUM):
     dev_diff = torch.eq(torch.argmax(dev_out, dim=1), dev_rel_in)
     dev_ac = dev_diff.sum().item() / float(dev_diff.numel())
 
-    print(classification_report(torch.argmax(dev_out, dim=1), dev_rel_in, labels=np.unique(torch.argmax(dev_out, dim=1))))
+#    print(classification_report(torch.argmax(dev_out, dim=1), dev_rel_in, labels=np.unique(torch.argmax(dev_out, dim=1))))
 
-    # test_out = model(test_word_in, test_pos_in)
-    # test_diff = torch.eq(torch.argmax(test_out, dim=1), test_rel_in)
-    # test_ac = test_diff.sum().item() / float(test_diff.numel())
+    test_out = model(test_word_in, test_pos_in)
+    test_diff = torch.eq(torch.argmax(test_out, dim=1), test_rel_in)
+    test_ac = test_diff.sum().item() / float(test_diff.numel())
 
     print('Epoch %i' % epoch, ',loss: %.4f' % (sum(total_loss) / float(len(total_loss))),
           ', accuracy: %.4f' % (sum(total_ac) / float(len(total_ac))),
@@ -145,3 +145,7 @@ for epoch in range(EPOCH_NUM):
           # ', test accuracy: %.4f' % (test_ac)
           )
 
+test_out = model(test_word_in, test_pos_in)
+test_diff = torch.eq(torch.argmax(test_out, dim=1), test_rel_in)
+test_ac = test_diff.sum().item() / float(test_diff.numel())
+print(classification_report(torch.argmax(test_out, dim=1), test_rel_in, labels=np.unique(torch.argmax(test_out, dim=1))))
