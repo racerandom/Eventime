@@ -22,6 +22,8 @@ import random
 import pdb
 import gensim
 
+import TempUtils
+
 torch.manual_seed(23214)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -246,6 +248,37 @@ class TempCNN(nn.Module):
         fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
 
         return fc2_out
+
+class TempClassifier(nn.Module):
+    def __init__(self, embedding_dim, position_dim, hidden_dim, vocab_size, pos_size, seq_len, fc1_dim, action_size,
+                 batch_size, window, pre_model=None):
+        super(TempClassifier, self).__init__()
+        self.batch_size = batch_size
+        self.word_embeddings = TempUtils.pre2embed(pre_model)
+        # else:
+        #     self.word_embeddings = nn.Embedding(vocab_size, embedding_dim)
+        self.position_embeddings = nn.Embedding(pos_size, position_dim)
+        self.embedding_dropout = nn.Dropout(p=0.5)
+        # self.dct_detector = Tlink.DCTDetector(embedding_dim,
+        #                                       dct_hidden_dim,
+        #                                       action_size,
+        #                                       batch_size)
+        self.dct_detector = TempCNN(embedding_dim, position_dim, hidden_dim, seq_len, fc1_dim, action_size, window)
+
+    def forward(self, dct_in, pos_in):
+        # print(dct_input.size(), pos_in.size())
+
+        dct_embeds = self.word_embeddings(dct_in.squeeze(1))
+        dct_embeds = self.embedding_dropout(dct_embeds)
+        # print(dct_embeds.size())
+        batch_size, seq_len, _ = dct_embeds.size()
+
+        pos_embeds = self.position_embeddings(pos_in.squeeze(1))
+        pos_embeds = self.embedding_dropout(pos_embeds)
+        # print(pos_embeds.view(batch_size, max_len, -1).size())
+
+        dct_out = self.dct_detector(dct_embeds, pos_embeds.view(batch_size, seq_len, -1))
+        return dct_out
 
 
 class TimexCNN(nn.Module):
