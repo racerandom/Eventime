@@ -240,7 +240,7 @@ class TempOptimizer(nn.Module):
 def main():
 
     temp_extractor = TempOptimizer(['Event-Timex', 'Timex-Event'], 'val_loss')
-    temp_extractor.optimize_model(max_evals=1)
+    temp_extractor.optimize_model(max_evals=200)
     temp_extractor.eval_test()
 
 
