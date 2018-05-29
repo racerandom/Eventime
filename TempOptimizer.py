@@ -100,7 +100,7 @@ class TempOptimizer(nn.Module):
             for key, values in self.param_space.items():
                 params[key] = random.choice(values)
 
-            print('eval %i:' % eval_i, ', params:', params)
+            print('[optim %i]:' % eval_i, ', params:', params)
             self.train_model(**params)
 
 
@@ -117,12 +117,14 @@ class TempOptimizer(nn.Module):
 
         model.load_state_dict(torch.load(self.GLOB_BEST_MODEL_PATH))
 
-        dev_out = model.eval(self.dev_data[WORD_COL], self.dev_data[POS_COL])
+        model.eval()
+
+        dev_out = model(self.dev_data[WORD_COL], self.dev_data[POS_COL])
         dev_loss = F.nll_loss(dev_out, self.dev_data[REL_COL]).item()
         dev_diff = torch.eq(torch.argmax(dev_out, dim=1), self.dev_data[REL_COL])
         dev_acc = dev_diff.sum().item() / float(dev_diff.numel())
 
-        test_out = model.eval(self.test_data[WORD_COL], self.test_data[POS_COL])
+        test_out = model(self.test_data[WORD_COL], self.test_data[POS_COL])
         test_loss = F.nll_loss(test_out, self.test_data[REL_COL]).item()
         test_diff = torch.eq(torch.argmax(test_out, dim=1), self.test_data[REL_COL])
         test_acc = test_diff.sum().item() / float(test_diff.numel())
@@ -168,10 +170,11 @@ class TempOptimizer(nn.Module):
             total_acc = []
             start_time = time.time()
             for step, (word_input, position_input, target) in enumerate(train_data_loader):
+                model.train()
                 word_input, position_input, target = word_input.to(device), position_input.to(device), target.to(device)
 
                 model.zero_grad()
-                pred_out = model.train(word_input, position_input)
+                pred_out = model(word_input, position_input)
                 loss = loss_function(pred_out, target)
                 loss.backward(retain_graph=True)
                 optimizer.step()
@@ -179,7 +182,8 @@ class TempOptimizer(nn.Module):
                 diff = torch.eq(torch.argmax(pred_out, dim=1), target)
                 total_acc.append(diff.sum().item() / float(diff.numel()))
 
-            dev_out = model.eval(self.dev_data[WORD_COL], self.dev_data[POS_COL])
+            model.eval()
+            dev_out = model(self.dev_data[WORD_COL], self.dev_data[POS_COL])
             dev_loss = F.nll_loss(dev_out, self.dev_data[REL_COL]).item()
             dev_diff = torch.eq(torch.argmax(dev_out, dim=1), self.dev_data[REL_COL])
             dev_acc = dev_diff.sum().item() / float(dev_diff.numel())
@@ -212,17 +216,17 @@ class TempOptimizer(nn.Module):
             if self.glob_best_acc < local_best_acc:
                 self.glob_best_acc = local_best_acc
                 self.glob_best_loss = local_best_loss
-                best_params = args
-                best_params['best_epoch'] = local_best_epoch
-                self.glob_best_params = best_params
+                params = args
+                params['best_epoch'] = local_best_epoch
+                self.glob_best_params = params
 
         elif self.monitor == 'val_loss':
             if self.glob_best_loss > local_best_loss:
                 self.glob_best_loss = local_best_loss
                 self.glob_best_acc = local_best_acc
-                best_params = args
-                best_params['best_epoch'] = best_epoch
-                self.glob_best_params = best_params
+                params = args
+                params['best_epoch'] = local_best_epoch
+                self.glob_best_params = params
         else:
             raise Exception('Wrong monitor parameter...')
 
@@ -235,7 +239,7 @@ class TempOptimizer(nn.Module):
 def main():
 
     temp_extractor = TempOptimizer(['Event-Timex', 'Timex-Event'], 'val_loss')
-    temp_extractor.optimize_model(max_evals=10)
+    temp_extractor.optimize_model(max_evals=1)
     temp_extractor.eval_test()
 
 
