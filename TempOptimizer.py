@@ -100,6 +100,10 @@ class TempOptimizer(nn.Module):
             self.train_model(**params)
 
 
+    def eval(self, **args):
+        pass
+
+
     def train_model(self, **args):
 
         WORD_COL, POS_COL, REL_COL = 0, 1, 2
@@ -116,7 +120,7 @@ class TempOptimizer(nn.Module):
 
         print('Starting to train a new model with parameters', args)
 
-        best_acc, best_loss = 0, 100
+        best_acc, best_loss, best_epoch = 0, 100, 0
         GLOB_BEST_MODEL_PATH = "models/glob_best_model.pth"
         BEST_MODEL_PATH = "models/best-model_%s.pth" % (TempUtils.dict2str(args))
 
@@ -132,7 +136,7 @@ class TempOptimizer(nn.Module):
         #     if param.requires_grad:
         #         print('*', name)
 
-        for epoch in range(self.EPOCH_NUM):
+        for epoch in range(1, self.EPOCH_NUM + 1):
             total_loss = []
             total_acc = []
             start_time = time.time()
@@ -149,7 +153,7 @@ class TempOptimizer(nn.Module):
                 total_acc.append(diff.sum().item() / float(diff.numel()))
 
             dev_out = model(self.dev_data[WORD_COL], self.dev_data[POS_COL])
-            dev_loss = F.nll_loss(dev_out, self.dev_data[REL_COL])
+            dev_loss = F.nll_loss(dev_out, self.dev_data[REL_COL]).item()
             dev_diff = torch.eq(torch.argmax(dev_out, dim=1), self.dev_data[REL_COL])
             dev_acc = dev_diff.sum().item() / float(dev_diff.numel())
 
@@ -157,11 +161,13 @@ class TempOptimizer(nn.Module):
                 if dev_acc > best_acc:
                     best_acc = dev_acc
                     best_loss = dev_loss
+                    best_epoch = epoch
                     torch.save(model, BEST_MODEL_PATH)
             elif self.monitor == 'val_loss':
                 if dev_loss < best_loss:
                     best_loss = dev_loss
                     best_acc = dev_acc
+                    best_epoch = epoch
                     torch.save(model, BEST_MODEL_PATH)
             else:
                 raise Exception('Wrong monitor parameter...')
@@ -178,22 +184,26 @@ class TempOptimizer(nn.Module):
             if self.glob_best_acc < best_acc:
                 self.glob_best_acc = best_acc
                 self.glob_best_loss = best_loss
-                self.glob_best_params = args
+                best_params = args
+                best_params['best_epoch'] = best_epoch
+                self.glob_best_params = best_params
                 torch.save(model, GLOB_BEST_MODEL_PATH)
 
         elif self.monitor == 'val_loss':
             if self.glob_best_loss > best_loss:
                 self.glob_best_loss = best_loss
                 self.glob_best_acc = best_acc
-                self.glob_best_params = args
+                best_params = args
+                best_params['best_epoch'] = best_epoch
+                self.glob_best_params = best_params
                 torch.save(model, GLOB_BEST_MODEL_PATH)
         else:
             raise Exception('Wrong monitor parameter...')
 
         print("Current params:", args)
-        print("best loss of current params:", best_loss, ', acc:', best_acc)
+        print("best loss of current params: %.4f" % (best_loss), ', acc: %.4f' % (best_acc))
         print("params of glob best loss:", self.glob_best_params)
-        print("glob best loss:", self.glob_best_loss, ', acc:', self.glob_best_acc)
+        print("glob best loss: %.4f" % (self.glob_best_loss), ', acc: %.4f' % (self.glob_best_acc))
         print("*" * 80)
 
 def main():
