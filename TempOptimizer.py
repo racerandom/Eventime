@@ -16,9 +16,12 @@ from TempModules import *
 from TempData import *
 import TempUtils
 
-torch.manual_seed(2)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print('device:', device)
+seed = 2
+torch.manual_seed(seed)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(seed)
 
 is_pretrained = True
 
@@ -38,7 +41,7 @@ class TempOptimizer(nn.Module):
             'pos_dim': range(5, 30 + 1),
             'dropout_emb': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
             'dropout_max': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
-            'optimizer': ['adadelta', 'adam','rmsprop', 'sgd'],
+            # 'optimizer': ['adadelta', 'adam','rmsprop', 'sgd'],
             'lr':[1e-1, 1e-2, 1e-3],
             'weight_decay':[1e-2, 1e-3, 1e-4, 1e-5, 0]
             }
@@ -114,19 +117,19 @@ class TempOptimizer(nn.Module):
 
         model.load_state_dict(torch.load(self.GLOB_BEST_MODEL_PATH))
 
-        dev_out = model(self.dev_data[WORD_COL], self.dev_data[POS_COL])
+        dev_out = model.eval(self.dev_data[WORD_COL], self.dev_data[POS_COL])
         dev_loss = F.nll_loss(dev_out, self.dev_data[REL_COL]).item()
         dev_diff = torch.eq(torch.argmax(dev_out, dim=1), self.dev_data[REL_COL])
         dev_acc = dev_diff.sum().item() / float(dev_diff.numel())
 
-        test_out = model(self.test_data[WORD_COL], self.test_data[POS_COL])
+        test_out = model.eval(self.test_data[WORD_COL], self.test_data[POS_COL])
         test_loss = F.nll_loss(test_out, self.test_data[REL_COL]).item()
         test_diff = torch.eq(torch.argmax(test_out, dim=1), self.test_data[REL_COL])
         test_acc = test_diff.sum().item() / float(test_diff.numel())
 
         print("[Eval Results:]")
-        print("Dev loss: %.4f" * (dev_loss), ", dev acc: %.4f" % (dev_acc))
-        print("Test loss: %.4f" * (test_loss), ", test acc: %.4f" % (test_acc))
+        print("Dev loss: %.4f" % (dev_loss), ", dev acc: %.4f" % (dev_acc))
+        print("Test loss: %.4f" % (test_loss), ", test acc: %.4f" % (test_acc))
 
 
     def train_model(self, **args):
@@ -168,7 +171,7 @@ class TempOptimizer(nn.Module):
                 word_input, position_input, target = word_input.to(device), position_input.to(device), target.to(device)
 
                 model.zero_grad()
-                pred_out = model(word_input, position_input)
+                pred_out = model.train(word_input, position_input)
                 loss = loss_function(pred_out, target)
                 loss.backward(retain_graph=True)
                 optimizer.step()
@@ -176,7 +179,7 @@ class TempOptimizer(nn.Module):
                 diff = torch.eq(torch.argmax(pred_out, dim=1), target)
                 total_acc.append(diff.sum().item() / float(diff.numel()))
 
-            dev_out = model(self.dev_data[WORD_COL], self.dev_data[POS_COL])
+            dev_out = model.eval(self.dev_data[WORD_COL], self.dev_data[POS_COL])
             dev_loss = F.nll_loss(dev_out, self.dev_data[REL_COL]).item()
             dev_diff = torch.eq(torch.argmax(dev_out, dim=1), self.dev_data[REL_COL])
             dev_acc = dev_diff.sum().item() / float(dev_diff.numel())
@@ -186,14 +189,14 @@ class TempOptimizer(nn.Module):
                     local_best_acc = dev_acc
                     local_best_loss = dev_loss
                     local_best_epoch = epoch
-                    torch.save(model.state_dict(), BEST_MODEL_PATH)
+                    torch.save(model.state_dict(), self.GLOB_BEST_MODEL_PATH)
 
             elif self.monitor == 'val_loss':
                 if dev_loss < local_best_loss:
                     local_best_loss = dev_loss
                     local_best_acc = dev_acc
                     local_best_epoch = epoch
-                    torch.save(model.state_dict(), BEST_MODEL_PATH)
+                    torch.save(model.state_dict(), self.GLOB_BEST_MODEL_PATH)
             else:
                 raise Exception('Wrong monitor parameter...')
             #    print(classification_report(torch.argmax(dev_out, dim=1), dev_rel_in, labels=np.unique(torch.argmax(dev_out, dim=1))))
