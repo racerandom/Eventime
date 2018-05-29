@@ -38,12 +38,12 @@ class TempOptimizer(nn.Module):
             'kernel_len': [2, 3, 4, 5],
             'batch_size': [32, 64, 128],
             'fc_hidden_dim': range(100, 500 + 1, 10),
-            'pos_dim': range(5, 30 + 1),
+            'pos_dim': range(5, 30 + 1, 5),
             'dropout_emb': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
             'dropout_cat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
             # 'optimizer': ['adadelta', 'adam','rmsprop', 'sgd'],
             'lr':[1e-1, 1e-2, 1e-3],
-            'weight_decay':[1e-2, 1e-3, 1e-4, 1e-5, 0]
+            'weight_decay':[1e-3, 1e-4, 1e-5, 0]
             }
         self.doc_dic, self.word_idx, self.pos_idx, self.rel_idx, self.max_len, self.pre_model = prepare_global(is_pretrained=True, types=rel_types)
         self.VOCAB_SIZE = len(self.word_idx)
