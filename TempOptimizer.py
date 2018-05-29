@@ -50,7 +50,7 @@ class TempOptimizer(nn.Module):
         self.POS_SIZE = len(self.pos_idx)
         self.MAX_LEN = self.max_len
         self.ACTION_SIZE = len(self.rel_idx)
-        self.WORD_DIM = 300
+        self.WORD_DIM = 200
         self.EPOCH_NUM = 20
         self.param_space['word_dim'] = [self.WORD_DIM]
 
@@ -94,7 +94,7 @@ class TempOptimizer(nn.Module):
 
 
 
-    def optimize_model(self, max_evals=100):
+    def optimize_model(self, max_evals=200):
 
         for eval_i in range(1, max_evals + 1):
             params = {}
@@ -131,7 +131,9 @@ class TempOptimizer(nn.Module):
         print("[Eval Results:]")
         print("Dev loss: %.4f" % (dev_loss), ", dev acc: %.4f" % (dev_acc))
         print("Test loss: %.4f" % (test_loss), ", test acc: %.4f" % (test_acc))
-
+        print(self.rel_idx)
+        print(classification_report(torch.argmax(test_out, dim=1), test_data[REL_COL],
+                                    labels=np.unique(torch.argmax(test_out, dim=1))))
 
     def train_model(self, **args):
 
