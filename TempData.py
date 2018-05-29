@@ -88,7 +88,7 @@ def prepare(is_pretrained=False):
 
 
 def prepare_global(is_pretrained=True, types=['Event-Timex', 'Timex-Event']):
-    embed_file = os.path.join(os.getenv("HOME"), 'Resources/embed/giga-aacw.d200.bin')
+    embed_file = os.path.join(os.getenv("HOME"), 'Resources/embed/deps.words.bin')
     doc_dic = load_doc('data/doc_list.pkl')
     max_len = max_length(doc_dic, types)
     pos_idx = pos2idx(doc_dic)

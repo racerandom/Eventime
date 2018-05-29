@@ -40,7 +40,7 @@ class TempOptimizer(nn.Module):
             'fc_hidden_dim': range(100, 500 + 1, 10),
             'pos_dim': range(5, 30 + 1),
             'dropout_emb': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
-            'dropout_max': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+            'dropout_cat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
             # 'optimizer': ['adadelta', 'adam','rmsprop', 'sgd'],
             'lr':[1e-1, 1e-2, 1e-3],
             'weight_decay':[1e-2, 1e-3, 1e-4, 1e-5, 0]
@@ -50,8 +50,9 @@ class TempOptimizer(nn.Module):
         self.POS_SIZE = len(self.pos_idx)
         self.MAX_LEN = self.max_len
         self.ACTION_SIZE = len(self.rel_idx)
-        self.WORD_DIM = 200
+        self.WORD_DIM = 300
         self.EPOCH_NUM = 20
+        self.param_space['word_dim'] = [self.WORD_DIM]
 
         ## Data and records
         self.train_data, self.dev_data, self.test_data = self.generate_data()
@@ -95,7 +96,7 @@ class TempOptimizer(nn.Module):
 
     def optimize_model(self, max_evals=100):
 
-        for eval_i in range(max_evals):
+        for eval_i in range(1, max_evals + 1):
             params = {}
             for key, values in self.param_space.items():
                 params[key] = random.choice(values)
@@ -108,9 +109,7 @@ class TempOptimizer(nn.Module):
 
         WORD_COL, POS_COL, REL_COL = 0, 1, 2
 
-        model = TempClassifier(self.WORD_DIM, self.glob_best_params['pos_dim'], self.glob_best_params['filter_nb'], self.VOCAB_SIZE, self.POS_SIZE,
-                               self.MAX_LEN, self.glob_best_params['fc_hidden_dim'], self.ACTION_SIZE,
-                               self.glob_best_params['batch_size'], self.glob_best_params['kernel_len'], pre_model=self.pre_model).to(device=device)
+        model = TempClassifier(self.VOCAB_SIZE, self.POS_SIZE, self.ACTION_SIZE, self.MAX_LEN, pre_model=self.pre_model, **self.glob_best_params).to(device=device)
         loss_function = nn.NLLLoss()
         optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=self.glob_best_params['lr'],
                                weight_decay=self.glob_best_params['weight_decay'])
@@ -153,9 +152,7 @@ class TempOptimizer(nn.Module):
         local_best_acc, local_best_loss, local_best_epoch = 0, 1000, 0
         BEST_MODEL_PATH = "models/best-model_%s.pth" % (TempUtils.dict2str(args))
 
-        model = TempClassifier(self.WORD_DIM, args['pos_dim'], args['filter_nb'], self.VOCAB_SIZE, self.POS_SIZE,
-                               self.MAX_LEN, args['fc_hidden_dim'], self.ACTION_SIZE,
-                               args['batch_size'], args['kernel_len'], pre_model=self.pre_model).to(device=device)
+        model = TempClassifier(self.VOCAB_SIZE, self.POS_SIZE, self.ACTION_SIZE, self.MAX_LEN, pre_model=self.pre_model, **args).to(device=device)
 
         loss_function = nn.NLLLoss()
         optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args['lr'],
@@ -193,14 +190,14 @@ class TempOptimizer(nn.Module):
                     local_best_acc = dev_acc
                     local_best_loss = dev_loss
                     local_best_epoch = epoch
-                    torch.save(model.state_dict(), self.GLOB_BEST_MODEL_PATH)
+                    torch.save(model.state_dict(), BEST_MODEL_PATH)
 
             elif self.monitor == 'val_loss':
                 if dev_loss < local_best_loss:
                     local_best_loss = dev_loss
                     local_best_acc = dev_acc
                     local_best_epoch = epoch
-                    torch.save(model.state_dict(), self.GLOB_BEST_MODEL_PATH)
+                    torch.save(model.state_dict(), BEST_MODEL_PATH)
             else:
                 raise Exception('Wrong monitor parameter...')
             #    print(classification_report(torch.argmax(dev_out, dim=1), dev_rel_in, labels=np.unique(torch.argmax(dev_out, dim=1))))
@@ -219,6 +216,8 @@ class TempOptimizer(nn.Module):
                 params = args
                 params['best_epoch'] = local_best_epoch
                 self.glob_best_params = params
+                model.load_state_dict(torch.load(BEST_MODEL_PATH))
+                torch.save(model.state_dict(), self.GLOB_BEST_MODEL_PATH)
 
         elif self.monitor == 'val_loss':
             if self.glob_best_loss > local_best_loss:
@@ -227,6 +226,8 @@ class TempOptimizer(nn.Module):
                 params = args
                 params['best_epoch'] = local_best_epoch
                 self.glob_best_params = params
+                model.load_state_dict(torch.load(BEST_MODEL_PATH))
+                torch.save(model.state_dict(), self.GLOB_BEST_MODEL_PATH)
         else:
             raise Exception('Wrong monitor parameter...')
 

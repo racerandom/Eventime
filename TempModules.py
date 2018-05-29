@@ -227,12 +227,13 @@ class distance_loss(nn.Module):
 
 
 class TempCNN(nn.Module):
-    def __init__(self, word_dim, pos_dim, c1_dim, seq_len, fc1_dim, action_size, window):
+    def __init__(self, seq_len, action_size, **params):
         super(TempCNN, self).__init__()
-        self.c1 = nn.Conv1d(word_dim+2*pos_dim, c1_dim, window)
-        self.p1 = nn.MaxPool1d(seq_len - window + 1)
-        self.fc1 = nn.Linear(c1_dim, fc1_dim)
-        self.fc2 = nn.Linear(fc1_dim, action_size)
+        self.c1 = nn.Conv1d(params['word_dim'] + 2 * params['pos_dim'], params['filter_nb'], params['kernel_len'])
+        self.p1 = nn.MaxPool1d(seq_len - params['kernel_len'] + 1)
+        self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
+        self.fc1 = nn.Linear(params['filter_nb'], params['fc_hidden_dim'])
+        self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
 
     def forward(self, word_input, position_input):
 
@@ -240,9 +241,10 @@ class TempCNN(nn.Module):
         cat_input = torch.cat((word_input, position_input), dim=2).transpose(1, 2)
 
         c1_out = F.relu(self.c1(cat_input))
-        p1_out = F.dropout(self.p1(c1_out)).squeeze(-1)
+        p1_out = self.p1(c1_out).squeeze(-1)
 
         cat_out = torch.cat((p1_out, position_input[:, 0, :], position_input[:, -1, :]), dim=1)
+        cat_out = self.cat_dropout(cat_out)
 
         fc1_out = F.relu(self.fc1(p1_out))
         fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
@@ -250,20 +252,19 @@ class TempCNN(nn.Module):
         return fc2_out
 
 class TempClassifier(nn.Module):
-    def __init__(self, embedding_dim, position_dim, hidden_dim, vocab_size, pos_size, seq_len, fc1_dim, action_size,
-                 batch_size, window, pre_model=None):
+    def __init__(self, vocab_size, pos_size, action_size, max_len, pre_model=None, **params):
         super(TempClassifier, self).__init__()
-        self.batch_size = batch_size
+        self.batch_size = params['batch_size']
         self.word_embeddings = TempUtils.pre2embed(pre_model)
         # else:
         #     self.word_embeddings = nn.Embedding(vocab_size, embedding_dim)
-        self.position_embeddings = nn.Embedding(pos_size, position_dim)
-        self.embedding_dropout = nn.Dropout(p=0.5)
+        self.position_embeddings = nn.Embedding(pos_size, params['pos_dim'])
+        self.embedding_dropout = nn.Dropout(p=params['dropout_emb'])
         # self.dct_detector = Tlink.DCTDetector(embedding_dim,
         #                                       dct_hidden_dim,
         #                                       action_size,
         #                                       batch_size)
-        self.dct_detector = TempCNN(embedding_dim, position_dim, hidden_dim, seq_len, fc1_dim, action_size, window)
+        self.dct_detector = TempCNN(max_len, action_size, **params)
 
     def forward(self, dct_in, pos_in):
         # print(dct_input.size(), pos_in.size())
