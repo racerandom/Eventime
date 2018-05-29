@@ -54,7 +54,7 @@ class TempOptimizer(nn.Module):
         self.train_data, self.dev_data, self.test_data = self.generate_data()
         self.GLOB_BEST_MODEL_PATH = "models/glob_best_model.pth"
         self.glob_best_acc = 0
-        self.glob_best_loss = 100
+        self.glob_best_loss = 1000
         self.glob_best_params = {}
 
 
@@ -109,10 +109,10 @@ class TempOptimizer(nn.Module):
                                self.MAX_LEN, self.glob_best_params['fc_hidden_dim'], self.ACTION_SIZE,
                                self.glob_best_params['batch_size'], self.glob_best_params['kernel_len'], pre_model=self.pre_model).to(device=device)
         loss_function = nn.NLLLoss()
-        optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args['lr'],
+        optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=self.glob_best_params['lr'],
                                weight_decay=self.glob_best_params['weight_decay'])
 
-        model.load_state_dict(self.GLOB_BEST_MODEL_PATH)
+        model.load_state_dict(torch.load(self.GLOB_BEST_MODEL_PATH))
 
         dev_out = model(self.dev_data[WORD_COL], self.dev_data[POS_COL])
         dev_loss = F.nll_loss(dev_out, self.dev_data[REL_COL]).item()
@@ -145,7 +145,7 @@ class TempOptimizer(nn.Module):
 
         print('Starting to train a new model with parameters', args)
 
-        best_acc, best_loss, best_epoch = 0, 100, 0
+        local_best_acc, local_best_loss, local_best_epoch = 0, 1000, 0
         BEST_MODEL_PATH = "models/best-model_%s.pth" % (TempUtils.dict2str(args))
 
         model = TempClassifier(self.WORD_DIM, args['pos_dim'], args['filter_nb'], self.VOCAB_SIZE, self.POS_SIZE,
@@ -182,16 +182,17 @@ class TempOptimizer(nn.Module):
             dev_acc = dev_diff.sum().item() / float(dev_diff.numel())
 
             if self.monitor == 'val_acc':
-                if dev_acc > best_acc:
-                    best_acc = dev_acc
-                    best_loss = dev_loss
-                    best_epoch = epoch
+                if dev_acc > local_best_acc:
+                    local_best_acc = dev_acc
+                    local_best_loss = dev_loss
+                    local_best_epoch = epoch
                     torch.save(model.state_dict(), BEST_MODEL_PATH)
+
             elif self.monitor == 'val_loss':
-                if dev_loss < best_loss:
-                    best_loss = dev_loss
-                    best_acc = dev_acc
-                    best_epoch = epoch
+                if dev_loss < local_best_loss:
+                    local_best_loss = dev_loss
+                    local_best_acc = dev_acc
+                    local_best_epoch = epoch
                     torch.save(model.state_dict(), BEST_MODEL_PATH)
             else:
                 raise Exception('Wrong monitor parameter...')
@@ -205,27 +206,25 @@ class TempOptimizer(nn.Module):
                   )
 
         if self.monitor == 'val_acc':
-            if self.glob_best_acc < best_acc:
-                self.glob_best_acc = best_acc
-                self.glob_best_loss = best_loss
+            if self.glob_best_acc < local_best_acc:
+                self.glob_best_acc = local_best_acc
+                self.glob_best_loss = local_best_loss
                 best_params = args
-                best_params['best_epoch'] = best_epoch
+                best_params['best_epoch'] = local_best_epoch
                 self.glob_best_params = best_params
-                torch.save(model, self.GLOB_BEST_MODEL_PATH)
 
         elif self.monitor == 'val_loss':
-            if self.glob_best_loss > best_loss:
-                self.glob_best_loss = best_loss
-                self.glob_best_acc = best_acc
+            if self.glob_best_loss > local_best_loss:
+                self.glob_best_loss = local_best_loss
+                self.glob_best_acc = local_best_acc
                 best_params = args
                 best_params['best_epoch'] = best_epoch
                 self.glob_best_params = best_params
-                torch.save(model, self.GLOB_BEST_MODEL_PATH)
         else:
             raise Exception('Wrong monitor parameter...')
 
         print("Current params:", args)
-        print("best loss of current params: %.4f" % (best_loss), ', acc: %.4f' % (best_acc))
+        print("best loss of current params: %.4f" % (local_best_loss), ', acc: %.4f' % (local_best_acc))
         print("params of glob best loss:", self.glob_best_params)
         print("glob best loss: %.4f" % (self.glob_best_loss), ', acc: %.4f' % (self.glob_best_acc))
         print("*" * 80)
