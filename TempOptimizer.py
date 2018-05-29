@@ -190,11 +190,11 @@ class TempOptimizer(nn.Module):
         else:
             raise Exception('Wrong monitor parameter...')
 
-        print("Finished training model:", args)
-        print("best loss of current params:", best_loss)
-        print("glob best loss:", self.glob_best_loss)
+        print("Current params:", args)
+        print("best loss of current params:", best_loss, ', acc:', best_acc)
         print("params of glob best loss:", self.glob_best_params)
-        print("*" * 20)
+        print("glob best loss:", self.glob_best_loss, ', acc:', self.glob_best_acc)
+        print("*" * 80)
 
 def main():
 
