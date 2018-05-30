@@ -255,10 +255,12 @@ class TempClassifier(nn.Module):
     def __init__(self, vocab_size, pos_size, action_size, max_len, pre_model=None, **params):
         super(TempClassifier, self).__init__()
         self.batch_size = params['batch_size']
-        self.word_embeddings = TempUtils.pre2embed(pre_model)
-        # else:
-        #     self.word_embeddings = nn.Embedding(vocab_size, embedding_dim)
-        self.position_embeddings = nn.Embedding(pos_size, params['pos_dim'])
+
+        if pre_model != None:
+            self.word_embeddings = TempUtils.pre2embed(pre_model)
+        else:
+            self.word_embeddings = nn.Embedding(vocab_size, params['word_dim'], padding_idx=0)
+        self.position_embeddings = nn.Embedding(pos_size, params['pos_dim'], padding_idx=0)
         self.embedding_dropout = nn.Dropout(p=params['dropout_emb'])
         # self.dct_detector = Tlink.DCTDetector(embedding_dim,
         #                                       dct_hidden_dim,

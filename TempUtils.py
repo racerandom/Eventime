@@ -64,20 +64,20 @@ def padding_pos(seq_2d, max_len, pad=[0, 0], direct='right'):
 
 
 def pos2idx(doc_dic):
-    tok_idx = {'UNK':0}
+    tok_idx = {'zeropadding': 0}
     for doc in doc_dic.values():
-        for tlink in doc.tlinks:
-            for tok_l, tok_r in tlink.interpos:
+        for link in doc.tlinks:
+            for tok_l, tok_r in link.interpos:
                 tok_idx.setdefault(tok_l, len(tok_idx))
                 tok_idx.setdefault(tok_r, len(tok_idx))
     return tok_idx
 
 
 def word2idx(doc_dic):
-    tok_idx = {'UNK':0}
+    tok_idx = {'zeropadding': 0}
     for doc in doc_dic.values():
-        for tlink in doc.tlinks:
-            for tok in tlink.interwords:
+        for link in doc.tlinks:
+            for tok in link.interwords:
                 tok_idx.setdefault(tok, len(tok_idx))
     return tok_idx
 
@@ -85,8 +85,8 @@ def word2idx(doc_dic):
 def rel2idx(doc_dic):
     tok_idx = {}
     for doc in doc_dic.values():
-        for tlink in doc.tlinks:
-            tok_idx.setdefault(tlink.rel, len(tok_idx))
+        for link in doc.tlinks:
+            tok_idx.setdefault(link.rel, len(tok_idx))
     return tok_idx
 
 

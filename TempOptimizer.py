@@ -1,3 +1,6 @@
+import warnings
+warnings.simplefilter("ignore", UserWarning)
+
 import torch
 import torch.autograd as autograd
 import torch.nn as nn
@@ -9,7 +12,7 @@ import numpy as np
 import random
 import pdb
 import gensim
-import time
+import time, operator
 from sklearn.metrics import classification_report
 
 from TempModules import *
@@ -27,12 +30,13 @@ is_pretrained = True
 
 class TempOptimizer(nn.Module):
 
-    def __init__(self, rel_types, monitor):
+    def __init__(self, rel_types, monitor, is_pretrained):
 
 
         ## model parameters
         self.monitor = monitor
         self.rel_types = rel_types
+        self.is_pretrained = is_pretrained
         self.param_space = {
             'filter_nb': range(100, 500 + 1, 10),
             'kernel_len': [2, 3, 4, 5],
@@ -45,13 +49,14 @@ class TempOptimizer(nn.Module):
             'lr':[1e-2, 1e-3],
             'weight_decay':[1e-3, 1e-4, 1e-5, 0]
             }
-        self.doc_dic, self.word_idx, self.pos_idx, self.rel_idx, self.max_len, self.pre_model = prepare_global(is_pretrained=True, types=rel_types)
+        self.doc_dic, self.word_idx, self.pos_idx, self.rel_idx, self.max_len, self.pre_model = prepare_global(is_pretrained=self.is_pretrained, types=rel_types)
         self.VOCAB_SIZE = len(self.word_idx)
         self.POS_SIZE = len(self.pos_idx)
         self.MAX_LEN = self.max_len
         self.ACTION_SIZE = len(self.rel_idx)
+        self.ACTIONS = [ key for key, value in sorted(self.rel_idx.items(), key=operator.itemgetter(1))]
         self.WORD_DIM = 200
-        self.EPOCH_NUM = 20
+        self.EPOCH_NUM = 10
         self.param_space['word_dim'] = [self.WORD_DIM]
 
         ## Data and records
@@ -243,12 +248,13 @@ class TempOptimizer(nn.Module):
             dev_diff = torch.eq(torch.argmax(dev_out, dim=1), self.dev_data[REL_COL])
             dev_acc = dev_diff.sum().item() / float(dev_diff.numel())
 
+            if is_report:
+                print(classification_report(torch.argmax(dev_out, dim=1), self.dev_data[REL_COL],
+                                            target_names=self.ACTIONS))
+
             return " | dev loss: %.4f, dev acc: %.4f" % (dev_loss, dev_acc)
 
-            if is_report:
-                print(self.rel_idx)
-                print(classification_report(torch.argmax(dev_out, dim=1), self.dev_data[REL_COL],
-                                            labels=np.unique(torch.argmax(dev_out, dim=1))))
+
 
 
     def eval_test(self, model, is_report=False):
@@ -263,12 +269,14 @@ class TempOptimizer(nn.Module):
             test_diff = torch.eq(torch.argmax(test_out, dim=1), self.test_data[REL_COL])
             test_acc = test_diff.sum().item() / float(test_diff.numel())
 
+            if is_report:
+                print('-' * 80)
+                print(classification_report(torch.argmax(test_out, dim=1), self.test_data[REL_COL],
+                                            target_names=self.ACTIONS))
+
             return " | test loss: %.4f, test acc: %.4f" % (test_loss, test_acc)
 
-            if is_report:
-                print(self.rel_idx)
-                print(classification_report(torch.argmax(test_out, dim=1), self.test_data[REL_COL],
-                                            labels=np.unique(torch.argmax(test_out, dim=1))))
+
 
 
     def eval_with_params(self, **params):
@@ -312,8 +320,8 @@ class TempOptimizer(nn.Module):
 
 def main():
 
-    temp_extractor = TempOptimizer(['Event-Timex', 'Timex-Event'], 'val_loss')
-    temp_extractor.optimize_model(max_evals=100)
+    temp_extractor = TempOptimizer(['Event-Timex', 'Timex-Event'], 'val_loss', False)
+    temp_extractor.optimize_model(max_evals=5)
     temp_extractor.eval_model()
     # params = {'filter_nb': 120, 'kernel_len': 3, 'batch_size': 128, 'fc_hidden_dim': 370, 'pos_dim': 5, 'dropout_emb': 0.45, 'dropout_cat': 0.55, 'lr': 0.001, 'weight_decay': 1e-05, 'word_dim': 200, 'best_epoch': 19}
     # temp_extractor.eval_with_params(**params)
