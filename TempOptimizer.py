@@ -118,7 +118,7 @@ class TempOptimizer(nn.Module):
         model.load_state_dict(torch.load(self.GLOB_BEST_MODEL_PATH))
 
         print(self.eval_val(model))
-        print(self.eval_test(model))
+        print(self.eval_test(model, is_report=True))
 
     def train_model(self, **params):
 
@@ -231,7 +231,7 @@ class TempOptimizer(nn.Module):
         print("glob best loss: %.4f" % (self.glob_best_loss), ', acc: %.4f' % (self.glob_best_acc), self.glob_test)
         print("*" * 80)
 
-    def eval_val(self, model):
+    def eval_val(self, model, is_report=False):
 
         WORD_COL, POS_COL, REL_COL = 0, 1, 2
 
@@ -245,8 +245,13 @@ class TempOptimizer(nn.Module):
 
             return " | dev loss: %.4f, dev acc: %.4f" % (dev_loss, dev_acc)
 
+            if is_report:
+                print(self.rel_idx)
+                print(classification_report(torch.argmax(dev_out, dim=1), self.dev_data[REL_COL],
+                                            labels=np.unique(torch.argmax(dev_out, dim=1))))
 
-    def eval_test(self, model):
+
+    def eval_test(self, model, is_report=False):
 
         WORD_COL, POS_COL, REL_COL = 0, 1, 2
 
@@ -259,9 +264,11 @@ class TempOptimizer(nn.Module):
             test_acc = test_diff.sum().item() / float(test_diff.numel())
 
             return " | test loss: %.4f, test acc: %.4f" % (test_loss, test_acc)
-            # print(self.rel_idx)
-            # print(classification_report(torch.argmax(test_out, dim=1), self.test_data[REL_COL],
-            #                             labels=np.unique(torch.argmax(test_out, dim=1))))
+
+            if is_report:
+                print(self.rel_idx)
+                print(classification_report(torch.argmax(test_out, dim=1), self.test_data[REL_COL],
+                                            labels=np.unique(torch.argmax(test_out, dim=1))))
 
 
     def eval_with_params(self, **params):
