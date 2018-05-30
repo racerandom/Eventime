@@ -256,7 +256,7 @@ class TempClassifier(nn.Module):
         super(TempClassifier, self).__init__()
         self.batch_size = params['batch_size']
 
-        if pre_model != None:
+        if isinstance(pre_model, np.ndarray):
             self.word_embeddings = TempUtils.pre2embed(pre_model)
         else:
             self.word_embeddings = nn.Embedding(vocab_size, params['word_dim'], padding_idx=0)

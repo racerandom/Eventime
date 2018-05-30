@@ -30,7 +30,7 @@ is_pretrained = True
 
 class TempOptimizer(nn.Module):
 
-    def __init__(self, rel_types, monitor, is_pretrained):
+    def __init__(self, epoch_nb, rel_types, monitor, is_pretrained):
 
 
         ## model parameters
@@ -56,7 +56,7 @@ class TempOptimizer(nn.Module):
         self.ACTION_SIZE = len(self.rel_idx)
         self.ACTIONS = [ key for key, value in sorted(self.rel_idx.items(), key=operator.itemgetter(1))]
         self.WORD_DIM = 200
-        self.EPOCH_NUM = 10
+        self.EPOCH_NUM = epoch_nb
         self.param_space['word_dim'] = [self.WORD_DIM]
 
         ## Data and records
@@ -320,8 +320,8 @@ class TempOptimizer(nn.Module):
 
 def main():
 
-    temp_extractor = TempOptimizer(['Event-Timex', 'Timex-Event'], 'val_loss', False)
-    temp_extractor.optimize_model(max_evals=5)
+    temp_extractor = TempOptimizer(25, ['Event-Timex', 'Timex-Event'], 'val_loss', False)
+    temp_extractor.optimize_model(max_evals=50)
     temp_extractor.eval_model()
     # params = {'filter_nb': 120, 'kernel_len': 3, 'batch_size': 128, 'fc_hidden_dim': 370, 'pos_dim': 5, 'dropout_emb': 0.45, 'dropout_cat': 0.55, 'lr': 0.001, 'weight_decay': 1e-05, 'word_dim': 200, 'best_epoch': 19}
     # temp_extractor.eval_with_params(**params)
