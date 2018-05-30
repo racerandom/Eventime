@@ -136,7 +136,7 @@ class TempOptimizer(nn.Module):
 
         print('Starting to train a new model with parameters', params)
 
-        local_best_acc, local_best_loss, local_best_epoch = 0, 1000, 0
+        local_best_acc, local_best_loss, local_best_epoch, local_best_test = 0, 1000, 0, ""
         # BEST_MODEL_PATH = "models/best-model_%s.pth" % (TempUtils.dict2str(params))
         BEST_MODEL_PATH = "models/temp-model.pth"
 
@@ -181,6 +181,7 @@ class TempOptimizer(nn.Module):
                     local_best_acc = dev_acc
                     local_best_loss = dev_loss
                     local_best_epoch = epoch
+                    local_best_test = self.eval_test(model)
                     torch.save(model.state_dict(), BEST_MODEL_PATH)
 
             elif self.monitor == 'val_loss':
@@ -188,6 +189,7 @@ class TempOptimizer(nn.Module):
                     local_best_loss = dev_loss
                     local_best_acc = dev_acc
                     local_best_epoch = epoch
+                    local_best_test = self.eval_test(model)
                     torch.save(model.state_dict(), BEST_MODEL_PATH)
             else:
                 raise Exception('Wrong monitor parameter...')
@@ -205,7 +207,7 @@ class TempOptimizer(nn.Module):
             if self.glob_best_acc < local_best_acc:
                 self.glob_best_acc = local_best_acc
                 self.glob_best_loss = local_best_loss
-                self.glob_test = self.eval_test(model)
+                self.glob_test = local_best_test
                 params['best_epoch'] = local_best_epoch
                 self.glob_best_params = params
                 model.load_state_dict(torch.load(BEST_MODEL_PATH))
@@ -215,7 +217,7 @@ class TempOptimizer(nn.Module):
             if self.glob_best_loss > local_best_loss:
                 self.glob_best_loss = local_best_loss
                 self.glob_best_acc = local_best_acc
-                self.glob_test = self.eval_test(model)
+                self.glob_test = local_best_test
                 params['best_epoch'] = local_best_epoch
                 self.glob_best_params = params
                 model.load_state_dict(torch.load(BEST_MODEL_PATH))
@@ -224,7 +226,7 @@ class TempOptimizer(nn.Module):
             raise Exception('Wrong monitor parameter...')
 
         print("Current params:", params)
-        print("best loss of current params: %.4f" % (local_best_loss), ', acc: %.4f' % (local_best_acc))
+        print("best loss of current params: %.4f" % (local_best_loss), ', acc: %.4f' % (local_best_acc), local_best_test)
         print("params of glob best loss:", self.glob_best_params)
         print("glob best loss: %.4f" % (self.glob_best_loss), ', acc: %.4f' % (self.glob_best_acc), self.glob_test)
         print("*" * 80)
