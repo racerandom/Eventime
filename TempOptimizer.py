@@ -16,7 +16,7 @@ from TempModules import *
 from TempData import *
 import TempUtils
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device("cpu")
 print('device:', device)
 seed = 2
 torch.manual_seed(seed)
@@ -60,6 +60,7 @@ class TempOptimizer(nn.Module):
         self.glob_best_acc = 0
         self.glob_best_loss = 1000
         self.glob_best_params = {}
+        self.glob_test = ""
 
 
     def generate_data(self):
@@ -116,8 +117,8 @@ class TempOptimizer(nn.Module):
 
         model.load_state_dict(torch.load(self.GLOB_BEST_MODEL_PATH))
 
-        self.eval_val(model)
-        self.eval_test(model)
+        print(self.eval_val(model))
+        print(self.eval_test(model))
 
     def train_model(self, **params):
 
@@ -196,14 +197,15 @@ class TempOptimizer(nn.Module):
                   ', %.5s seconds' % (time.time() - start_time),
                   ', dev loss: %.4f' % (dev_loss),
                   ', dev accuracy: %.4f' % (dev_acc),
+                  self.eval_test(model)
                   )
-            self.eval_test(model)
+
 
         if self.monitor == 'val_acc':
             if self.glob_best_acc < local_best_acc:
                 self.glob_best_acc = local_best_acc
                 self.glob_best_loss = local_best_loss
-                params = args
+                self.glob_test = self.eval_test(model)
                 params['best_epoch'] = local_best_epoch
                 self.glob_best_params = params
                 model.load_state_dict(torch.load(BEST_MODEL_PATH))
@@ -213,7 +215,7 @@ class TempOptimizer(nn.Module):
             if self.glob_best_loss > local_best_loss:
                 self.glob_best_loss = local_best_loss
                 self.glob_best_acc = local_best_acc
-                params = args
+                self.glob_test = self.eval_test(model)
                 params['best_epoch'] = local_best_epoch
                 self.glob_best_params = params
                 model.load_state_dict(torch.load(BEST_MODEL_PATH))
@@ -221,10 +223,10 @@ class TempOptimizer(nn.Module):
         else:
             raise Exception('Wrong monitor parameter...')
 
-        print("Current params:", args)
+        print("Current params:", params)
         print("best loss of current params: %.4f" % (local_best_loss), ', acc: %.4f' % (local_best_acc))
         print("params of glob best loss:", self.glob_best_params)
-        print("glob best loss: %.4f" % (self.glob_best_loss), ', acc: %.4f' % (self.glob_best_acc))
+        print("glob best loss: %.4f" % (self.glob_best_loss), ', acc: %.4f' % (self.glob_best_acc), self.glob_test)
         print("*" * 80)
 
     def eval_val(self, model):
@@ -239,8 +241,7 @@ class TempOptimizer(nn.Module):
             dev_diff = torch.eq(torch.argmax(dev_out, dim=1), self.dev_data[REL_COL])
             dev_acc = dev_diff.sum().item() / float(dev_diff.numel())
 
-            print("[Eval Val:]")
-            print("Dev loss: %.4f" % (dev_loss), ", dev acc: %.4f" % (dev_acc))
+            return " | dev loss: %.4f, dev acc: %.4f" % (dev_loss, dev_acc)
 
 
     def eval_test(self, model):
@@ -255,8 +256,7 @@ class TempOptimizer(nn.Module):
             test_diff = torch.eq(torch.argmax(test_out, dim=1), self.test_data[REL_COL])
             test_acc = test_diff.sum().item() / float(test_diff.numel())
 
-            print("[Eval Test:]")
-            print("Test loss: %.4f" % (test_loss), ", test acc: %.4f" % (test_acc))
+            return " | test loss: %.4f, test acc: %.4f" % (test_loss, test_acc)
             # print(self.rel_idx)
             # print(classification_report(torch.argmax(test_out, dim=1), self.test_data[REL_COL],
             #                             labels=np.unique(torch.argmax(test_out, dim=1))))
