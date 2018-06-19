@@ -30,31 +30,40 @@ is_pretrained = True
 
 class TempOptimizer(nn.Module):
 
-    def __init__(self, word_dim, epoch_nb, rel_types, monitor, pretrained_file='Resources/embed/giga-aacw.d200.bin'):
+    def __init__(self, classifier, word_dim, epoch_nb, rel_types, monitor, pretrained_file='Resources/embed/giga-aacw.d200.bin'):
 
         ## model parameters
         self.monitor = monitor
         self.rel_types = rel_types
-        self.param_space = {
-                            'classifier':[
-                                          'RNN',
-                                          # 'CNN',
-                                          # 'AttnCNN',
-                                          # 'AttnRNN',
-                                          ],
+        if classifier in ['CNN', 'AttnCNN']:
+            self.param_space = {
                             'filter_nb': range(100, 500 + 1, 10),
                             'kernel_len': [2, 3, 4, 5],
                             'batch_size': [32, 64, 128],
                             'fc_hidden_dim': range(100, 500 + 1, 10),
                             'pos_dim': range(5, 30 + 1, 5),
                             'dropout_emb': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
-                            'dropout_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
                             'dropout_cat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
                             'dropout_fc': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
                             # 'optimizer': ['adadelta', 'adam','rmsprop', 'sgd'],
                             'lr':[1e-2, 1e-3],
                             'weight_decay':[1e-3, 1e-4, 1e-5, 0]
                             }
+        elif classifier in ['RNN', 'AttnRNN']:
+            self.param_space = {
+                'filter_nb': range(100, 500 + 1, 10),
+                'batch_size': [16],
+                'fc_hidden_dim': range(100, 500 + 1, 10),
+                'pos_dim': range(5, 30 + 1, 5),
+                'dropout_emb': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+                'dropout_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+                'dropout_cat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+                'dropout_fc': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+                # 'optimizer': ['adadelta', 'adam','rmsprop', 'sgd'],
+                'lr': [1e-1, 1e-2, 1e-3],
+                'weight_decay': [1e-3, 1e-4, 1e-5, 0]
+            }
+        self.param_space['classifier'] = [classifier]
         self.doc_dic, self.word_idx, self.pos_idx, self.rel_idx, self.max_len, self.pre_model = prepare_global(pretrained_file, types=rel_types)
         self.VOCAB_SIZE = len(self.word_idx)
         self.POS_SIZE = len(self.pos_idx)
@@ -156,10 +165,10 @@ class TempOptimizer(nn.Module):
         optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=params['lr'],
                                weight_decay=params['weight_decay'])  ##  fixed a error when using pre-trained embeddings
 
-        # print(model)
-        # for name, param in model.named_parameters():
-        #     if param.requires_grad:
-        #         print('*', name)
+        print(model)
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                print('*', name)
 
         for epoch in range(1, self.EPOCH_NUM + 1):
             total_loss = []
@@ -177,6 +186,11 @@ class TempOptimizer(nn.Module):
                 total_loss.append(loss.data.item())
                 diff = torch.eq(torch.argmax(pred_out, dim=1), target)
                 total_acc.append(diff.sum().item() / float(diff.numel()))
+
+                # for name, param in model.named_parameters():
+                #     if param.requires_grad:
+                #         if name == 'temp_detector.fc2.weight':
+                #             print(param[1][:5])
 
             model.eval()
 
@@ -322,7 +336,7 @@ class TempOptimizer(nn.Module):
 
 def main():
 
-    temp_extractor = TempOptimizer(300, 10, ['Event-Timex', 'Timex-Event'], 'val_loss',
+    temp_extractor = TempOptimizer("CNN", 300, 10, ['Event-Timex', 'Timex-Event'], 'val_loss',
                                    pretrained_file='Resources/embed/deps.words.bin'
                                    )
     temp_extractor.optimize_model(max_evals=1)

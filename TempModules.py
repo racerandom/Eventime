@@ -215,12 +215,13 @@ def batch_action2out(out_scores, norm_times, IX_TO_ACTION, BATCH_SIZE):
 
 class TempCNN(nn.Module):
 
-    def __init__(self, seq_len, action_size, **params):
+    def __init__(self, seq_len, action_size, verbose=0, **params):
         super(TempCNN, self).__init__()
+        self.verbose_level = verbose
         self.c1 = nn.Conv1d(params['word_dim'] + 2 * params['pos_dim'], params['filter_nb'], params['kernel_len'])
         self.p1 = nn.MaxPool1d(seq_len - params['kernel_len'] + 1)
         self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
-        self.fc1 = nn.Linear(params['filter_nb'], params['fc_hidden_dim'])
+        self.fc1 = nn.Linear(params['filter_nb'] + 4 * params['pos_dim'], params['fc_hidden_dim'])
         self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
         self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
 
@@ -228,19 +229,84 @@ class TempCNN(nn.Module):
 
         ## input (batch_size, seq_len, input_dim) => (batch_size, input_dim, seq_len)
         cat_input = torch.cat((word_input, position_input), dim=2).transpose(1, 2)
+        if self.verbose_level:
+            print("cat_input size:", cat_input.shape)
 
         c1_out = F.relu(self.c1(cat_input))
+
+        if self.verbose_level:
+            print("c1_output size:", c1_out.shape)
+
         p1_out = self.p1(c1_out).squeeze(-1)
+
+        if self.verbose_level:
+            print("p1_output size:", p1_out.shape)
 
         cat_out = torch.cat((p1_out, position_input[:, 0, :], position_input[:, -1, :]), dim=1)
         cat_out = self.cat_dropout(cat_out)
+        if self.verbose_level:
+            print("cat_output size:", cat_out.shape)
 
-        fc1_out = F.relu(self.fc1(p1_out))
+        fc1_out = F.relu(self.fc1(cat_out))
         fc1_out = self.fc1_drop(fc1_out)
         fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
 
+        if self.verbose_level:
+            print()
+
         return fc2_out
 
+
+class TempAttnCNN(nn.Module):
+
+    def __init__(self, seq_len, action_size, verbose=0, **params):
+        super(TempAttnCNN, self).__init__()
+        self.verbose_level = verbose
+        self.c1 = nn.Conv1d(params['word_dim'] + 2 * params['pos_dim'], params['filter_nb'], params['kernel_len'])
+        self.attn_W = torch.nn.Parameter(torch.randn(params['filter_nb'], requires_grad=True))
+        self.p1 = nn.MaxPool1d(seq_len - params['kernel_len'] + 1)
+        self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
+        self.fc1 = nn.Linear(params['filter_nb'] + 4 * params['pos_dim'], params['fc_hidden_dim'])
+        self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
+        self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
+
+    def forward(self, word_input, position_input):
+
+        ## input (batch_size, seq_len, input_dim) => (batch_size, input_dim, seq_len)
+        cat_input = torch.cat((word_input, position_input), dim=2).transpose(1, 2)
+        batch_size = cat_input.shape[0]
+        if self.verbose_level:
+            print("cat_input size:", cat_input.shape)
+
+        c1_out = F.relu(self.c1(cat_input))
+        if self.verbose_level:
+            print("c1_output size:", c1_out.shape)
+
+        attn_M = F.tanh(c1_out)  # attn_M: [batch, filter_nb, kernel_out]
+        W = self.attn_W.unsqueeze(0).expand(batch_size, -1, -1)  # W: [batch_size, 1, filter_nb]
+        attn_alpha = F.softmax(torch.bmm(W, attn_M), dim=2)  # rnn1_alpha: [batch_size, 1, kernel_out]
+        attn_out = torch.bmm(c1_out, attn_alpha.transpose(1, 2))  # attn_out: [batch_size, filter_nb, 1]
+
+        # p1_out = self.p1(c1_out).squeeze(-1)
+
+        # if self.verbose_level:
+        #     print("p1_output size:", p1_out.shape)
+
+        cat_out = torch.cat((attn_out.squeeze(), position_input[:, 0, :], position_input[:, -1, :]), dim=1)
+        cat_out = self.cat_dropout(cat_out)
+        if self.verbose_level:
+            print("cat_output size:", cat_out.shape)
+
+        fc1_out = F.relu(self.fc1(cat_out))
+        fc1_out = self.fc1_drop(fc1_out)
+        fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
+
+        if self.verbose_level:
+            print()
+
+        # print(self.attn_W[:5])
+
+        return fc2_out
 
 class TempRNN(nn.Module):
 
@@ -253,7 +319,7 @@ class TempRNN(nn.Module):
         self.verbose_level = verbose
 
         ## neural layers
-        self.rnn1 = nn.LSTM((params['word_dim'] + 2 * params['pos_dim']), (params['filter_nb'] // 2), batch_first=True, bidirectional=True)
+        self.rnn1 = nn.LSTM(params['word_dim'] + 2 * params['pos_dim'], params['filter_nb'] // 2, num_layers=1, batch_first=True, bidirectional=True)
         self.rnn1hid_drop = nn.Dropout(p=params['dropout_rnn'])
         self.cat_drop = nn.Dropout(p=params['dropout_cat'])
         self.fc1 = nn.Linear(params['filter_nb'] + 4 * params['pos_dim'], params['fc_hidden_dim'])
@@ -261,8 +327,8 @@ class TempRNN(nn.Module):
         self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
 
     def init_hidden(self, batch_size):
-        return (torch.zeros(2, batch_size, self.hidden_dim // 2),
-                torch.zeros(2, batch_size, self.hidden_dim // 2))
+        return (torch.zeros(2, batch_size, self.hidden_dim // 2).to(device),
+                torch.zeros(2, batch_size, self.hidden_dim // 2).to(device))
 
     def forward(self, word_input, position_input):
 
@@ -272,8 +338,10 @@ class TempRNN(nn.Module):
             print("cat_input size:", cat_input.shape)
         # cat_input = cat_input.transpose(0, 1) # from [batch, len, dim] to [len, batch, dim]
 
-        rnn1_hidden = self.init_hidden(cat_input.shape[0])
-        rnn1_out, rnn1_hidden = self.rnn1(cat_input, rnn1_hidden)
+        self.rnn1_hidden = self.init_hidden(cat_input.shape[0])
+        rnn1_out, self.rnn1_hidden = self.rnn1(cat_input, self.rnn1_hidden)
+        if self.verbose_level:
+            print("rnn_out size:", rnn1_out.shape, "position_input,", position_input.shape)
 
         ## catenate the RNN1 output and position embeddings: hidden_dim + 2 * 2 * pos_dim
         cat_out = torch.cat((rnn1_out[:, -1, :], position_input[:, 0, :], position_input[:, -1, :]), dim=1)
@@ -297,7 +365,7 @@ class TempAttnRNN(nn.Module):
         self.rnn1 = nn.LSTM(params['word_dim'] + params['pos_dim'], params['hidden_dim'] // 2, num_layers=1, batch_first=True, bidirectional=True)
         self.rnn1_hidden = self.init_hidden()
         self.rnn1hid_drop = nn.Dropout(p=params['dropout_rnn'])
-        self.attn_W = torch.rand(params['hidden_dim'], requires_grad=True)
+        self.attn_W = torch.randn(params['hidden_dim'], requires_grad=True)
         self.cat_drop = nn.Dropout(p=params['dropout_cat'])
         self.fc1 = nn.Linear(params['filter_nb'], params['fc_hidden_dim'])
         self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
@@ -329,6 +397,7 @@ class TempAttnRNN(nn.Module):
         fc1_out = self.fc1_drop(fc1_out)
         fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
 
+
         return fc2_out
 
 
@@ -346,15 +415,15 @@ class TempClassifier(nn.Module):
         self.embedding_dropout = nn.Dropout(p=params['dropout_emb'])
 
         if self.classifier == 'CNN':
-            self.temp_detector = TempCNN(max_len, action_size, **params)
+            self.temp_detector = TempCNN(max_len, action_size, verbose=self.verbose_level, **params)
         elif self.classifier == 'AttnCNN':
-            self.temp_detector = TempAttnCNN(max_len, action_size, **params)
+            self.temp_detector = TempAttnCNN(max_len, action_size, verbose=self.verbose_level, **params)
         elif self.classifier == 'RNN':
             self.temp_detector = TempRNN(max_len, action_size, verbose=self.verbose_level, **params)
         elif self.classifier == 'AttnRNN':
             self.temp_detector = TempAttnRNN(max_len, action_size, **params)
         else:
-            raise Exception("[ERROR]Wrong classifier param selected....")
+            raise Exception("[ERROR]Wrong classifier param [%s] selected...." % (self.classifier) )
 
     def forward(self, dct_in, pos_in):
         # print(dct_input.size(), pos_in.size())
