@@ -127,7 +127,5 @@ def main():
     print(train_w_in.dtype, train_p_in.dtype, train_r_in.unsqueeze(1).dtype)
 
 
-
-
 if __name__ == '__main__':
     main()

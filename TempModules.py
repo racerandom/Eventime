@@ -69,11 +69,11 @@ BATCH_SIZE = 50
 dataset = MultipleDatasets(dct_inputs, time_inputs, targets)
 
 loader = Data.DataLoader(
-    dataset = dataset,
-    batch_size = BATCH_SIZE,
-    shuffle = True,
-    num_workers = 1,
-)
+                        dataset = dataset,
+                        batch_size = BATCH_SIZE,
+                        shuffle = True,
+                        num_workers = 1,
+                        )
 
 # print(time_inputs[:, :, :, :].size())
 # print(time_inputs[:, :, 0, :].size())
@@ -90,6 +90,7 @@ loader = Data.DataLoader(
 #               batch_time.numpy(), '|batch y:', batch_y.numpy())
 
 # k=1
+
 
 # for dct, time, target in zip(dct_inputs[:k], time_inputs[:k], targets[:k]):
 #     print(dct)
@@ -126,13 +127,13 @@ import random
 EPS_THRES = 0
 
 update_strategies = torch.tensor([[0, 0, 0],
-                             [1, 0, 0],
-                             [0, 1, 0],
-                             [0, 0, 1],
-                             [1, 1, 0],
-                             [0, 1, 1],
-                             [1, 0, 1],
-                             [1, 1, 1]], dtype=torch.long, device=device)
+                                 [1, 0, 0],
+                                 [0, 1, 0],
+                                 [0, 0, 1],
+                                 [1, 1, 0],
+                                 [0, 1, 1],
+                                 [1, 0, 1],
+                                 [1, 1, 1]], dtype=torch.long, device=device)
 
 
 def get_index_of_max(scores):
@@ -200,9 +201,6 @@ def action2out(action, curr_out, curr_time, IX_TO_ACTION):
         return update_none(curr_out, curr_time)
     else:
         raise Exception("[ERROR]Wrong action!!!")
-
-
-        
     
         
 def batch_action2out(out_scores, norm_times, IX_TO_ACTION, BATCH_SIZE):
@@ -213,26 +211,17 @@ def batch_action2out(out_scores, norm_times, IX_TO_ACTION, BATCH_SIZE):
 #             print(action)
             action2out(action, preds_out[i], 0 if i == 0 else 1, IX_TO_ACTION)
     return preds_out
-            
-
-    
-class distance_loss(nn.Module):
-    
-    def __init__(self):
-        super(distance_loss, self).__init__()
-    
-    def forward(self, action_out, target):
-        pass
-
 
 
 class TempCNN(nn.Module):
+
     def __init__(self, seq_len, action_size, **params):
         super(TempCNN, self).__init__()
         self.c1 = nn.Conv1d(params['word_dim'] + 2 * params['pos_dim'], params['filter_nb'], params['kernel_len'])
         self.p1 = nn.MaxPool1d(seq_len - params['kernel_len'] + 1)
         self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
         self.fc1 = nn.Linear(params['filter_nb'], params['fc_hidden_dim'])
+        self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
         self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
 
     def forward(self, word_input, position_input):
@@ -247,14 +236,107 @@ class TempCNN(nn.Module):
         cat_out = self.cat_dropout(cat_out)
 
         fc1_out = F.relu(self.fc1(p1_out))
+        fc1_out = self.fc1_drop(fc1_out)
         fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
 
         return fc2_out
 
-class TempClassifier(nn.Module):
-    def __init__(self, vocab_size, pos_size, action_size, max_len, pre_model=None, **params):
-        super(TempClassifier, self).__init__()
+
+class TempRNN(nn.Module):
+
+    def __init__(self, seq_len, action_size, verbose=0, **params):
+        super(TempRNN, self).__init__()
+
+        ## parameters
+        self.hidden_dim = params['filter_nb']
         self.batch_size = params['batch_size']
+        self.verbose_level = verbose
+
+        ## neural layers
+        self.rnn1 = nn.LSTM((params['word_dim'] + 2 * params['pos_dim']), (params['filter_nb'] // 2), batch_first=True, bidirectional=True)
+        self.rnn1hid_drop = nn.Dropout(p=params['dropout_rnn'])
+        self.cat_drop = nn.Dropout(p=params['dropout_cat'])
+        self.fc1 = nn.Linear(params['filter_nb'] + 4 * params['pos_dim'], params['fc_hidden_dim'])
+        self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
+        self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
+
+    def init_hidden(self, batch_size):
+        return (torch.zeros(2, batch_size, self.hidden_dim // 2),
+                torch.zeros(2, batch_size, self.hidden_dim // 2))
+
+    def forward(self, word_input, position_input):
+
+        ## RNN1 network
+        cat_input = torch.cat((word_input, position_input), dim=2) # [batch, len, dim]
+        if self.verbose_level:
+            print("cat_input size:", cat_input.shape)
+        # cat_input = cat_input.transpose(0, 1) # from [batch, len, dim] to [len, batch, dim]
+
+        rnn1_hidden = self.init_hidden(cat_input.shape[0])
+        rnn1_out, rnn1_hidden = self.rnn1(cat_input, rnn1_hidden)
+
+        ## catenate the RNN1 output and position embeddings: hidden_dim + 2 * 2 * pos_dim
+        cat_out = torch.cat((rnn1_out[:, -1, :], position_input[:, 0, :], position_input[:, -1, :]), dim=1)
+        if self.verbose_level:
+            print("cat_out shape:", cat_out.shape)
+        cat_out = self.cat_drop(cat_out)
+
+        ## FC and softmax layer
+        fc1_out = F.relu(self.fc1(cat_out))
+        fc1_out = self.fc1_drop(fc1_out)
+        fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
+
+        return fc2_out
+
+
+class TempAttnRNN(nn.Module):
+
+    def __init__(self, vocab_size, pos_size, action_size, max_len, pre_model=None, **params):
+        super(TempAttnRNN, self).__init__()
+        self.hidden_dim = params['hidden_dim']
+        self.rnn1 = nn.LSTM(params['word_dim'] + params['pos_dim'], params['hidden_dim'] // 2, num_layers=1, batch_first=True, bidirectional=True)
+        self.rnn1_hidden = self.init_hidden()
+        self.rnn1hid_drop = nn.Dropout(p=params['dropout_rnn'])
+        self.attn_W = torch.rand(params['hidden_dim'], requires_grad=True)
+        self.cat_drop = nn.Dropout(p=params['dropout_cat'])
+        self.fc1 = nn.Linear(params['filter_nb'], params['fc_hidden_dim'])
+        self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
+        self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
+
+    def init_hidden(self):
+        return (torch.zeros(2, self.batch_size, self.hidden_dim // 2),
+                torch.zeros(2, self.batch_size, self.hidden_dim // 2))
+
+    def forward(self, word_input, position_input):
+
+        ## RNN1 network
+        cat_input = torch.cat((word_input, position_input), dim=2)
+        rnn1_out, self.rnn1_hidden = self.rnn1(cat_input, self.rnn1hid_drop(self.hidden_dim))
+
+        ## Attention layer
+        attn_in = rnn1_out.transpose(1, 2) # transpose rnn1_out from [batch_size, max_len, hidden_dim] to [batch_size, hidden_dim, max_len]
+        attn_M = F.tanh(attn_in)
+        W = self.attn_W.unsqueeze(0).expand(10, -1, -1)   # W: [batch_size, 1, hidden_dim]
+        attn_alpha = F.softmax(torch.bmm(W, attn_M), dim=2)       # rnn1_alpha: [batch_size, 1, max_len]
+        attn_out = torch.bmm(attn_in, attn_alpha.transpose(1, 2)) # attn_out: [batch_size, hidden_dim, 1]
+
+        ## catenate the RNN1 output and position embeddings
+        cat_out = torch.cat((attn_out.squeeze(), position_input[:, 0, :], position_input[:, -1, :]), dim=1)
+        cat_out = self.cat_drop(cat_out)
+
+        ## FC and softmax layer
+        fc1_out = F.relu(self.fc1(p1_out))
+        fc1_out = self.fc1_drop(fc1_out)
+        fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
+
+        return fc2_out
+
+
+class TempClassifier(nn.Module):
+    def __init__(self, vocab_size, pos_size, action_size, max_len, pre_model=None, verbose=0, **params):
+        super(TempClassifier, self).__init__()
+        self.classifier = params['classifier']
+        self.verbose_level = verbose
 
         if isinstance(pre_model, np.ndarray):
             self.word_embeddings = TempUtils.pre2embed(pre_model)
@@ -262,26 +344,34 @@ class TempClassifier(nn.Module):
             self.word_embeddings = nn.Embedding(vocab_size, params['word_dim'], padding_idx=0)
         self.position_embeddings = nn.Embedding(pos_size, params['pos_dim'], padding_idx=0)
         self.embedding_dropout = nn.Dropout(p=params['dropout_emb'])
-        # self.dct_detector = Tlink.DCTDetector(embedding_dim,
-        #                                       dct_hidden_dim,
-        #                                       action_size,
-        #                                       batch_size)
-        self.dct_detector = TempCNN(max_len, action_size, **params)
+
+        if self.classifier == 'CNN':
+            self.temp_detector = TempCNN(max_len, action_size, **params)
+        elif self.classifier == 'AttnCNN':
+            self.temp_detector = TempAttnCNN(max_len, action_size, **params)
+        elif self.classifier == 'RNN':
+            self.temp_detector = TempRNN(max_len, action_size, verbose=self.verbose_level, **params)
+        elif self.classifier == 'AttnRNN':
+            self.temp_detector = TempAttnRNN(max_len, action_size, **params)
+        else:
+            raise Exception("[ERROR]Wrong classifier param selected....")
 
     def forward(self, dct_in, pos_in):
         # print(dct_input.size(), pos_in.size())
 
-        dct_embeds = self.word_embeddings(dct_in.squeeze(1))
-        dct_embeds = self.embedding_dropout(dct_embeds)
-        # print(dct_embeds.size())
-        batch_size, seq_len, _ = dct_embeds.size()
+        word_embeded = self.word_embeddings(dct_in.squeeze(1))
+        word_embeded = self.embedding_dropout(word_embeded)
+        if self.verbose_level:
+            print("word_embeded input:", word_embeded.size())
+        batch_size, max_len, _ = word_embeded.size()
 
-        pos_embeds = self.position_embeddings(pos_in.squeeze(1))
-        pos_embeds = self.embedding_dropout(pos_embeds)
-        # print(pos_embeds.view(batch_size, max_len, -1).size())
+        pos_embeded = self.position_embeddings(pos_in.squeeze(1))
+        pos_embeded = self.embedding_dropout(pos_embeded)
+        if self.verbose_level:
+            print("pos_embeded input:", pos_embeded.view(batch_size, max_len, -1).size())
 
-        dct_out = self.dct_detector(dct_embeds, pos_embeds.view(batch_size, seq_len, -1))
-        return dct_out
+        temp_out = self.temp_detector(word_embeded, pos_embeded.view(batch_size, max_len, -1))
+        return temp_out
 
 
 class TimexCNN(nn.Module):

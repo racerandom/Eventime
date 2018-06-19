@@ -36,17 +36,25 @@ class TempOptimizer(nn.Module):
         self.monitor = monitor
         self.rel_types = rel_types
         self.param_space = {
-            'filter_nb': range(100, 500 + 1, 10),
-            'kernel_len': [2, 3, 4, 5],
-            'batch_size': [32, 64, 128],
-            'fc_hidden_dim': range(100, 500 + 1, 10),
-            'pos_dim': range(5, 30 + 1, 5),
-            'dropout_emb': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
-            'dropout_cat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
-            # 'optimizer': ['adadelta', 'adam','rmsprop', 'sgd'],
-            'lr':[1e-2, 1e-3],
-            'weight_decay':[1e-3, 1e-4, 1e-5, 0]
-            }
+                            'classifier':[
+                                          'RNN',
+                                          # 'CNN',
+                                          # 'AttnCNN',
+                                          # 'AttnRNN',
+                                          ],
+                            'filter_nb': range(100, 500 + 1, 10),
+                            'kernel_len': [2, 3, 4, 5],
+                            'batch_size': [32, 64, 128],
+                            'fc_hidden_dim': range(100, 500 + 1, 10),
+                            'pos_dim': range(5, 30 + 1, 5),
+                            'dropout_emb': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+                            'dropout_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+                            'dropout_cat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+                            'dropout_fc': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+                            # 'optimizer': ['adadelta', 'adam','rmsprop', 'sgd'],
+                            'lr':[1e-2, 1e-3],
+                            'weight_decay':[1e-3, 1e-4, 1e-5, 0]
+                            }
         self.doc_dic, self.word_idx, self.pos_idx, self.rel_idx, self.max_len, self.pre_model = prepare_global(pretrained_file, types=rel_types)
         self.VOCAB_SIZE = len(self.word_idx)
         self.POS_SIZE = len(self.pos_idx)
@@ -71,7 +79,6 @@ class TempOptimizer(nn.Module):
         train_word_in, train_pos_in, train_rel_in = prepare_data(self.doc_dic, TBD_TRAIN, self.word_idx, self.pos_idx, self.rel_idx,
                                                                  self.MAX_LEN, types=self.rel_types)
 
-
         dev_word_in, dev_pos_in, dev_rel_in = prepare_data(self.doc_dic, TBD_DEV, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
                                                            types=self.rel_types)
 
@@ -95,7 +102,6 @@ class TempOptimizer(nn.Module):
         )
 
         return train_data, dev_data, test_data
-
 
 
     def optimize_model(self, max_evals=200):
@@ -123,6 +129,7 @@ class TempOptimizer(nn.Module):
         print(self.eval_val(model))
         print(self.eval_test(model, is_report=True))
 
+
     def train_model(self, **params):
 
         WORD_COL, POS_COL, REL_COL = 0, 1, 2
@@ -136,7 +143,6 @@ class TempOptimizer(nn.Module):
             num_workers=1,
         )
 
-
         print('Starting to train a new model with parameters', params)
 
         local_best_acc, local_best_loss, local_best_epoch, local_best_test = 0, 1000, 0, ""
@@ -149,6 +155,7 @@ class TempOptimizer(nn.Module):
         loss_function = nn.NLLLoss()
         optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=params['lr'],
                                weight_decay=params['weight_decay'])  ##  fixed a error when using pre-trained embeddings
+
         # print(model)
         # for name, param in model.named_parameters():
         #     if param.requires_grad:
@@ -205,7 +212,6 @@ class TempOptimizer(nn.Module):
                   self.eval_test(model)
                   )
 
-
         if self.monitor == 'val_acc':
             if self.glob_best_acc < local_best_acc:
                 self.glob_best_acc = local_best_acc
@@ -251,8 +257,6 @@ class TempOptimizer(nn.Module):
                                             target_names=self.ACTIONS))
 
             return " | dev loss: %.4f, dev acc: %.4f" % (dev_loss, dev_acc)
-
-
 
 
     def eval_test(self, model, is_report=False):
@@ -318,8 +322,10 @@ class TempOptimizer(nn.Module):
 
 def main():
 
-    temp_extractor = TempOptimizer(300, 25, ['Event-Timex', 'Timex-Event'], 'val_loss', pretrained_file='Resources/embed/deps.words.bin')
-    temp_extractor.optimize_model(max_evals=50)
+    temp_extractor = TempOptimizer(300, 10, ['Event-Timex', 'Timex-Event'], 'val_loss',
+                                   pretrained_file='Resources/embed/deps.words.bin'
+                                   )
+    temp_extractor.optimize_model(max_evals=1)
     temp_extractor.eval_model()
     # params = {'filter_nb': 120, 'kernel_len': 3, 'batch_size': 128, 'fc_hidden_dim': 370, 'pos_dim': 5, 'dropout_emb': 0.45, 'dropout_cat': 0.55, 'lr': 0.001, 'weight_decay': 1e-05, 'word_dim': 200, 'best_epoch': 19}
     # temp_extractor.eval_with_params(**params)
