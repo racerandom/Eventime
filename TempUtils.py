@@ -112,3 +112,12 @@ def dict2str(dic):
     for k, v in dic.items():
         out.append('%s=%s' % (k, v))
     return ','.join(out)
+
+
+def save_checkpoint(state, is_best, filename):
+    """Save checkpoint if a new best is achieved"""
+    if is_best:
+        torch.save(state, filename)  # save checkpoint
+        return "=> Saving a new best"
+    else:
+        return ""
