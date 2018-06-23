@@ -4,55 +4,297 @@ from nltk import sent_tokenize, word_tokenize
 from nltk.tokenize.stanford import StanfordTokenizer
 
 from TempMention import Token, Timex, Event, Signal
-from TempLink import TimeMLDoc, TempLink
+from TempLink import TimeMLDoc, TempLink, normalize_time, normalize_relative
 import TempUtils
 
+def load_mentions(timeml_file):
+    events, timexs, signals = [], [], []
+    root = ET.parse(timeml_file).getroot()
 
+    ## read text information
+    for elem in root.iter():
 
-def load_extraml(file_name):
+        if elem.tag == 'TEXT':
+            for mention_elem in elem:
+                if mention_elem.tag == "EVENT":
+                    events.append(mention_elem.attrib['eid'])
+                elif mention_elem.tag == "TIMEX3":
+                    timexs.append(mention_elem.attrib['tid'])
+                elif mention_elem.tag == "SIGNAL":
+                    signals.append(mention_elem.attrib['sid'])
+
+    return events, timexs, signals
+
+def load_anchorml(file_name):
+    print(file_name)
     root = ET.parse(file_name).getroot()
     doc = None
 
     ## read DOCID and DCT information
     for elem in root.iter():
-        if elem.tag == "DOCID" or "DOCNO":
+        if elem.tag in ["DOCID", "DOCNO"]:
             doc = TimeMLDoc(docid=elem.text)
-        if elem.tag == "DCT":
-            for step_elem in elem:
-                doc.dct = Timex(content=step_elem.text, **step_elem.attrib)
+        if elem.tag in ["DCT", "DATE_TIME>"]:
+            for mention_elem in elem:
+                dct = Timex(content=mention_elem.text, sent_id=0, **mention_elem.attrib)
+                doc.dct = dct
     if not doc:
         raise Exception("%s cannot find docid information" % file_name)
 
     ## read text information
     for elem in root.iter():
         if elem.tag == 'TEXT':
+            if elem.text:
+                toks = elem.text.split()
+                for i in range(len(toks)):
+                    tokenized = word_tokenize(toks[i])
+                    for j in range(len(tokenized)):
+                        tokc = Token(content=tokenized[j], tok_id=len(doc.tokens))
+                        doc.tokens.append(tokc)
+            for mention_elem in elem:
+                toks = mention_elem.text.split()
+                tok_ids = []
+                for i in range(len(toks)):
+                    tokenized = word_tokenize(toks[i])
+                    for j in range(len(tokenized)):
+                        tokc = Token(content=tokenized[j], tok_id=len(doc.tokens))
+                        tok_ids.append(tokc.tok_id)
+                        doc.tokens.append(tokc)
+                if mention_elem.tag == "EVENT":
+                    doc.addEvent(Event(content=' '.join(toks), tok_ids=tok_ids, **mention_elem.attrib))
+                elif mention_elem.tag == "TIMEX3":
+                    doc.addTimex(Timex(content=' '.join(toks), tok_ids=tok_ids, **mention_elem.attrib))
+                elif mention_elem.tag == "SIGNAL":
+                    doc.addSignal(Signal(content=' '.join(toks), tok_ids=tok_ids, **mention_elem.attrib))
+                else:
+                    raise Exception("Unknown mention type: %s" % (mention_elem.tag))
+                if mention_elem.tail:
+                    toks = mention_elem.tail.split()
+                    for i in range(len(toks)):
+                        tokenized = word_tokenize(toks[i])
+                        for j in range(len(tokenized)):
+                            tokc = Token(content=tokenized[j], tok_id=len(doc.tokens))
+                            doc.tokens.append(tokc)
+    return doc
+
+
+def load_extraml(extraml_file, events, timexs, signals):
+    root = ET.parse(extraml_file).getroot()
+    words, sent_ids = [], []
+
+    labs = set([])
+
+    ## read text information
+    for elem in root.iter():
+
+        if elem.tag == 'TEXT':
             sent_id = 0
             for sent_elem in elem:
-                if sent_elem.text:
-                    toks = sent_elem.text.split()
-                    for i in range(len(toks)):
-                        tokc = Token(content=toks[i], tok_id=len(doc.tokens)+i, sent_id=sent_id)
-                        doc.tokens.append(tokc)              
-                for mention_elem in sent_elem:
-                    toks = mention_elem.text.split()
-                    tok_ids = [len(doc.tokens) + i for i in range(len(toks))]
-                    for i in range(len(toks)):
-                        tokc = Token(content=toks[i], tok_id=len(doc.tokens)+i, sent_id=sent_id)
+
+                if sent_elem.tag == 's':
+                    text = ""
+                    if sent_elem.text:
+                        text += sent_elem.text
+                    for mention_elem in sent_elem:
+                        if mention_elem.tag in ["CARDINAL", "NUMEX", "COMMENT", "ENAMEX"]:
+                            if mention_elem.text:
+                                text += mention_elem.text
+                            for step_elem in mention_elem:
+                                text += step_elem.text
+                                if step_elem.tail:
+                                    text += step_elem.tail
+                            if mention_elem.tail:
+                                text += mention_elem.tail
+                        else:
+                            if mention_elem.tag in ["EVENT"]:
+                                if mention_elem.attrib['eid'] in events:
+                                    text += " %s " % (mention_elem.text)
+                                else:
+                                    text += mention_elem.text
+                                if mention_elem.tail:
+                                    text += mention_elem.tail
+                            elif mention_elem.tag in ["TIMEX3"]:
+                                if mention_elem.attrib['tid'] in timexs:
+                                    if mention_elem.text:
+                                        text += " %s " % (mention_elem.text)
+                                    for step_elem in mention_elem:
+                                        if step_elem.text:
+                                            text += step_elem.text
+                                        for step2_elem in step_elem:
+                                            text += step2_elem.text
+                                            if step2_elem.tail:
+                                                text += step2_elem.tail
+                                        if step_elem.tail:
+                                            text += "%s " % (step_elem.tail)
+                                    if mention_elem.tail:
+                                        text += " %s" % (mention_elem.tail)
+                                else:
+                                    text += mention_elem.text
+                                    if mention_elem.tail:
+                                        text += mention_elem.tail
+
+                            elif mention_elem.tag in ["SIGNAL"]:
+                                if mention_elem.attrib['sid'] in signals:
+                                    text += " %s " % (mention_elem.text)
+                                else:
+                                    text += mention_elem.text
+                                if mention_elem.tail:
+                                    text += mention_elem.tail
+                    for tok in text.split():
+                        words.append(tok)
+                        sent_ids.append(sent_id)
+
+                    sent_id += 1
+
+                elif sent_elem.tag == 'turn':
+                    for s_elem in sent_elem:
+                        if s_elem.tag == 's':
+                            text = ""
+                            if s_elem.text:
+                                print(s_elem.text)
+                                text += s_elem.text
+                            for mention_elem in s_elem:
+                                if mention_elem.tag in ["CARDINAL", "NUMEX", "COMMENT", "ENAMEX"]:
+                                    if mention_elem.text:
+                                        text += mention_elem.text
+                                    for step_elem in mention_elem:
+                                        text += step_elem.text
+                                        if step_elem.tail:
+                                            text += step_elem.tail
+                                    if mention_elem.tail:
+                                        text += mention_elem.tail
+                                else:
+                                    if mention_elem.tag in ["EVENT"]:
+                                        if mention_elem.attrib['eid'] in events:
+                                            text += " %s " % (mention_elem.text)
+                                        else:
+                                            text += mention_elem.text
+                                        if mention_elem.tail:
+                                            text += mention_elem.tail
+                                    elif mention_elem.tag in ["TIMEX3"]:
+                                        if mention_elem.attrib['tid'] in timexs:
+                                            if mention_elem.text:
+                                                text += " %s " % (mention_elem.text)
+                                            for step_elem in mention_elem:
+                                                if step_elem.text:
+                                                    text += step_elem.text
+                                                for step2_elem in step_elem:
+                                                    text += step2_elem.text
+                                                    if step2_elem.tail:
+                                                        text += step2_elem.tail
+                                                if step_elem.tail:
+                                                    text += "%s " % (step_elem.tail)
+                                            if mention_elem.tail:
+                                                text += " %s" % (mention_elem.tail)
+                                        else:
+                                            text += mention_elem.text
+                                            if mention_elem.tail:
+                                                text += mention_elem.tail
+
+                                    elif mention_elem.tag in ["SIGNAL"]:
+                                        if mention_elem.attrib['sid'] in signals:
+                                            text += " %s " % (mention_elem.text)
+                                        else:
+                                            text += mention_elem.text
+                                        if mention_elem.tail:
+                                            text += mention_elem.tail
+
+                            for tok in text.split():
+                                words.append(tok)
+                                sent_ids.append(sent_id)
+
+                        sent_id += 1
+    print(labs)
+    return words, sent_ids
+
+
+def load_anchorml_sentid(anchor_file, extraml_file, verbose=0):
+
+    ## load sent ids information from the original timebank extraml files
+    events, timexs, signals = load_mentions(anchor_file)
+
+    words, sent_ids = load_extraml(extraml_file, events, timexs, signals)
+    print(len(words), len(sent_ids))
+
+    print("Completing load sentence ids information...", extraml_file)
+    word_cps = [] ## for asserting same words to extraml words
+
+
+    root = ET.parse(anchor_file).getroot()
+
+    doc = None
+
+    ## read DOCID and DCT information
+    for elem in root.iter():
+        if elem.tag in ["DOCID", "DOCNO"]:
+            doc = TimeMLDoc(docid=elem.text)
+        if elem.tag in ["DCT", "DATE_TIME>"]:
+            for dct_elem in elem:
+                dct = Timex(content=dct_elem.text, **dct_elem.attrib)
+                doc.dct = dct
+                doc.addTimex(dct)
+    if not doc:
+        raise Exception("%s cannot find docid information" % file_name)
+
+    ## read text information
+    for elem in root.iter():
+
+        if elem.tag == 'TEXT':
+            if elem.text:
+                toks = elem.text.split()
+                for i in range(len(toks)):
+                    ## tokenize process
+                    word_id = len(word_cps)
+                    if verbose:
+                        print(toks[i], words[word_id])
+                    assert toks[i] == words[word_id]
+                    tokenized = word_tokenize(toks[i])
+                    for j in range(len(tokenized)):
+                        tokc = Token(content=tokenized[j], tok_id=len(doc.tokens), sent_id=sent_ids[word_id])
                         doc.tokens.append(tokc)
-                    if mention_elem.tag == "EVENT":
-                        doc.addEvent(Event(content=' '.join(toks), tok_ids=tok_ids, sent_id=sent_id, **mention_elem.attrib))
-                    elif mention_elem.tag == "TIMEX3":
-                        doc.addTimex(Timex(content=' '.join(toks), tok_ids=tok_ids, sent_id=sent_id, **mention_elem.attrib))
-                    elif mention_elem.tag == "SIGNAL":
-                        doc.addSignal(Signal(content=' '.join(toks), tok_ids=tok_ids, sent_id=sent_id, **mention_elem.attrib))
-                    else:
-                        raise Exception("Unknown mention type: %s" % (step_elem.tag))
-                    if mention_elem.tail:
-                        toks = mention_elem.tail.split()
-                        for i in range(len(toks)):
-                            tokc = Token(content=toks[i], tok_id=len(doc.tokens)+i, sent_id=sent_id)
+
+                    word_cps.append(toks[i])
+
+            for mention_elem in elem:
+                toks = mention_elem.text.split()
+                tok_ids = []
+                for i in range(len(toks)):
+                    ## tokenize process
+                    word_id = len(word_cps)
+                    if verbose:
+                        print(toks[i], words[word_id])
+                    assert toks[i] == words[word_id]
+
+                    tokenized = word_tokenize(toks[i])
+                    for j in range(len(tokenized)):
+                        tok_ids.append(len(doc.tokens) + i)
+                        tokc = Token(content=tokenized[j], tok_id=len(doc.tokens), sent_id=sent_ids[word_id])
+                        doc.tokens.append(tokc)
+
+                    word_cps.append(toks[i])
+                if mention_elem.tag == "EVENT":
+                    doc.addEvent(Event(content=' '.join(toks), tok_ids=tok_ids, **mention_elem.attrib))
+                elif mention_elem.tag == "TIMEX3":
+                    doc.addTimex(Timex(content=' '.join(toks), tok_ids=tok_ids, **mention_elem.attrib))
+                elif mention_elem.tag == "SIGNAL":
+                    doc.addSignal(Signal(content=' '.join(toks), tok_ids=tok_ids, **mention_elem.attrib))
+                else:
+                    raise Exception("Unknown mention type: %s" % (mention_elem.tag))
+                if mention_elem.tail:
+                    toks = mention_elem.tail.split()
+                    for i in range(len(toks)):
+                        ## tokenize process
+                        word_id = len(word_cps)
+                        if verbose:
+                            print(toks[i], words[word_id])
+                        assert toks[i] == words[word_id]
+
+                        tokenized = word_tokenize(toks[i])
+                        for j in range(len(tokenized)):
+                            tokc = Token(content=tokenized[j], tok_id=len(doc.tokens), sent_id=sent_ids[word_id])
                             doc.tokens.append(tokc)
-                sent_id += 1
+
+                        word_cps.append(toks[i])
     return doc
 
 
@@ -65,9 +307,9 @@ def load_timeml(file_name):
         if elem.tag == "DOCID":
             doc = TimeMLDoc(docid=elem.text)
         if elem.tag == "DCT":
-            for step_elem in elem:
-                doc.dct = Timex(content=step_elem.text, **step_elem.attrib)
-                doc.addTimex(Timex(content=step_elem.text, **step_elem.attrib))
+            for mention_elem in elem:
+                doc.dct = Timex(content=mention_elem.text, **mention_elem.attrib)
+                doc.addTimex(Timex(content=mention_elem.text, **mention_elem.attrib))
     if not doc:
         raise Exception("%s cannot find docid information" % file_name)
 
@@ -80,22 +322,22 @@ def load_timeml(file_name):
                 for i in range(len(toks)):
                     tokc = Token(content=toks[i], tok_id=len(doc.tokens) + i)
                     doc.tokens.append(tokc)
-            for step_elem in elem:
-                toks = step_elem.text.split()
+            for mention_elem in elem:
+                toks = mention_elem.text.split()
                 tok_ids = [ len(doc.tokens) + i for i in range(len(toks))]
                 for i in range(len(toks)):
                     tokc = Token(content=toks[i], tok_id=len(doc.tokens) + i)
                     doc.tokens.append(tokc)
-                if step_elem.tag == "EVENT":
-                    doc.addEvent(Event(content=' '.join(toks), tok_ids=tok_ids, **step_elem.attrib))
-                elif step_elem.tag == "TIMEX3":
-                    doc.addTimex(Timex(content=' '.join(toks), tok_ids=tok_ids, **step_elem.attrib))
-                elif step_elem.tag == "SIGNAL":
-                    doc.addSignal(Signal(content=' '.join(toks), tok_ids=tok_ids, **step_elem.attrib))
+                if mention_elem.tag == "EVENT":
+                    doc.addEvent(Event(content=' '.join(toks), tok_ids=tok_ids, **mention_elem.attrib))
+                elif mention_elem.tag == "TIMEX3":
+                    doc.addTimex(Timex(content=' '.join(toks), tok_ids=tok_ids, **mention_elem.attrib))
+                elif mention_elem.tag == "SIGNAL":
+                    doc.addSignal(Signal(content=' '.join(toks), tok_ids=tok_ids, **mention_elem.attrib))
                 else:
-                    raise Exception("Unknown mention type: %s" % (step_elem.tag))
-                if step_elem.tail:
-                    toks = step_elem.tail.split()
+                    raise Exception("Unknown mention type: %s" % (mention_elem.tag))
+                if mention_elem.tail:
+                    toks = mention_elem.tail.split()
                     for i in range(len(toks)):
                         tokc = Token(content=toks[i], tok_id=len(doc.tokens)+i)
                         doc.tokens.append(tokc)
@@ -230,8 +472,8 @@ class TestTimeMLReader(unittest.TestCase):
         out_file = "tanchor.txt"
         save_batch_load(file_dir, out_file)
 
-    def test_load_extra(self):
-        doc = load_extraml("/Users/fei-c/Resources/timex/納品0521jsa/ALL/ALL044_wsj_0173.tml")
+    def test_load_anchorml(self):
+        doc = load_anchorml("/Users/fei-c/Resources/timex/納品0521jsa/ALL/ALL044_wsj_0173.tml")
 #        print([ tok.content for tok in doc.tokens])
         event1 = doc.events[0]
         event2 = doc.events[1]
@@ -240,6 +482,14 @@ class TestTimeMLReader(unittest.TestCase):
         print(doc.geneInterTokens(event1, event2))
         print([tok.content for tok in doc.tokens[:25]])
         print(doc.geneInterPostion(event1, event2))
+
+    def test_load_anchorml2(self):
+        doc = load_anchorml("/Users/fei-c/Resources/timex/納品0521jsa/ALL/ALL044_wsj_0173.tml")
+        print(len(doc.tokens), doc.tokens[-1].tok_id)
+        doc.setSentIds2mention()
+        for key, timex in doc.timexs.items():
+            print(key, timex.sent_id)
+
 
     def test_compare_annotations(self):
 
@@ -285,3 +535,53 @@ class TestTimeMLReader(unittest.TestCase):
         print(sum([ len(doc.tlinks) for doc_id, doc in doc_list.items()]))
         with open('data/doc_list.pkl', 'wb') as f:  # Python 3: open(..., 'wb')
             pickle.dump(doc_list, f)
+
+
+    def test_load_extraml(self):
+        extraml_file = "/Users/fei-c/Resources/timex/original/timebank_1_2/data/extra/APW19980301.0720.tml"
+        words, sent_ids = load_extraml(extraml_file)
+        for w, s in zip(words[-50:], sent_ids[-50:]):
+            print(w, s)
+
+    def test_load_anchorml_sentid(self):
+        anchor_file = "/Users/fei-c/Resources/timex/納品0521jsa/ALL/ALL001_APW19980301.0720.tml"
+        anchor_file = "/Users/fei-c/Resources/timex/納品0521jsa/ALL/ALL002_APW19980306.1001.tml"
+        # anchor_file = "/Users/fei-c/Resources/timex/納品0521jsa/ALL/ALL003_APW19980322.0749.tml"
+        # anchor_file = "/Users/fei-c/Resources/timex/納品0521jsa/ALL/ALL004_APW19980501.0480.tml"
+        # anchor_file = "/Users/fei-c/Resources/timex/納品0521jsa/ALL/ALL006_NYT19980424.0421.tml"
+        # anchor_file = "/Users/fei-c/Resources/timex/納品0521jsa/ALL/ALL007_PRI19980303.2000.2550.tml" ## <turn>
+        # anchor_file = "/Users/fei-c/Resources/timex/納品0521jsa/ALL/ALL008_SJMN91-06338157.tml" ## a mail format?
+        # anchor_file = "/Users/fei-c/Resources/timex/納品0521jsa/ALL/ALL009_VOA19980303.1600.0917.tml"
+        # anchor_file = "/Users/fei-c/Resources/timex/納品0521jsa/ALL/ALL013_VOA19980501.1800.0355.tml"
+
+
+        filename = anchor_file.split('/')[-1].split('_')[-1]
+        print(filename)
+        extraml_file = "/Users/fei-c/Resources/timex/original/timebank_1_2/data/extra/%s" % (filename)
+        doc = load_anchorml_sentid(anchor_file, extraml_file, verbose=1)
+        for tok in doc.tokens:
+            print(tok.tok_id, tok.sent_id, tok.content)
+
+    def test_normalize_time(self):
+        anchorml_dir = "/Users/fei-c/Resources/timex/納品0521jsa/ALL/"
+        anchorml_list = [anchorml_dir + filename for filename in sorted(os.listdir(anchorml_dir))]
+        doc = load_anchorml(anchorml_list[33])
+        print(len(doc.tokens), doc.tokens[-1].tok_id + 1)
+        doc.setSentIds2mention()
+        doc.dct.tanchor = normalize_time(doc.dct.value)
+        print(doc.dct.tid, doc.dct.tanchor)
+        print('-' * 80)
+        for key, timex in doc.timexs.items():
+            print(key, timex.content, timex.value, timex.mod, timex.anchorTimeID, timex.beginPoint, timex.endPoint)
+            timex.tanchor = normalize_time(timex.value)
+        print('-' * 80)
+        for key, timex in doc.timexs.items():
+            if not timex.tanchor:
+                if timex.anchorTimeID:
+                    timex.tanchor = normalize_relative(timex, doc.dct if timex.anchorTimeID == 't0' else doc.timexs[timex.anchorTimeID])
+                elif timex.endPoint:
+                    timex.tanchor = normalize_relative(timex, doc.dct if timex.endPoint == 't0' else doc.timexs[timex.endPoint])
+                elif timex.beginPoint:
+                    timex.tanchor = normalize_relative(timex, doc.dct if timex.beginPoint == 't0' else doc.timexs[timex.beginPoint])
+        for key, timex in doc.timexs.items():
+            print(key, timex.content, timex.value, timex.tanchor)

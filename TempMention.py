@@ -91,6 +91,11 @@ class Timex(Mention):
         self.value = args.setdefault('value', None)
         self.temporalFunction = args.setdefault('temporalFunction', None)
         self.functionInDocument = args.setdefault('functionInDocument', None)
+        self.anchorTimeID = args.setdefault('anchorTimeID', None)
+        self.beginPoint = args.setdefault('beginPoint', None)
+        self.endPoint = args.setdefault('endPoint', None)
+        self.mod = args.setdefault('mod', None)
+        self.tanchor = args.setdefault('tanchor', None)
 
     @property
     def tid(self):
@@ -105,8 +110,16 @@ class Timex(Mention):
         return self.__type
 
     @type.setter
-    def type(self, types):
+    def type(self, type):
         self.__type = type
+
+    @property
+    def mod(self):
+        return self.__mod
+
+    @mod.setter
+    def mod(self, mod):
+        self.__mod = mod
 
     @property
     def value(self):
@@ -115,6 +128,38 @@ class Timex(Mention):
     @value.setter
     def value(self, value):
         self.__value = value
+
+    @property
+    def tanchor(self):
+        return self.__tanchor
+
+    @tanchor.setter
+    def tanchor(self, tanchor):
+        self.__tanchor = tanchor
+
+    @property
+    def beginPoint(self):
+        return self.__beginPoint
+
+    @beginPoint.setter
+    def beginPoint(self, beginPoint):
+        self.__beginPoint = beginPoint
+
+    @property
+    def endPoint(self):
+        return self.__endPoint
+
+    @endPoint.setter
+    def endPoint(self, endPoint):
+        self.__endPoint = endPoint
+
+    @property
+    def anchorTimeID(self):
+        return self.__anchorTimeID
+
+    @anchorTimeID.setter
+    def anchorTimeID(self, anchorTimeID):
+        self.__anchorTimeID = anchorTimeID
 
     @property
     def temporalFunction(self):

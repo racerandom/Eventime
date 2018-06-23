@@ -42,7 +42,7 @@ class TempOptimizer(nn.Module):
                             'batch_size': [32, 64, 128],
                             'fc_hidden_dim': range(100, 500 + 1, 10),
                             'pos_dim': range(5, 30 + 1, 5),
-                            'dropout_emb': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+                            'dropout_emb': [0.0],
                             'dropout_cat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
                             'dropout_fc': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
                             # 'optimizer': ['adadelta', 'adam','rmsprop', 'sgd'],
@@ -76,7 +76,7 @@ class TempOptimizer(nn.Module):
 
         ## Data and records
         self.train_data, self.dev_data, self.test_data = self.generate_data()
-        self.GLOB_BEST_MODEL_PATH = "models/glob_best_model.pth"
+        self.GLOB_BEST_MODEL_PATH = "models/glob_best_model_c%s_d%i.pth" % (classifier, word_dim)
         self.glob_best_acc = 0
         self.glob_best_loss = 1000
         self.glob_best_params = {}
@@ -156,7 +156,7 @@ class TempOptimizer(nn.Module):
 
         local_best_acc, local_best_loss, local_best_epoch, local_best_test = 0, 1000, 0, ""
         # BEST_MODEL_PATH = "models/best-model_%s.pth" % (TempUtils.dict2str(params))
-        BEST_MODEL_PATH = "models/temp-model.pth"
+        BEST_MODEL_PATH = "models/temp-model_c%s_d%i.pth" % (params['classifier'], params['word_dim'])
 
         model = TempClassifier(self.VOCAB_SIZE, self.POS_SIZE, self.ACTION_SIZE, self.MAX_LEN, pre_model=self.pre_model,
                                **params).to(device=device)
@@ -336,13 +336,16 @@ class TempOptimizer(nn.Module):
 
 def main():
 
-    temp_extractor = TempOptimizer("CNN", 300, 10, ['Event-Timex', 'Timex-Event'], 'val_loss',
+    classifier = "CNN"
+
+    temp_extractor = TempOptimizer(classifier, 300, 20, ['Event-Timex', 'Timex-Event'], 'val_loss',
                                    pretrained_file='Resources/embed/deps.words.bin'
                                    )
     temp_extractor.optimize_model(max_evals=1)
     temp_extractor.eval_model()
-    # params = {'filter_nb': 120, 'kernel_len': 3, 'batch_size': 128, 'fc_hidden_dim': 370, 'pos_dim': 5, 'dropout_emb': 0.45, 'dropout_cat': 0.55, 'lr': 0.001, 'weight_decay': 1e-05, 'word_dim': 200, 'best_epoch': 19}
-    # temp_extractor.eval_with_params(**params)
+    # params = {'classifier':classifier, 'filter_nb': 120, 'kernel_len': 3, 'batch_size': 128, 'fc_hidden_dim': 240, 'pos_dim': 10, 'dropout_emb': 0.0, 'dropout_cat': 0.5, 'dropout_fc': 0.5, 'lr': 0.01, 'weight_decay': 1e-05, 'word_dim': 300}
+    # temp_extractor.train_model(**params)
+    # temp_extractor.eval_model()
 
 
 if __name__ == '__main__':

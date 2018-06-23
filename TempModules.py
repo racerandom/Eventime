@@ -264,9 +264,8 @@ class TempAttnCNN(nn.Module):
         self.verbose_level = verbose
         self.c1 = nn.Conv1d(params['word_dim'] + 2 * params['pos_dim'], params['filter_nb'], params['kernel_len'])
         self.attn_W = torch.nn.Parameter(torch.randn(params['filter_nb'], requires_grad=True))
-        self.p1 = nn.MaxPool1d(seq_len - params['kernel_len'] + 1)
         self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
-        self.fc1 = nn.Linear(params['filter_nb'] + 4 * params['pos_dim'], params['fc_hidden_dim'])
+        self.fc1 = nn.Linear(params['filter_nb'], params['fc_hidden_dim'])
         self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
         self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
 
@@ -285,17 +284,17 @@ class TempAttnCNN(nn.Module):
         attn_M = F.tanh(c1_out)  # attn_M: [batch, filter_nb, kernel_out]
         W = self.attn_W.unsqueeze(0).expand(batch_size, -1, -1)  # W: [batch_size, 1, filter_nb]
         attn_alpha = F.softmax(torch.bmm(W, attn_M), dim=2)  # rnn1_alpha: [batch_size, 1, kernel_out]
-        attn_out = torch.bmm(c1_out, attn_alpha.transpose(1, 2))  # attn_out: [batch_size, filter_nb, 1]
+        attn_out = F.tanh(torch.bmm(c1_out, attn_alpha.transpose(1, 2)))  # attn_out: [batch_size, filter_nb, 1]
 
         # p1_out = self.p1(c1_out).squeeze(-1)
 
         # if self.verbose_level:
         #     print("p1_output size:", p1_out.shape)
 
-        cat_out = torch.cat((attn_out.squeeze(), position_input[:, 0, :], position_input[:, -1, :]), dim=1)
-        cat_out = self.cat_dropout(cat_out)
-        if self.verbose_level:
-            print("cat_output size:", cat_out.shape)
+        # cat_out = torch.cat((attn_out.squeeze(), position_input[:, 0, :], position_input[:, -1, :]), dim=1)
+        cat_out = self.cat_dropout(attn_out.squeeze())
+        # if self.verbose_level:
+        #     print("cat_output size:", cat_out.shape)
 
         fc1_out = F.relu(self.fc1(cat_out))
         fc1_out = self.fc1_drop(fc1_out)
@@ -500,7 +499,6 @@ class TimeDetector(nn.Module):
         ## initialize parameters
         self.time_hidden_dim = time_hidden_dim
         self.batch_size = batch_size
-        
         
         ## initialize neural layers
         self.left_tagger = nn.LSTM(embedding_dim, time_hidden_dim // 2, num_layers=1, batch_first=True, bidirectional=True)
