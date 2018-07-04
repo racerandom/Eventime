@@ -1,21 +1,8 @@
-
-# coding: utf-8
-
-# In[1]:
-
-
-# get_ipython().run_line_magic('matplotlib', 'inline')
-
-
-# In[2]:
-
-
 import torch
 import torch.autograd as autograd
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import torch.utils.data as Data
 from IPython.display import clear_output
 import numpy as np
 import random
@@ -23,104 +10,10 @@ import pdb
 import gensim
 
 import TempUtils
+from TempData import MultipleDatasets
 
 torch.manual_seed(23214)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# STEP1: Generate Artificial Data
-# 
-# We randomly generate input data:
-# X1: (1000 [data size] x 2 [number of branches] x 3 [number of words for per branch input]) for Event-TIMEX classifier,
-# X2: (1000 [data size] x 1 [number of branches] x 3 [number of words for per branch input]) for Event-DCT classifier.  
-# 
-# with corresponding gold output Y:
-# Y: (1000 [data size] x 2 [dimension of output tuples])
-
-# In[71]:
-
-
-class MultipleDatasets(Data.Dataset):
-    """Dataset wrapping tensors.
-
-    Each sample will be retrieved by indexing tensors along the first dimension.
-
-    Arguments:
-        *tensors (Tensor): tensors that have the same size of the first dimension.
-    """
-    def __init__(self, *tensors):
-        assert all(tensors[0].size(0) == tensor.size(0) for tensor in tensors)
-        self.tensors = tensors
-
-    def __getitem__(self, index):
-        return tuple(tensor[index] for tensor in self.tensors)
-
-    def __len__(self):
-        return self.tensors[0].size(0)
-
-dct_inputs = torch.randint(0, 100, (500, 1, 3), dtype=torch.long, device=device)
-time_inputs = torch.randint(0, 100, (500, 1, 2, 3), dtype=torch.long, device=device)
-
-targets = torch.randint(0, 2, (500, 3), dtype=torch.long, device=device)
-
-
-BATCH_SIZE = 50
-# EPOCH_NUM = 100
-
-dataset = MultipleDatasets(dct_inputs, time_inputs, targets)
-
-loader = Data.DataLoader(
-                        dataset = dataset,
-                        batch_size = BATCH_SIZE,
-                        shuffle = True,
-                        num_workers = 1,
-                        )
-
-# print(time_inputs[:, :, :, :].size())
-# print(time_inputs[:, :, 0, :].size())
-# print(time_inputs[:, :, 1, :].size())
-
-# x = torch.randn(3, 4)
-# torch.index_select(x, 1, torch.tensor([0, 2]))
-
-# for epoch in range(EPOCH_NUM):
-#     for step, (batch_dct, batch_time, batch_y) in enumerate(loader):
-#         if step > 1:
-#             continue
-#         print('Epoch:', epoch, '| Step:', step, '| batch dct:', batch_dct.numpy(),  '| batch time:',
-#               batch_time.numpy(), '|batch y:', batch_y.numpy())
-
-# k=1
-
-
-# for dct, time, target in zip(dct_inputs[:k], time_inputs[:k], targets[:k]):
-#     print(dct)
-#     print(time)
-#     print(target)
-
-
-# In[5]:
-
-
-# word2ix = {}
-# embed_model = gensim.models.KeyedVectors.load_word2vec_format('/Users/fei-c/Resources/embed/giga-aacw.d200.bin', binary=True)
-# # word_vectors = embed_model.wv
-# for word, value in embed_model.vocab.items():
-#     word2ix[word] = value.index
-# print(len(word2ix))
-#
-#
-# # In[16]:
-#
-#
-# pretrained_weights = torch.FloatTensor(embed_model.vectors)
-# print(pretrained_weights.size())
-# pretrained_embed = nn.Embedding.from_pretrained(pretrained_weights, freeze=True)
-# input = torch.LongTensor([[0, ]])
-# print(pretrained_embed(input).squeeze().size())
-# print(pretrained_embed(input).squeeze()[:6])
-
-
-# In[1]:
 
 
 import random

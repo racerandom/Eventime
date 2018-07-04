@@ -1,3 +1,5 @@
+from TempNormalization import *
+
 class Token:
     def __init__(self, **args):
         self.content = args.setdefault('content', None)
@@ -72,6 +74,10 @@ class Signal(Mention):
         self.sid = args.setdefault('sid', None)
 
     @property
+    def id(self):
+        return self.__sid
+
+    @property
     def sid(self):
         return self.__sid
 
@@ -96,6 +102,10 @@ class Timex(Mention):
         self.endPoint = args.setdefault('endPoint', None)
         self.mod = args.setdefault('mod', None)
         self.tanchor = args.setdefault('tanchor', None)
+
+    @property
+    def id(self):
+        return self.__tid
 
     @property
     def tid(self):
@@ -189,7 +199,8 @@ class EventBase(Mention):
         super().__init__(**args)
         self.eid = args.setdefault('eid', None)
         self.eclass = args.setdefault('class', None)
-        self.tanchor = args.setdefault('tanchor', None)
+        self.value = args.setdefault('tanchor', None)
+        self.tanchor = None
 
     @property
     def eid(self):
@@ -208,6 +219,18 @@ class EventBase(Mention):
         self.__eclass = eclass
 
     @property
+    def value(self):
+        return self.__value
+
+    @value.setter
+    def value(self, value):
+        self.__value = value
+
+    def normalize_value(self):
+        if self.__value:
+            self.__tanchor = normalize_tanchor(self.__value)
+
+    @property
     def tanchor(self):
         return self.__tanchor
 
@@ -224,6 +247,10 @@ class Event(EventBase):
         self.aspect = args.setdefault('aspect', None)
         self.polarity = args.setdefault('polarity', None)
         self.pos = args.setdefault('pos', None)
+
+    @property
+    def id(self):
+        return self.eid
 
     @property
     def eiid(self):

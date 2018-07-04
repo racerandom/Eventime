@@ -19,6 +19,9 @@ def load_pre(embed_file, binary=True, addZeroPad=True):
         pre_vectors = np.concatenate((np.zeros((1, embed_size)), pre_vectors), axis=0)
     return pre_vectors, word2ix
 
+def embed_txt2bin(embed_file):
+    pass
+
 
 def pre2embed(pre_vectors):
     pre_weights = torch.FloatTensor(pre_vectors)
@@ -63,39 +66,63 @@ def padding_pos(seq_2d, max_len, pad=[0, 0], direct='right'):
     return seq_2d
 
 
-def pos2idx(doc_dic):
+def pos2idx(doc_dic, link_type):
     tok_idx = {'zeropadding': 0}
     for doc in doc_dic.values():
-        for link in doc.tlinks:
+        if link_type in ['Event-DCT']:
+            links = doc.event_dct
+        elif link_type in ['Event-Timex', 'Timex-Event']:
+            links = doc.event_timex
+        elif link_type in ['Event-Event']:
+            links = doc.event_event
+        for link in links:
             for tok_l, tok_r in link.interpos:
                 tok_idx.setdefault(tok_l, len(tok_idx))
                 tok_idx.setdefault(tok_r, len(tok_idx))
     return tok_idx
 
 
-def word2idx(doc_dic):
+def word2idx(doc_dic, link_type):
     tok_idx = {'zeropadding': 0}
     for doc in doc_dic.values():
-        for link in doc.tlinks:
+        if link_type in ['Event-DCT']:
+            links = doc.event_dct
+        elif link_type in ['Event-Timex', 'Timex-Event']:
+            links = doc.event_timex
+        elif link_type in ['Event-Event']:
+            links = doc.event_event
+        for link in links:
             for tok in link.interwords:
                 tok_idx.setdefault(tok, len(tok_idx))
     return tok_idx
 
 
-def rel2idx(doc_dic):
+def rel2idx(doc_dic, link_type):
     tok_idx = {}
     for doc in doc_dic.values():
-        for link in doc.tlinks:
+        if link_type in ['Event-DCT']:
+            links = doc.event_dct
+        elif link_type in ['Event-Timex', 'Timex-Event']:
+            links = doc.event_timex
+        elif link_type in ['Event-Event']:
+            links = doc.event_event
+        for link in links:
             tok_idx.setdefault(link.rel, len(tok_idx))
     return tok_idx
 
 
-def max_length(doc_dic, types):
+def max_length(doc_dic, link_type):
     word_list = []
     for doc in doc_dic.values():
-        for tlink in doc.tlinks:
-            if tlink.category in types:
-                word_list.append(len(tlink.interwords))
+        if link_type in ['Event-DCT']:
+            for link in doc.event_dct:
+                word_list.append(len(link.interwords))
+        elif link_type in ['Event-Timex', 'Timex-Event']:
+            for link in doc.event_timex:
+                word_list.append(len(link.interwords))
+        elif link_type in ['Event-Event']:
+            for link in doc.event_Event:
+                word_list.append(len(link.interwords))
     return max(word_list)
 
 
@@ -104,6 +131,13 @@ def geneInterPostion(word_list):
     word_len = len(word_list)
     for i in range(word_len):
         position_list.append((i - 0, i - word_len + 1))
+    return position_list
+
+
+def geneSentPostion(tokens, sour_tok_id, targ_tok_id):
+    position_list = []
+    for tok in tokens:
+        position_list.append((tok.tok_id - sour_tok_id, tok.tok_id - targ_tok_id))
     return position_list
 
 

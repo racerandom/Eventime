@@ -27,15 +27,28 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 
 is_pretrained = True
+WORD_COL, POS_COL, REL_COL = 0, 1, 2
+
+
+def is_best_score(score, best_score, monitor):
+    if not best_score:
+        is_best = True
+        best_score = score
+    else:
+        is_best = bool(score < best_score) if monitor == 'val_loss' else bool(score > best_score)
+        best_score = score if is_best else best_score
+    return is_best, best_score
+
 
 class TempOptimizer(nn.Module):
 
-    def __init__(self, classifier, word_dim, epoch_nb, rel_types, monitor, max_evals=500, pretrained_file='Resources/embed/giga-aacw.d200.bin'):
+    def __init__(self, pkl_file, classifier, word_dim, epoch_nb, link_type, monitor, train_rate=1.0, max_evals=500, pretrained_file='Resources/embed/giga-aacw.d200.bin'):
 
         ## model parameters
         self.monitor = monitor
-        self.rel_types = rel_types
+        self.link_type = link_type
         self.max_evals=max_evals
+
         if classifier in ['CNN', 'AttnCNN']:
             self.param_space = {
                             'filter_nb': range(100, 500 + 1, 10),
@@ -65,7 +78,9 @@ class TempOptimizer(nn.Module):
                 'weight_decay': [1e-3, 1e-4, 1e-5, 0]
             }
         self.param_space['classifier'] = [classifier]
-        self.doc_dic, self.word_idx, self.pos_idx, self.rel_idx, self.max_len, self.pre_model = prepare_global(pretrained_file, types=rel_types)
+        self.doc_dic, self.word_idx, self.pos_idx, self.rel_idx, self.max_len, self.pre_model = prepare_global(pkl_file,
+                                                                                                               pretrained_file,
+                                                                                                               link_type=link_type)
         self.VOCAB_SIZE = len(self.word_idx)
         self.POS_SIZE = len(self.pos_idx)
         self.MAX_LEN = self.max_len
@@ -76,8 +91,15 @@ class TempOptimizer(nn.Module):
         self.param_space['word_dim'] = [word_dim]
 
         ## Data and records
+        self.TRAIN_SET = sample_train(self.doc_dic.keys(), TA_DEV, TA_TEST, rate=train_rate) # return training data
+        self.DEV_SET = TA_DEV
+        self.TEST_SET = TA_TEST
+        print("Train data: %i docs, Dev data: %i docs, Test data: %i docs..." % (len(self.TRAIN_SET),
+                                                                                 len(self.DEV_SET),
+                                                                                 len(self.TEST_SET)))
         self.train_data, self.dev_data, self.test_data = self.generate_data()
-        self.GLOB_BEST_MODEL_PATH = "models/glob_best_model_c%s_wd%i_ep%i_me%i.pth" % (classifier,
+        self.GLOB_BEST_MODEL_PATH = "models/glob_best_model_c=%s_pre=%s_wd=%i_ep=%i_me=%i.pth" % (classifier,
+                                                                            pretrained_file.split('/')[-1].split('.')[0],
                                                                             word_dim,
                                                                             epoch_nb,
                                                                             max_evals)
@@ -91,14 +113,14 @@ class TempOptimizer(nn.Module):
 
     def generate_data(self):
 
-        train_word_in, train_pos_in, train_rel_in = prepare_data(self.doc_dic, TBD_TRAIN, self.word_idx, self.pos_idx, self.rel_idx,
-                                                                 self.MAX_LEN, types=self.rel_types)
+        train_word_in, train_pos_in, train_rel_in = prepare_data(self.doc_dic, self.TRAIN_SET, self.word_idx, self.pos_idx, self.rel_idx,
+                                                                 self.MAX_LEN, link_type=self.link_type)
 
-        dev_word_in, dev_pos_in, dev_rel_in = prepare_data(self.doc_dic, TBD_DEV, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
-                                                           types=self.rel_types)
+        dev_word_in, dev_pos_in, dev_rel_in = prepare_data(self.doc_dic, self.DEV_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
+                                                           link_type=self.link_type)
 
-        test_word_in, test_pos_in, test_rel_in = prepare_data(self.doc_dic, TBD_TEST, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
-                                                              types=self.rel_types)
+        test_word_in, test_pos_in, test_rel_in = prepare_data(self.doc_dic, self.TEST_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
+                                                              link_type=self.link_type)
 
         train_data = (
             train_word_in,
@@ -126,34 +148,53 @@ class TempOptimizer(nn.Module):
             for key, values in self.param_space.items():
                 params[key] = random.choice(values)
 
-            print('[optim %i]:' % eval_i, ', params:', params)
+            print('[optim %i]: ' % eval_i, 'params:', params)
             self.train_model(**params)
 
-        print(self.best_scores)
-        print(self.val_acces)
-        print(self.test_acces)
+        # print(self.best_scores)
+        # print(self.val_acces)
+        # print(self.test_acces)
 
 
-    def eval_model(self):
-
-        WORD_COL, POS_COL, REL_COL = 0, 1, 2
+    def eval_best_model(self):
 
         checkpoint = (torch.load(self.GLOB_BEST_MODEL_PATH, map_location=lambda storage, loc: storage))
 
         model = TempClassifier(self.VOCAB_SIZE, self.POS_SIZE, self.ACTION_SIZE, self.MAX_LEN, pre_model=self.pre_model, **checkpoint['params']).to(device=device)
-        loss_function = nn.NLLLoss()
-        optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=checkpoint['params']['lr'],
-                               weight_decay=checkpoint['params']['weight_decay'])
 
         model.load_state_dict(checkpoint['state_dict'])
 
-        print(self.eval_val(model))
+        # print(self.eval_val(model))
         self.eval_test(model, is_report=True)
 
+    @staticmethod
+    def eval_data(model, data, action_labels, is_report):
 
-    def train_model(self, **params):
+        model.eval()
 
-        WORD_COL, POS_COL, REL_COL = 0, 1, 2
+        with torch.no_grad():
+            out = model(data[WORD_COL], data[POS_COL])
+            loss = F.nll_loss(out, data[REL_COL]).item()
+            # diff = torch.eq(torch.argmax(pred, dim=1), data[REL_COL])
+            pred = torch.argmax(out, dim=1)
+            acc = (pred == data[REL_COL]).sum().item() / float(pred.numel())
+
+            if is_report:
+                print('-' * 80)
+                print(classification_report(pred, data[REL_COL],
+                                            target_names=action_labels))
+
+            return loss, acc
+
+    def eval_val(self, model, is_report=False):
+
+        return TempOptimizer.eval_data(model, self.dev_data, self.ACTIONS, is_report)
+
+    def eval_test(self, model, is_report=False):
+
+        return TempOptimizer.eval_data(model, self.test_data, self.ACTIONS, is_report)
+
+    def eval_with_params(self, **params):
 
         train_dataset = MultipleDatasets(self.train_data[WORD_COL], self.train_data[POS_COL], self.train_data[REL_COL])
 
@@ -164,15 +205,49 @@ class TempOptimizer(nn.Module):
             num_workers=1,
         )
 
-        # print('Starting to train a new model with parameters', params)
+        print('Starting to train a new model with parameters', params)
+
+        model = TempClassifier(self.VOCAB_SIZE, self.POS_SIZE, self.ACTION_SIZE, self.MAX_LEN, pre_model=self.pre_model,
+                               **params).to(device=device)
+        optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=params['lr'],
+                               weight_decay=params['weight_decay'])
+
+        for epoch in range(1, params['best_epoch'] + 1):
+            for step, (word_input, position_input, target) in enumerate(train_data_loader):
+
+                ## switch to train mode
+                model.train()
+                word_input, position_input, target = word_input.to(device), position_input.to(device), target.to(device)
+
+                model.zero_grad()
+                pred_out = model(word_input, position_input)
+                loss = F.nll_loss(pred_out, target)
+                loss.backward(retain_graph=True)
+                optimizer.step()
+
+
+        ## switch to eval mode
+        self.eval_val(model)
+        self.eval_test(model)
+
+    def train_model(self, **params):
+
+        train_dataset = MultipleDatasets(self.train_data[WORD_COL], self.train_data[POS_COL], self.train_data[REL_COL])
+
+        train_data_loader = Data.DataLoader(
+            dataset=train_dataset,
+            batch_size=params['batch_size'],
+            shuffle=True,
+            num_workers=1,
+        )
 
         local_best_score, local_best_state = None, None
 
         model = TempClassifier(self.VOCAB_SIZE, self.POS_SIZE, self.ACTION_SIZE, self.MAX_LEN, pre_model=self.pre_model,
                                **params).to(device=device)
 
-        loss_function = nn.NLLLoss()
-        optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=params['lr'],
+        optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()),
+                               lr=params['lr'],
                                weight_decay=params['weight_decay'])  ##  fixed a error when using pre-trained embeddings
 
         print(model)
@@ -190,58 +265,43 @@ class TempOptimizer(nn.Module):
 
                 model.zero_grad()
                 pred_out = model(word_input, position_input)
-                loss = loss_function(pred_out, target)
+                loss = F.nll_loss(pred_out, target)
                 loss.backward(retain_graph=True)
                 optimizer.step()
                 total_loss.append(loss.data.item())
-                diff = torch.eq(torch.argmax(pred_out, dim=1), target)
-                total_acc.append(diff.sum().item() / float(diff.numel()))
-
-                # for name, param in model.named_parameters():
-                #     if param.requires_grad:
-                #         if name == 'temp_detector.fc2.weight':
-                #             print(param[1][:5])
+                # diff = torch.eq(torch.argmax(pred_out, dim=1), target)
+                pred = torch.argmax(pred_out, dim=1)
+                total_acc.append((pred == target).sum().item() / float(pred.numel()))
 
             model.eval()
 
             with torch.no_grad():
                 dev_out = model(self.dev_data[WORD_COL], self.dev_data[POS_COL])
                 dev_loss = F.nll_loss(dev_out, self.dev_data[REL_COL]).item()
-                dev_diff = torch.eq(torch.argmax(dev_out, dim=1), self.dev_data[REL_COL])
-                dev_acc = dev_diff.sum().item() / float(dev_diff.numel())
+                # dev_diff = torch.eq(torch.argmax(dev_out, dim=1), self.dev_data[REL_COL])
+                dev_pred = torch.argmax(dev_out, dim=1)
+                dev_acc = ( dev_pred == self.dev_data[REL_COL]).sum().item() / float(dev_pred.numel())
                 dev_score = dev_loss if self.monitor == 'val_loss' else dev_acc
 
                 test_loss, test_acc = self.eval_test(model)
 
-
-            if not local_best_score:
-                local_best_score = dev_score
-                local_is_best = True
-            else:
-                local_is_best = bool(dev_score < local_best_score) if self.monitor == 'val_loss' else bool(dev_score > local_best_score)
-                local_best_score = dev_score if local_is_best else local_best_score
+            local_is_best, local_best_score = is_best_score(dev_score, local_best_score, self.monitor)
 
             if local_is_best:
                 local_best_state = {'best_score': local_best_score,
                                     'val_loss': dev_loss,
                                     'val_acc': dev_acc,
                                     'test_loss': test_loss,
-                                    'test_acc':test_acc}
+                                    'test_acc':test_acc,
+                                    'params': params}
 
-
-            if not self.glob_best_score:
-                self.glob_best_score = dev_score
-                glob_is_best = True
-            else:
-                glob_is_best = bool(dev_score < self.glob_best_score) if self.monitor == 'val_loss' else \
-                    bool(dev_score > self.glob_best_score)
-                self.glob_best_score = dev_score if glob_is_best else self.glob_best_score
-
+            glob_is_best, self.glob_best_score = is_best_score(dev_score, self.glob_best_score, self.monitor)
 
             save_info = save_checkpoint({
                                         'epoch': epoch,
                                         'params': params,
                                         'state_dict': model.state_dict(),
+                                        'optimizer': optimizer.state_dict(),
                                         'monitor': self.monitor,
                                         'best_score': local_best_score,
                                         'val_loss': dev_loss,
@@ -281,94 +341,18 @@ class TempOptimizer(nn.Module):
                                                                                         glob_checkpoint['test_acc']))
         print("*" * 80)
 
-    def eval_val(self, model, is_report=False):
 
-        WORD_COL, POS_COL, REL_COL = 0, 1, 2
-
-        model.eval()
-
-        with torch.no_grad():
-            dev_out = model(self.dev_data[WORD_COL], self.dev_data[POS_COL])
-            dev_loss = F.nll_loss(dev_out, self.dev_data[REL_COL]).item()
-            dev_diff = torch.eq(torch.argmax(dev_out, dim=1), self.dev_data[REL_COL])
-            dev_acc = dev_diff.sum().item() / float(dev_diff.numel())
-
-            if is_report:
-                print(classification_report(torch.argmax(dev_out, dim=1), self.dev_data[REL_COL],
-                                            target_names=self.ACTIONS))
-
-            return dev_loss, dev_acc
-
-
-    def eval_test(self, model, is_report=False):
-
-        WORD_COL, POS_COL, REL_COL = 0, 1, 2
-
-        model.eval()
-
-        with torch.no_grad():
-            test_out = model(self.test_data[WORD_COL], self.test_data[POS_COL])
-            test_loss = F.nll_loss(test_out, self.test_data[REL_COL]).item()
-            test_diff = torch.eq(torch.argmax(test_out, dim=1), self.test_data[REL_COL])
-            test_acc = test_diff.sum().item() / float(test_diff.numel())
-
-            if is_report:
-                print('-' * 80)
-                print(classification_report(torch.argmax(test_out, dim=1), self.test_data[REL_COL],
-                                            target_names=self.ACTIONS))
-
-            return test_loss, test_acc
-
-
-
-
-    def eval_with_params(self, **params):
-
-        WORD_COL, POS_COL, REL_COL = 0, 1, 2
-
-        train_dataset = MultipleDatasets(self.train_data[WORD_COL], self.train_data[POS_COL], self.train_data[REL_COL])
-
-        train_data_loader = Data.DataLoader(
-            dataset=train_dataset,
-            batch_size=params['batch_size'],
-            shuffle=True,
-            num_workers=1,
-        )
-
-        print('Starting to train a new model with parameters', params)
-
-        model = TempClassifier(self.VOCAB_SIZE, self.POS_SIZE, self.ACTION_SIZE, self.MAX_LEN, pre_model=self.pre_model,
-                               **params).to(device=device)
-        loss_function = nn.NLLLoss()
-        optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=params['lr'],
-                               weight_decay=params['weight_decay'])
-
-        for epoch in range(1, params['best_epoch'] + 1):
-            for step, (word_input, position_input, target) in enumerate(train_data_loader):
-
-                ## switch to train mode
-                model.train()
-                word_input, position_input, target = word_input.to(device), position_input.to(device), target.to(device)
-
-                model.zero_grad()
-                pred_out = model(word_input, position_input)
-                loss = loss_function(pred_out, target)
-                loss.backward(retain_graph=True)
-                optimizer.step()
-
-
-        ## switch to eval mode
-        self.eval_val(model)
-        self.eval_test(model)
 
 def main():
 
     classifier = "CNN"
+    link_type = 'Event-Timex'
+    pkl_file = "data/0531_%s.pkl" % (link_type)
 
-    temp_extractor = TempOptimizer(classifier, 300, 5, ['Event-Timex', 'Timex-Event'], 'val_loss', max_evals=2,
+    temp_extractor = TempOptimizer(pkl_file, classifier, 300, 5, link_type, 'val_loss', train_rate=1.0, max_evals=2,
                                    pretrained_file='Resources/embed/deps.words.bin')
     temp_extractor.optimize_model()
-    temp_extractor.eval_model()
+    temp_extractor.eval_best_model()
     # params = {'classifier':classifier, 'filter_nb': 120, 'kernel_len': 3, 'batch_size': 128, 'fc_hidden_dim': 240, 'pos_dim': 10, 'dropout_emb': 0.0, 'dropout_cat': 0.5, 'dropout_fc': 0.5, 'lr': 0.01, 'weight_decay': 1e-05, 'word_dim': 300}
     # temp_extractor.train_model(**params)
     # temp_extractor.eval_model()

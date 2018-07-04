@@ -1,8 +1,12 @@
+import unittest
+import re
+
 from TempMention import Mention,Event,Timex
+from TempNormalization import *
+import TempUtils
+
 from nltk import sent_tokenize, word_tokenize
 
-from datetime import datetime,timedelta
-from dateutil.relativedelta import relativedelta
 
 class TimeMLDoc:
     def __init__(self, **args):
@@ -12,7 +16,9 @@ class TimeMLDoc:
         self.events = {}
         self.timexs = {}
         self.signals = {}
-        self.tlinks = []
+        self.event_dct = []
+        self.event_timex = []
+        self.event_event = []
 
     @property
     def docid(self):
@@ -28,7 +34,7 @@ class TimeMLDoc:
 
     @dct.setter
     def dct(self, dct):
-        if dct == None or dct.category == 'DCT':
+        if not dct or dct.category == 'DCT':
             self.__dct = dct
         else:
             raise Exception('TimeMLDoc cannot assign a non-DCT object as dct...')
@@ -66,12 +72,28 @@ class TimeMLDoc:
         self.__signals = signals
 
     @property
-    def tlinks(self):
-        return self.__tlinks
+    def event_dct(self):
+        return self.__event_dct
 
-    @tlinks.setter
-    def tlinks(self, tlinks):
-        self.__tlinks = tlinks
+    @event_dct.setter
+    def event_dct(self, event_dct):
+        self.__event_dct = event_dct
+
+    @property
+    def event_timex(self):
+        return self.__event_timex
+
+    @event_timex.setter
+    def event_timex(self, event_timex):
+        self.__event_timex = event_timex
+
+    @property
+    def event_event(self):
+        return self.__event_event
+
+    @event_event.setter
+    def event_event(self, event_event):
+        self.__event_event = event_event
 
     def addEvent(self, event):
         if event.category == 'Event':
@@ -91,11 +113,23 @@ class TimeMLDoc:
         else:
             raise Exception('fail to add a non-Signal object...%s' % (signal.category))
 
-    def addTlink(self, link):
+    def add_event_dct(self, link):
         if isinstance(link, TempLink):
-            self.tlinks.append(link)
+            self.event_dct.append(link)
         else:
-            raise Exception('fail to add a non-TempLink object...')
+            raise Exception('fail to add a non-TempLink object into event-dct...')
+
+    def add_event_timex(self, link):
+        if isinstance(link, TempLink):
+            self.event_timex.append(link)
+        else:
+            raise Exception('fail to add a non-TempLink object into event-timex...')
+
+    def add_event_event(self, link):
+        if isinstance(link, TempLink):
+            self.event_event.append(link)
+        else:
+            raise Exception('fail to add a non-TempLink object into event-event...')
 
     def extendTokens(self, tokens):
         self.tokens.extend(tokens)
@@ -137,15 +171,102 @@ class TimeMLDoc:
         toks = self.tokens[left_id: right_id + 1]
         return [ tok.content for tok in toks]
 
-    def geneMentionPair(self, window=1):
+    def geneSentTokens(self, source, target):
+        # source = self.getMentionById(source_id)
+        # target = self.getMentionById(target_id)
+
+        left_id = source.tok_ids[0]
+        right_id = target.tok_ids[-1]
+
+        for i in range(source.tok_ids[0], -1 , -1):
+            if self.tokens[i].sent_id != source.sent_id:
+                break
+            left_id = i
+
+        for j in range(target.tok_ids[-1], len(self.tokens) , 1):
+            if self.tokens[j].sent_id != target.sent_id:
+                break
+            right_id = j
+
+        toks = self.tokens[left_id: right_id + 1]
+        return toks
+
+    def geneEventDCTPair(self, window=1):
+        lid = 0
+        for eid, event in self.events.items():
+            # print(InduceMethod.induce_relation(event, self.dct))
+            link = TempLink(lid='led%i' % lid ,
+                                        sour=event,
+                                        targ=self.dct,
+                                        rel=InduceMethod.induce_relation(event, self.dct))
+            self.add_event_dct(link)
+            lid += 1
+
+    def geneEventTimexPair(self, sent_win):
         lid = 0
         for eid, event in self.events.items():
             for tid, timex in self.timexs.items():
+                if abs(timex.sent_id - event.sent_id) > sent_win:
+                    continue
                 if event.tok_ids[0] <= timex.tok_ids[0]:  # specifying: a tlink is always from left to right
                     sour, targ = event, timex
                 else:
                     sour, targ = timex, event
-                self.addTlink(TempLink(lid='l%i' % lid , sour=sour, targ=targ, rel=None) )
+                link = TempLink(lid='let%i' % lid ,
+                                              sour=sour,
+                                              targ=targ,
+                                              rel=InduceMethod.induce_relation(sour, targ))
+                tokens = self.geneSentTokens(sour, targ)
+                link.interwords = [tok.content for tok in tokens]
+                link.interpos = TempUtils.geneSentPostion(tokens, sour.tok_ids[-1], targ.tok_ids[-1])
+                self.add_event_timex(link)
+                lid += 1
+
+    def geneEventsPair(self, sent_win):
+        lid = 0
+        for sour_eid, sour_event in self.events.items():
+            for targ_eid, targ_event in self.events.items():
+                if 0 <= (targ_event.sent_id - sour_event.sent_id) <= sent_win:
+                    if targ_event.tok_ids[0] > sour_event.tok_ids[0]:
+                        link = TempLink(lid='led%i' % lid ,
+                                                      sour=sour_event,
+                                                      targ=targ_event,
+                                                      rel=InduceMethod.induce_relation(sour_event, targ_event))
+                        tokens = self.geneSentTokens(sour_event, targ_event)
+                        link.interwords = [tok.content for tok in tokens]
+                        link.interpos = TempUtils.geneSentPostion(tokens, sour_event.tok_ids[-1], targ_event.tok_ids[-1])
+                        self.add_event_event(link)
+
+    def normalize_timex_value(self, verbose=0):
+        self.dct.tanchor = normalize_time(self.dct.value)
+        for key, timex in self.timexs.items():
+            if verbose:
+                print(key, timex.content, timex.value, timex.mod, timex.anchorTimeID, timex.beginPoint, timex.endPoint)
+            timex.tanchor = normalize_time(timex.value)
+        for key, timex in self.timexs.items():
+            try:
+                if not timex.tanchor:
+                    if timex.anchorTimeID:
+                        timex.tanchor = normalize_relative(timex, self.dct if timex.anchorTimeID == 't0' else self.timexs[
+                            timex.anchorTimeID])
+                    elif timex.endPoint:
+                        timex.tanchor = normalize_relative(timex, self.dct if timex.endPoint == 't0' else self.timexs[
+                            timex.endPoint])
+                    elif timex.beginPoint:
+                        timex.tanchor = normalize_relative(timex, self.dct if timex.beginPoint == 't0' else self.timexs[
+                            timex.beginPoint])
+            except Exception as ex:
+                print("Normalize timex error:", key, timex.value)
+        if verbose:
+            for key, timex in self.timexs.items():
+                print(key, timex.content, timex.value, timex.tanchor)
+
+    def normalize_event_value(self, verbose=0):
+        for key, event in self.events.items():
+            try:
+                event.normalize_value()
+            except Exception as ex:
+                print("Normalize event error:", key, event.value)
 
 
 class TempLink:
@@ -214,122 +335,12 @@ class TempLink:
         return "%s-%s" % (self.sour.category, self.targ.category)
 
 
-def last_day_of_month(date):
-    if date.month == 12:
-        return date.replace(day=31)
-    return date.replace(month=date.month+1, day=1) - timedelta(days=1)
-
-def regular_season(value):
-    year = value.split('-')[0]
-    season = value.split('-')[1]
-    if season in ['SP']:
-        begin = datetime.strptime("%s-03-21" % year, '%Y-%m-%d')
-    elif season in ['SU']:
-        begin = datetime.strptime("%s-06-21" % year, '%Y-%m-%d')
-    elif season in ['F', 'FA']:
-        begin = datetime.strptime("%s-09-21" % year, '%Y-%m-%d')
-    elif season in ['W', 'WI']:
-        begin = datetime.strptime("%s-12-21" % year, '%Y-%m-%d')
-    end = begin + relativedelta(months=3) - timedelta(days=1)
-    return (begin, begin, end, end)
-
-def regular_quarter(value):
-    year = value.split('-')[0]
-    quarter = int(value.split('-')[1][1])
-    if quarter == 1:
-        begin = datetime.strptime("%s-01-01" % year, '%Y-%m-%d')
-    elif quarter == 2:
-        begin = datetime.strptime("%s-04-01" % year, '%Y-%m-%d')
-    elif quarter == 3:
-        begin = datetime.strptime("%s-07-01" % year, '%Y-%m-%d')
-    elif quarter == 4:
-        begin = datetime.strptime("%s-10-01" % year, '%Y-%m-%d')
-    end = begin + relativedelta(months=3) - timedelta(days=1)
-    return (begin, begin, end, end)
-
-
-def normalize_time(value):
-    value = value.strip().split('T')[0]
-    if value[0].isdigit():
-        if value.count('-') == 2 and value.split('-')[1].isdigit():
-            return (datetime.strptime(value, '%Y-%m-%d'), datetime.strptime(value, '%Y-%m-%d'))
-        elif value.count('-') == 2 and value.split('-')[1][0] == 'W' and value.split('-')[2] == "WE":
-            year = value.split('-')[0]
-            week = int(value.split('-')[1][1:]) - 1
-            begin  = datetime.strptime("%s-W%i-0" % (year, week), "%Y-W%W-%w") + timedelta(days=6)
-            end = begin + timedelta(days=1)
-            return (begin, begin, end, end)
-        elif value.count('-') == 1:
-            if value.split('-')[-1][0].isdigit():
-                begin = datetime.strptime(value, '%Y-%m')
-                return (begin, begin, last_day_of_month(begin), last_day_of_month(begin))
-            elif value.split('-')[-1][0] in ['W', 'w'] and value.split('-')[-1][1:].isdigit():
-                year = value.split('-')[0]
-                week = int(value.split('-')[1][1:]) - 1
-                begin = datetime.strptime("%s-W%i-0" % (year, week), "%Y-W%W-%w")
-                end = begin + timedelta(days=6)
-                return (begin, begin, end, end)
-            elif value.split('-')[-1][0] in ['Q', 'q']:
-                return regular_quarter(value)
-            elif value.split('-')[-1] in ['SP', 'SU', 'F', 'FA', 'W', 'WI']:
-                return regular_season(value)
-            else:
-                print("time value:", value)
-        elif value.count('-') == 0:
-            begin = datetime.strptime(value, '%Y')
-            end = begin + relativedelta(months=12) - timedelta(days=1)
-            return (begin, begin, end, end)
-    else:
-        return None
-
-def normalize_relative(timex, relative_timex):
-    if not relative_timex.tanchor:
-        return None
-    else:
-        if timex.value[0] == 'P' and timex.value[1:-1].isdigit() and timex.value[-1] in ['Y', 'M', 'W', 'D']:
-            if timex.endPoint:
-                end = relative_timex.tanchor[-1]
-                if timex.value[-1] == 'Y':
-                    begin = end - relativedelta(years=int(timex.value[1:-1])) + relativedelta(days=1)
-                elif timex.value[-1] == 'M':
-                    begin = end - relativedelta(months=int(timex.value[1:-1])) + relativedelta(days=1)
-                elif timex.value[-1] == 'W':
-                    begin = end - relativedelta(weeks=int(timex.value[1:-1])) + relativedelta(days=1)
-                elif timex.value[-1] == 'D':
-                    begin = end - relativedelta(days=int(timex.value[1:-1])) + relativedelta(days=1)
-                return (begin, begin, end, end)
-            elif timex.beginPoint:
-                begin = relative_timex.tanchor[0]
-                if timex.value[-1] == 'Y':
-                    end = begin + relativedelta(years=int(timex.value[1:-1])) - relativedelta(days=1)
-                elif timex.value[-1] == 'M':
-                    end = begin + relativedelta(months=int(timex.value[1:-1])) - relativedelta(days=1)
-                elif timex.value[-1] == 'W':
-                    end = begin + relativedelta(weeks=int(timex.value[1:-1])) - relativedelta(days=1)
-                elif timex.value[-1] == 'D':
-                    end = begin + relativedelta(days=int(timex.value[1:-1])) - relativedelta(days=1)
-                return (begin, begin, end, end)
-        elif timex.value == "PAST_REF":
-            return (None, relative_timex.tanchor[-1])
-        elif timex.value == "FUTURE_REF":
-            return (relative_timex.tanchor[0], None)
-        elif timex.value == "PRESENT_REF":
-            return (relative_timex.tanchor[0], relative_timex.tanchor[1])
-        else:
-            return None
-
-
-
-
-
-
-class RelationGenerator():
+class InduceMethod():
 
     ## we transfer an tanchor into 2 formats
     ## (after YYYY-MM-DD, before YYYY-MM-DD)  one day (certain and uncertain)
     ## (YYYY-MM-DD, YYYY-MM-DD, YYYY-MM-DD, YYYY-MM-DD) multiple days
-    def __init__(self):
-        self.label_dic = {
+    label_dic = {
             "after": "before",
             "before": "after",
             "include": "is_included",
@@ -345,7 +356,12 @@ class RelationGenerator():
             "ended_by": "end",
             }
 
-    def compare_2single(self, sour, targ):
+    @staticmethod
+    def reverse_relation(rel):
+        return InduceMethod.label_dic[rel]
+
+    @staticmethod
+    def compare_2single(sour, targ):
 
         def certain_certain(sour, targ):
             if sour[0] < targ[0]:
@@ -356,17 +372,17 @@ class RelationGenerator():
                 return "same"
 
         def certain_uncertain(sour, targ):
-            if sour[0] <= targ[0]:
+            if None not in [sour[0], targ[0]] and sour[0] <= targ[0]:
                 return "before"
-            elif sour[0] >= targ[1]:
+            elif None not in [sour[0], targ[1]] and sour[0] >= targ[1]:
                 return "after"
             else:
                 return "vague"
 
         def uncertain_uncertain(sour, targ):
-            if sour[1] <= targ[0]:
+            if None not in [sour[1], targ[0]] and sour[1] <= targ[0]:
                 return "before"
-            elif sour[0] >= targ[1]:
+            elif None not in [sour[0], targ[1]] and sour[0] >= targ[1]:
                 return "after"
             elif sour[0] == targ[0] and sour[1] == targ[1]:
                 return "partialvague"
@@ -380,65 +396,79 @@ class RelationGenerator():
         elif sour[0] == sour[1] and targ[0] != targ[1]:     # certain - uncertain single-days
             return certain_uncertain(sour, targ)
         elif sour[0] != sour[1] and targ[0] == targ[1]:     # uncertain - certain single-days
-            return self.label_dic[certain_uncertain(targ, sour)]
+            return InduceMethod.reverse_relation(certain_uncertain(targ, sour))
         else:                                                # uncertain - uncertain single-days
             return uncertain_uncertain(sour, targ)
 
-    def compare_singlemultiple(self, sour, targ):
+    @staticmethod
+    def compare_singlemultiple(sour, targ):
         targ_begin = (targ[0], targ[1])
         targ_end = (targ[2], targ[3])
 
-        if self.compare_2single(sour, targ_begin) in ["before"]:
+        if InduceMethod.compare_2single(sour, targ_begin) in ["before"]:
             return "before"
-        elif self.compare_2single(sour, targ_end) in ["after"]:
+        elif InduceMethod.compare_2single(sour, targ_end) in ["after"]:
             return "after"
-        elif self.compare_2single(sour, targ_begin) in ["after"] and self.compare_2single(sour, targ_end) in ["before"]:
+        elif InduceMethod.compare_2single(sour, targ_begin) in ["after"] and InduceMethod.compare_2single(sour, targ_end) in ["before"]:
             return "is_included"
-        elif self.compare_2single(sour, targ_begin) in ["same"]:
+        elif InduceMethod.compare_2single(sour, targ_begin) in ["same"]:
             return "begin"
-        elif self.compare_2single(sour, targ_end) in ["same"]:
+        elif InduceMethod.compare_2single(sour, targ_end) in ["same"]:
             return "end"
         else:
             return "vague"
 
-    def compare_2multiple(self, sour, targ):
+    @staticmethod
+    def compare_2multiple(sour, targ):
         sour_begin, sour_end = (sour[0], sour[1]), (sour[2], sour[3])
         targ_begin, targ_end = (targ[0], targ[1]), (targ[2], targ[3])
 
-        if self.compare_2single(sour_end, targ_begin) in ["before"]:
+        if InduceMethod.compare_2single(sour_end, targ_begin) in ["before"]:
             return "before"
-        elif self.compare_2single(sour_begin, targ_end) in ["after"]:
+        elif InduceMethod.compare_2single(sour_begin, targ_end) in ["after"]:
             return "after"
-        elif self.compare_2single(sour_begin, targ_begin) in ["same"] and self.compare_2single(sour_end, targ_end) in ["same"]:
+        elif InduceMethod.compare_2single(sour_begin, targ_begin) in ["same"] and InduceMethod.compare_2single(sour_end, targ_end) in ["same"]:
             return "samespan"
-        elif self.compare_2single(sour_begin, targ_begin) in ["after"] and self.compare_2single(sour_end, targ_end) in ["before"]:
+        elif InduceMethod.compare_2single(sour_begin, targ_begin) in ["after"] and InduceMethod.compare_2single(sour_end, targ_end) in ["before"]:
             return "is_included"
-        elif self.compare_2single(sour_begin, targ_begin) in ["before"] and self.compare_2single(sour_end, targ_end) in ["after"]:
+        elif InduceMethod.compare_2single(sour_begin, targ_begin) in ["before"] and InduceMethod.compare_2single(sour_end, targ_end) in ["after"]:
             return "include"
-        elif self.compare_2single(sour_begin, targ_begin) in ["same"] and self.compare_2single(sour_end, targ_end) in ["after"]:
+        elif InduceMethod.compare_2single(sour_begin, targ_begin) in ["same"] and InduceMethod.compare_2single(sour_end, targ_end) in ["after"]:
             return "begun_by"
-        elif self.compare_2single(sour_begin, targ_begin) in ["same"] and self.compare_2single(sour_end, targ_end) in ["before"]:
+        elif InduceMethod.compare_2single(sour_begin, targ_begin) in ["same"] and InduceMethod.compare_2single(sour_end, targ_end) in ["before"]:
             return "begin"
-        elif self.compare_2single(sour_begin, targ_begin) in ["after"] and self.compare_2single(sour_end, targ_end) in ["same"]:
+        elif InduceMethod.compare_2single(sour_begin, targ_begin) in ["after"] and InduceMethod.compare_2single(sour_end, targ_end) in ["same"]:
             return "end"
-        elif self.compare_2single(sour_begin, targ_begin) in ["before"] and self.compare_2single(sour_end, targ_end) in ["same"]:
+        elif InduceMethod.compare_2single(sour_begin, targ_begin) in ["before"] and InduceMethod.compare_2single(sour_end, targ_end) in ["same"]:
             return "ended_by"
-        elif self.compare_2single(sour_begin, targ_begin) in ["before"] and self.compare_2single(sour_end, targ_end) in ["before"] \
-                and self.compare_2single(sour_end, targ_begin) in ["after", "same"]:
+        elif InduceMethod.compare_2single(sour_begin, targ_begin) in ["before"] and InduceMethod.compare_2single(sour_end, targ_end) in ["before"] \
+                and InduceMethod.compare_2single(sour_end, targ_begin) in ["after", "same"]:
             return "overlap"
-        elif self.compare_2single(sour_begin, targ_begin) in ["after"] and self.compare_2single(sour_end, targ_end) in ["after"] \
-                and self.compare_2single(sour_begin, targ_end) in ["before", "same"]:
+        elif InduceMethod.compare_2single(sour_begin, targ_begin) in ["after"] and InduceMethod.compare_2single(sour_end, targ_end) in ["after"] \
+                and InduceMethod.compare_2single(sour_begin, targ_end) in ["before", "same"]:
             return "overlap"
-        elif self.compare_2single(sour_begin, targ_begin) in ["partialvague"] and self.compare_2single(sour_end, targ_end) in ["same"]:
+        elif InduceMethod.compare_2single(sour_begin, targ_begin) in ["partialvague"] and InduceMethod.compare_2single(sour_end, targ_end) in ["same"]:
             return "partialvague"
-        elif self.compare_2single(sour_begin, targ_begin) in ["same"] and self.compare_2single(sour_end, targ_end) in ["partialvague"]:
+        elif InduceMethod.compare_2single(sour_begin, targ_begin) in ["same"] and InduceMethod.compare_2single(sour_end, targ_end) in ["partialvague"]:
             return "partialvague"
-        elif self.compare_2single(sour_begin, targ_begin) in ["partialvague"] and self.compare_2single(sour_end, targ_end) in ["partialvague"]:
+        elif InduceMethod.compare_2single(sour_begin, targ_begin) in ["partialvague"] and InduceMethod.compare_2single(sour_end, targ_end) in ["partialvague"]:
             return "partialvague"
         else:
             return "vague"
 
-import unittest
+    @staticmethod
+    def induce_relation(sour, targ):
+        if not sour.tanchor or not targ.tanchor:
+            return "vague"
+        elif len(sour.tanchor) == 2 and len(targ.tanchor) == 2:
+            return InduceMethod.compare_2single(sour.tanchor, targ.tanchor)
+        elif len(sour.tanchor) == 2 and len(targ.tanchor) == 4:
+            return InduceMethod.compare_singlemultiple(sour.tanchor, targ.tanchor)
+        elif len(sour.tanchor) == 4 and len(targ.tanchor) == 2:
+            return InduceMethod.reverse_relation(InduceMethod.compare_singlemultiple(targ.tanchor, sour.tanchor))
+        elif len(sour.tanchor) == 4 and len(targ.tanchor) == 4:
+            return InduceMethod.compare_2multiple(sour.tanchor, targ.tanchor)
+
 
 class TestTempLink(unittest.TestCase):
 
