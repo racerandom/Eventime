@@ -1,5 +1,6 @@
 import warnings
 warnings.simplefilter("ignore", UserWarning)
+import logging
 
 import torch
 import torch.autograd as autograd
@@ -53,7 +54,7 @@ class TempOptimizer(nn.Module):
             self.param_space = {
                             'filter_nb': range(100, 500 + 1, 10),
                             'kernel_len': [2, 3, 4, 5, 6, 7, 8],
-                            'batch_size': [32, 64, 128],
+                            'batch_size': [16, 32, 64, 128],
                             'fc_hidden_dim': range(100, 500 + 1, 20),
                             'pos_dim': range(5, 30 + 1, 5),
                             'dropout_emb': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
@@ -66,7 +67,7 @@ class TempOptimizer(nn.Module):
         elif classifier in ['RNN', 'AttnRNN']:
             self.param_space = {
                 'filter_nb': range(100, 500 + 1, 10),
-                'batch_size': [16],
+                'batch_size': [16, 32, 64, 128],
                 'fc_hidden_dim': range(100, 500 + 1, 10),
                 'pos_dim': range(5, 30 + 1, 5),
                 'dropout_emb': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
@@ -98,17 +99,22 @@ class TempOptimizer(nn.Module):
                                                                                  len(self.DEV_SET),
                                                                                  len(self.TEST_SET)))
         self.train_data, self.dev_data, self.test_data = self.generate_data()
-        self.GLOB_BEST_MODEL_PATH = "models/glob_best_model_c=%s_pre=%s_wd=%i_ep=%i_me=%i.pth" % (classifier,
-                                                                            pretrained_file.split('/')[-1].split('.')[0],
-                                                                            word_dim,
-                                                                            epoch_nb,
-                                                                            max_evals)
+        self.config = "c=%s_pre=%s_r=%.1f_wd=%i_ep=%i_me=%i" % (classifier,
+                                                                pretrained_file.split('/')[-1].split('.')[0],
+                                                                train_rate,
+                                                                word_dim,
+                                                                epoch_nb,
+                                                                max_evals)
+        self.GLOB_BEST_MODEL_PATH = "models/glob_best_model_%s.pth" % self.config
         self.glob_best_score = None
         self.best_scores = []
         self.val_losses = []
         self.val_acces = []
         self.test_losses = []
         self.test_acces = []
+        logging.basicConfig(filename='logs/%s.log' % self.config,
+                            filemode='w',
+                            level=logging.INFO)
 
 
     def generate_data(self):
@@ -148,7 +154,7 @@ class TempOptimizer(nn.Module):
             for key, values in self.param_space.items():
                 params[key] = random.choice(values)
 
-            print('[optim %i]: ' % eval_i, 'params:', params)
+            logging.info('[optim %i]: params: %s' % (eval_i, params))
             self.train_model(**params)
 
         # print(self.best_scores)
@@ -180,8 +186,8 @@ class TempOptimizer(nn.Module):
             acc = (pred == data[REL_COL]).sum().item() / float(pred.numel())
 
             if is_report:
-                print('-' * 80)
-                print(classification_report(pred, data[REL_COL],
+                logging.info('-' * 80)
+                logging.info(classification_report(pred, data[REL_COL],
                                             target_names=action_labels))
 
             return loss, acc
@@ -250,10 +256,10 @@ class TempOptimizer(nn.Module):
                                lr=params['lr'],
                                weight_decay=params['weight_decay'])  ##  fixed a error when using pre-trained embeddings
 
-        print(model)
-        for name, param in model.named_parameters():
-            if param.requires_grad:
-                print('*', name)
+        # print(model)
+        # for name, param in model.named_parameters():
+        #     if param.requires_grad:
+        #         print('*', name)
 
         for epoch in range(1, self.EPOCH_NUM + 1):
             total_loss = []
@@ -311,14 +317,16 @@ class TempOptimizer(nn.Module):
                                         }, glob_is_best, self.GLOB_BEST_MODEL_PATH)
 
 
-            print('Epoch %i' % epoch, ',loss: %.4f' % (sum(total_loss) / float(len(total_loss))),
-                  ', accuracy: %.4f' % (sum(total_acc) / float(len(total_acc))),
-                  ', %.5s seconds' % (time.time() - start_time),
-                  ', dev loss: %.4f' % (dev_loss),
-                  ', dev accuracy: %.4f' % (dev_acc),
-                  "| test loss: %.4f, acc %.4f" % (test_loss, test_acc),
-                  save_info
-                  )
+            logging.info("Epoch %i ,loss: %.4f, accuracy: %.4f, %.5s seconds, dev loss: %.4f, dev accuracy: %.4f | test loss: %.4f, acc %.4f %s" % (
+                                                                   epoch,
+                                                                   sum(total_loss) / float(len(total_loss)),
+                                                                   sum(total_acc) / float(len(total_acc)),
+                                                                   time.time() - start_time,
+                                                                   dev_loss,
+                                                                   dev_acc,
+                                                                   test_loss,
+                                                                   test_acc,
+                                                                   save_info))
 
         self.best_scores.append(local_best_state['best_score'])
         self.val_losses.append(local_best_state['val_loss'])
@@ -329,17 +337,20 @@ class TempOptimizer(nn.Module):
         glob_checkpoint = torch.load(self.GLOB_BEST_MODEL_PATH,
                                 map_location=lambda storage, loc: storage)
 
-        print("Current params:", params)
-        print("best loss of current params: %.4f" % local_best_state['val_loss'], ', acc: %.4f' % local_best_state['val_acc'],
-              "| test loss: %.4f, acc %.4f" % (local_best_state['test_loss'], local_best_state['test_acc']))
-        print("params of glob best loss:", glob_checkpoint['params'])
-        print("glob monitor %s, best_score: %.4f, loss: %.4f,  acc: %.4f', | test loss: %.4f, acc %.4f" % (glob_checkpoint['monitor'],
+        logging.info("Current params: %s" % params)
+        logging.info("best loss of current params: %.4f, acc: %.4f | test loss: %.4f, acc %.4f" % (local_best_state['val_loss'],
+                                                                                                   local_best_state['val_acc'],
+                                                                                                   local_best_state['test_loss'],
+                                                                                                   local_best_state['test_acc']))
+        logging.info("params of glob best loss: %s" % glob_checkpoint['params'])
+        logging.info("glob monitor %s, best_score: %.4f, loss: %.4f,  acc: %.4f', | test loss: %.4f, acc %.4f" % (
+                                                                                        glob_checkpoint['monitor'],
                                                                                         glob_checkpoint['best_score'],
                                                                                         glob_checkpoint['val_loss'],
                                                                                         glob_checkpoint['val_acc'],
                                                                                         glob_checkpoint['test_loss'],
                                                                                         glob_checkpoint['test_acc']))
-        print("*" * 80)
+        logging.info("*" * 80)
 
 
 
@@ -349,8 +360,9 @@ def main():
     link_type = 'Event-Timex'
     pkl_file = "data/0531_%s.pkl" % (link_type)
 
-    temp_extractor = TempOptimizer(pkl_file, classifier, 300, 5, link_type, 'val_loss', train_rate=1.0, max_evals=2,
-                                   pretrained_file='Resources/embed/deps.words.bin')
+    temp_extractor = TempOptimizer(pkl_file, classifier, 300, 3, link_type, 'val_loss', train_rate=1.0, max_evals=1,
+                                   pretrained_file='Resources/embed/deps.words.bin'
+                                   )
     temp_extractor.optimize_model()
     temp_extractor.eval_best_model()
     # params = {'classifier':classifier, 'filter_nb': 120, 'kernel_len': 3, 'batch_size': 128, 'fc_hidden_dim': 240, 'pos_dim': 10, 'dropout_emb': 0.0, 'dropout_cat': 0.5, 'dropout_fc': 0.5, 'lr': 0.01, 'weight_decay': 1e-05, 'word_dim': 300}
