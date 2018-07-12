@@ -33,8 +33,10 @@ INPUT_COL, TARGET_COL = 0, 1
 
 
 def batch_to_device(inputs, device):
+    device_inputs = []
     for input in inputs:
-        input.to(device=device)
+        device_inputs.append(input.to(device=device))
+    return device_inputs
 
 
 def is_best_score(score, best_score, monitor):
@@ -175,18 +177,18 @@ class TempOptimizer(nn.Module):
         self.train_feats, self.train_target = prepare_feats_dataset(self.doc_dic, self.TRAIN_SET, self.word_idx, self.pos_idx, self.rel_idx,
                                                 self.MAX_LEN, self.max_token_len, link_type=self.link_type, feat_types=self.feat_types)
 
-        self.dev_feats, self.dev_target = prepare_feats_dataset(self.doc_dic, self.DEV_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
+        dev_feats, dev_target = prepare_feats_dataset(self.doc_dic, self.DEV_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
                                               self.max_token_len, link_type=self.link_type, feat_types=self.feat_types)
 
-        self.test_feats, self.test_target = prepare_feats_dataset(self.doc_dic, self.TEST_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
+        test_feats, test_target = prepare_feats_dataset(self.doc_dic, self.TEST_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
                                                self.max_token_len, link_type=self.link_type, feat_types=self.feat_types)
 
-        batch_to_device(self.dev_feats, device)
-        self.dev_target.to(device=device)
+        self.dev_feats = batch_to_device(dev_feats, device)
+        self.dev_target = dev_target.to(device=device)
         print('dev target is cuda:', self.dev_target.is_cuda)
 
-        batch_to_device(self.test_feats, device)
-        self.test_target.to(device=device)
+        self.test_feats = batch_to_device(test_feats, device)
+        self.test_target = test_target.to(device=device)
         print('test target is cuda:', self.test_target.is_cuda)
 
 
@@ -319,9 +321,8 @@ class TempOptimizer(nn.Module):
             start_time = time.time()
             for step, train_sample in enumerate(train_data_loader):
 
-                train_feats, train_target = train_sample[:-1], train_sample[-1]
-                batch_to_device(train_feats, device)
-                train_target.to(device=device)
+                train_feats = batch_to_device(train_sample[:-1], device)
+                train_target = train_sample[-1].to(device=device)
 
                 model.train()
                 # word_input, position_input, target = word_input.to(device), position_input.to(device), target.to(device)
