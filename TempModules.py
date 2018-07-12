@@ -169,25 +169,37 @@ class TempCNN(nn.Module):
 
 class TempAttnCNN(nn.Module):
 
-    def __init__(self, seq_len, action_size, verbose=0, **params):
+    def __init__(self, seq_len, token_len, action_size, verbose=0, **params):
         super(TempAttnCNN, self).__init__()
         self.verbose_level = verbose
+        self.embedding_dropout = nn.Dropout(p=params['dropout_emb'])
         self.c1 = nn.Conv1d(params['word_dim'] + 2 * params['pos_dim'], params['filter_nb'], params['kernel_len'])
         self.attn_W = torch.nn.Parameter(torch.randn(params['filter_nb'], requires_grad=True))
+        self.tok_p1 = nn.MaxPool1d(token_len)
         self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
-        self.fc1 = nn.Linear(params['filter_nb'], params['fc_hidden_dim'])
+        self.fc1 = nn.Linear(params['filter_nb'] + 2 * params['word_dim'] + 2 * params['pos_dim'], params['fc_hidden_dim'])
         self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
         self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
 
-    def forward(self, word_input, position_input):
+    def forward(self, feat_types, *feat_inputs):
 
+        seq_inputs = []
+
+        for feat, feat_type in zip(feat_inputs, feat_types):
+            if feat_type.split('_')[-1] == 'seq':
+                if self.verbose_level:
+                    print(feat_type, feat.shape)
+                seq_inputs.append(feat)
         ## input (batch_size, seq_len, input_dim) => (batch_size, input_dim, seq_len)
-        cat_input = torch.cat((word_input, position_input), dim=2).transpose(1, 2)
-        batch_size = cat_input.shape[0]
-        if self.verbose_level:
-            print("cat_input size:", cat_input.shape)
+        seq_inputs = torch.cat(seq_inputs, dim=2).transpose(1, 2)
+        embed_inputs = self.embedding_dropout(seq_inputs)
 
-        c1_out = F.relu(self.c1(cat_input))
+
+        batch_size = embed_inputs.shape[0]
+        if self.verbose_level:
+            print("embed_input size:", embed_inputs.shape)
+
+        c1_out = F.relu(self.c1(embed_inputs))
         if self.verbose_level:
             print("c1_output size:", c1_out.shape)
 
@@ -201,8 +213,15 @@ class TempAttnCNN(nn.Module):
         # if self.verbose_level:
         #     print("p1_output size:", p1_out.shape)
 
-        # cat_out = torch.cat((attn_out.squeeze(), position_input[:, 0, :], position_input[:, -1, :]), dim=1)
-        cat_out = self.cat_dropout(attn_out.squeeze())
+        cat_inputs = [attn_out.squeeze()]
+        for feat, feat_type in zip(feat_inputs, feat_types):
+            if feat_type.split('_')[-1] != 'seq':
+                if self.verbose_level:
+                    print(feat_type, feat.shape)
+                    print('tok pool:', self.tok_p1(feat.transpose(1, 2)).squeeze(-1).shape)
+                cat_inputs.append(self.tok_p1(feat.transpose(1, 2)).squeeze(-1))
+        cat_out = torch.cat(cat_inputs, dim=1)
+        cat_out = self.cat_dropout(cat_out)
         # if self.verbose_level:
         #     print("cat_output size:", cat_out.shape)
 
