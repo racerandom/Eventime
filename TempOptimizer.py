@@ -34,7 +34,8 @@ INPUT_COL, TARGET_COL = 0, 1
 
 def batch_to_device(inputs, device):
     for input in inputs:
-        input.to(device)
+        input.to(device=device)
+    return inputs
 
 
 def is_best_score(score, best_score, monitor):
@@ -181,11 +182,11 @@ class TempOptimizer(nn.Module):
         self.test_data = prepare_feats_dataset(self.doc_dic, self.TEST_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
                                                self.max_token_len, link_type=self.link_type, feat_types=self.feat_types)
 
-        batch_to_device(self.dev_data[0], device)
-        batch_to_device(self.dev_data[1], device)
+        self.dev_data[0] = batch_to_device(self.dev_data[0], device)
+        self.dev_data[1].to(device=device)
 
-        batch_to_device(self.test_data[0], device)
-        batch_to_device(self.test_data[1], device)
+        self.dev_data[0] = batch_to_device(self.test_data[0], device)
+        self.test_data[1].to(device=device)
 
 
 
@@ -318,8 +319,8 @@ class TempOptimizer(nn.Module):
             for step, train_sample in enumerate(train_data_loader):
 
                 train_feats, train_target = train_sample[:-1], train_sample[-1]
-                batch_to_device(train_feats, device)
-                batch_to_device(train_target, device)
+                train_feats = batch_to_device(train_feats, device)
+                train_target.to(device=device)
 
                 model.train()
                 # word_input, position_input, target = word_input.to(device), position_input.to(device), target.to(device)
