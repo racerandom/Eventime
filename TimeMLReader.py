@@ -5,8 +5,8 @@ import traceback
 from nltk import sent_tokenize, word_tokenize
 from nltk.tokenize.stanford import StanfordTokenizer
 
-from TempMention import Token, Timex, Event, Signal
-from TempLink import TimeMLDoc, TempLink, InduceMethod
+from TempObject import *
+from TempOrder import InduceMethod
 from TempNormalization import *
 import TempUtils
 
@@ -51,36 +51,40 @@ def load_anchorml(file_name):
     for elem in root.iter():
         if elem.tag == 'TEXT':
             if elem.text:
-                toks = elem.text.split()
-                for i in range(len(toks)):
-                    tokenized = word_tokenize(toks[i])
-                    for j in range(len(tokenized)):
-                        tokc = Token(content=tokenized[j], tok_id=len(doc.tokens))
-                        doc.tokens.append(tokc)
+                # toks = elem.text.split()
+                # for i in range(len(toks)):
+                tokenized = word_tokenize(elem.text)
+                for j in range(len(tokenized)):
+                    tokc = Token(content=tokenized[j], tok_id=len(doc.tokens))
+                    doc.tokens.append(tokc)
             for mention_elem in elem:
-                toks = mention_elem.text.split()
+                # toks = mention_elem.text.split()
                 tok_ids = []
-                for i in range(len(toks)):
-                    tokenized = word_tokenize(toks[i])
-                    for j in range(len(tokenized)):
-                        tokc = Token(content=tokenized[j], tok_id=len(doc.tokens))
-                        tok_ids.append(tokc.tok_id)
-                        doc.tokens.append(tokc)
+                content = []
+                # for i in range(len(toks)):
+                #     tokenized = word_tokenize(toks[i])
+                #     content.extend(tokenized)
+                tokenized = word_tokenize(mention_elem.text)
+                for j in range(len(tokenized)):
+                    tokc = Token(content=tokenized[j], tok_id=len(doc.tokens))
+                    content.append(tokenized[j])
+                    tok_ids.append(tokc.tok_id)
+                    doc.tokens.append(tokc)
                 if mention_elem.tag == "EVENT":
-                    doc.addEvent(Event(content=' '.join(toks), tok_ids=tok_ids, **mention_elem.attrib))
+                    doc.addEvent(Event(content=' '.join(content), tok_ids=tok_ids, **mention_elem.attrib))
                 elif mention_elem.tag == "TIMEX3":
-                    doc.addTimex(Timex(content=' '.join(toks), tok_ids=tok_ids, **mention_elem.attrib))
+                    doc.addTimex(Timex(content=' '.join(content), tok_ids=tok_ids, **mention_elem.attrib))
                 elif mention_elem.tag == "SIGNAL":
-                    doc.addSignal(Signal(content=' '.join(toks), tok_ids=tok_ids, **mention_elem.attrib))
+                    doc.addSignal(Signal(content=' '.join(content), tok_ids=tok_ids, **mention_elem.attrib))
                 else:
                     raise Exception("Unknown mention type: %s" % (mention_elem.tag))
                 if mention_elem.tail:
-                    toks = mention_elem.tail.split()
-                    for i in range(len(toks)):
-                        tokenized = word_tokenize(toks[i])
-                        for j in range(len(tokenized)):
-                            tokc = Token(content=tokenized[j], tok_id=len(doc.tokens))
-                            doc.tokens.append(tokc)
+                #     toks = mention_elem.tail.split()
+                #     for i in range(len(toks)):
+                    tokenized = word_tokenize(mention_elem.tail)
+                    for j in range(len(tokenized)):
+                        tokc = Token(content=tokenized[j], tok_id=len(doc.tokens))
+                        doc.tokens.append(tokc)
     return doc
 
 

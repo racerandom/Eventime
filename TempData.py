@@ -1,5 +1,4 @@
-from TempMention import Token, Mention, Event, Timex, Signal
-from TempLink import TimeMLDoc, TempLink
+from TempObject import *
 from TempUtils import *
 from TimeMLReader import *
 
@@ -73,10 +72,12 @@ class MultipleDatasets(Data.Dataset):
     def __len__(self):
         return self.tensors[0].size(0)
 
+
 def load_doc(pickle_file):
     with open(pickle_file, 'rb') as f:
         doc_list = pickle.load(f)
     return doc_list
+
 
 def save_doc(doc_data, pickle_file='data/doc_list.pkl'):
 
@@ -84,34 +85,65 @@ def save_doc(doc_data, pickle_file='data/doc_list.pkl'):
         pickle.dump(doc_data, f)
     print("Successfully save '%s'..." % pickle_file)
 
-def prepare_data(doc_dic, data_set, word_idx, pos_idx, rel_idx, max_len, link_type):
+
+def prepare_dataset(doc_dic, dataset, word_idx, pos_idx, rel_idx, max_len, link_type):
     words, pos, rels = [], [], []
 
     for doc_id, doc in doc_dic.items():
-        if doc_id not in data_set:
+        if doc_id not in dataset:
             continue
-        # print(doc_id)
-        if link_type in ['Event-Timex', 'Timex-Event']:
-            links = doc.event_timex
-        elif link_type in ['Event-DCT']:
-            links = doc.event_dct
-        elif link_type in ['Event-Event']:
-            links = doc.event_event
-
-        for link in links:
+        for link in doc.get_links_by_type(link_type):
             words.append(link.interwords)
             pos.append(link.interpos)
             rels.append(link.rel)
-            # print(link.sour.content, link.targ.content)
-            # print(link.interwords)
-            # print(link.interpos)
-            # print(link.rel)
-            # print('*' * 80)
-        # print([ tok.content for tok in doc.tokens if "'" in tok.content ])
     train_w_in = torch.tensor(padding(prepare_sequence(words, word_idx), max_len))
     train_p_in = torch.tensor(padding_pos(prepare_sequence_pos(pos, pos_idx), max_len))
     train_r_in = torch.tensor(prepare_sequence_rel(rels, rel_idx))
     return train_w_in, train_p_in, train_r_in
+
+
+## generate a list of feat tensor and target tensor of a given dataset
+def prepare_feats_dataset(doc_dic, dataset, word_idx, dist_idx, rel_idx, max_len, max_token_len, link_type, feat_types=['token_seq',
+                                                                                                        'sour_dist_seq',
+                                                                                                        'targ_dist_seq',
+                                                                                                        'sour_token',
+                                                                                                        'targ_token',
+                                                                                                        'sour_dist',
+                                                                                                        'targ_dist']):
+    feats_list = []
+
+    for feat_type in feat_types:
+        feat = []
+        for doc_id, doc in doc_dic.items():
+            if doc_id not in dataset:
+                continue
+            for link in doc.get_links_by_type(link_type):
+                feat.append(link.feat_inputs[feat_type])
+                if len(link.sour.tok_ids) == 8 or len(link.targ.tok_ids) == 8:
+                    print(link.targ.tok_ids, link.targ.content)
+
+        if feat_type in ['token_seq']:
+            feat_tensor = torch.tensor(padding_2d(prepare_seq_2d(feat, word_idx), max_len))
+        elif feat_type in ['sour_dist_seq', 'targ_dist_seq']:
+            feat_tensor = torch.tensor(padding_2d(prepare_seq_2d(feat, dist_idx), max_len))
+        elif feat_type in ['sour_token', 'targ_token']:
+            feat_tensor = torch.tensor(padding_2d(prepare_seq_2d(feat, word_idx), max_token_len))
+        elif feat_type in ['sour_dist', 'targ_dist']:
+            feat_tensor = torch.tensor(padding_2d(prepare_seq_2d(feat, dist_idx), max_token_len))
+        else:
+            print("ERROR feat type: %s" % feat_type)
+        feats_list.append(feat_tensor)
+    # target_list = prepare_seq_1d([[link.rel for link in doc.get_links_by_type(link_type)] for doc, doc_id in doc_dic.items() if doc_id in dataset], rel_idx)
+
+    target_list = []
+    for doc_id, doc in doc_dic.items():
+        if doc_id not in dataset:
+            continue
+        for link in doc.get_links_by_type(link_type):
+            target_list.append(link.rel)
+    target_tensor = torch.tensor(prepare_seq_1d(target_list, rel_idx))
+    return feats_list, target_tensor
+
 
 def prepare_artificial_classification():
     VOCAB_SIZE = 100
@@ -131,45 +163,28 @@ def prepare_artificial_classification():
 ## 2. normalize the tanchors of all the timex entities
 ## 3. normalize the tanchors of all the events
 ## 4. induce relations of mention pairs
-def doc2pkl(anchorml_dir, pkl_file, link_type, sent_win=1):
+def pickle_doc(anchorml_dir, pkl_file, link_type, sent_win=1):
     anchorml_list = [os.path.join(anchorml_dir, filename) for filename in sorted(os.listdir(anchorml_dir))]
     doc_dic, label_dic = {}, defaultdict(dict)
     non_count = 0
     for filename in anchorml_list:
         try:
             doc = load_anchorml(filename)
+            doc.setSentIds2mention()  # set a sent_id to each mention in a doc
+            doc.normalize_timex_value()
+            doc.normalize_event_value()
+            for event in doc.events.values():
+                if not event.tanchor:
+                    non_count += 1
+            doc.geneEventDCTPair()
+            doc.geneEventTimexPair(sent_win)
+            doc.geneEventsPair(sent_win)
+            for link in doc.get_links_by_type(link_type):
+                label_dic[link_type][link.rel] = label_dic[link_type].setdefault(link.rel, 0) + 1
+            doc_dic[doc.docid] = doc
         except Exception as ex:
             traceback.print_exc()
             print(filename, ex)
-        doc.setSentIds2mention()  # set a sent_id to each mention in a doc
-        doc.normalize_timex_value()
-        doc.normalize_event_value()
-        for event in doc.events.values():
-            if not event.tanchor:
-                non_count += 1
-        if link_type in ['ALL', 'all']:
-            doc.geneEventDCTPair()
-            doc.geneEventTimexPair(sent_win)
-            doc.geneEventsPair(sent_win)
-            for link in doc.event_dct:
-                label_dic['Event-DCT'][link.rel] = label_dic['Event-DCT'].setdefault(link.rel, 0) + 1
-            for link in doc.event_timex:
-                label_dic['Event-Timex'][link.rel] = label_dic['Event-Timex'].setdefault(link.rel, 0) + 1
-            for link in doc.events:
-                label_dic['Event-Event'][link.rel] = label_dic['Event-Event'].setdefault(link.rel, 0) + 1
-        elif link_type in ['Event-DCT']:
-            doc.geneEventDCTPair()
-            for link in doc.event_dct:
-                label_dic[link_type][link.rel] = label_dic[link_type].setdefault(link.rel, 0) + 1
-        elif link_type in ['Event-Timex', 'Timex-Event']:
-            doc.geneEventTimexPair(sent_win)
-            for link in doc.event_timex:
-                label_dic[link_type][link.rel] = label_dic[link_type].setdefault(link.rel, 0) + 1
-        elif link_type in ['Event-Event']:
-            doc.geneEventsPair(sent_win)
-            for link in doc.events:
-                label_dic[link_type][link.rel] = label_dic[link_type].setdefault(link.rel, 0) + 1
-        doc_dic[doc.docid] = doc
 
     save_doc(doc_dic, pkl_file)
 
@@ -181,41 +196,45 @@ def doc2pkl(anchorml_dir, pkl_file, link_type, sent_win=1):
         print("label %s, num %i, rate %.2f%%" % (label, count, count * 100 / all_count))
 
 
-def prepare(is_pretrained=False):
-
-    doc_dic, max_len, pos_idx, word_idx, rel_idx, pre_model = prepare_global(is_pretrained)
-
-    train_words, train_pos, train_rels = prepare_data(doc_dic, TBD_TRAIN,
-                                                      types=['Event-Event']
-                                                      )
-    dev_words, dev_pos, dev_rels = prepare_data(doc_dic, TBD_DEV,
-                                                types=['Event-Event']
-                                                )
-    test_words, test_pos, test_rels = prepare_data(doc_dic, TBD_TEST,
-                                                   types=['Event-Event']
-                                                   )
-
-    train_w_in = torch.tensor(padding(prepare_sequence(train_words, word_idx), max_len))
-    train_p_in = torch.tensor(padding_pos(prepare_sequence_pos(train_pos, pos_idx), max_len))
-    train_r_in = torch.tensor(prepare_sequence_rel(train_rels, rel_idx))
-    return train_w_in, train_p_in, train_r_in, max_len, pos_idx, word_idx, rel_idx, pre_model
-
-
-
-## read the doc list from pkl and make a preparation of embedding processing.
+## 1) read the doc list from pkl and
+## 2) create feat inputs for links
+## 3) make a preparation of embedding processing.
 def prepare_global(pkl_file, pretrained_file, link_type='Event-Timex'):
+
     doc_dic = load_doc(pkl_file)
-    max_len = max_length(doc_dic, link_type)
-    pos_idx = pos2idx(doc_dic, link_type)
+
+    ## add feats into link.feat_inputs
+    for doc in doc_dic.values():
+        for link in doc.get_links_by_type(link_type):
+            tokens = doc.geneSentTokens(link.sour, link.targ)
+            link.feat_inputs['token_seq'] = [tok.content for tok in tokens]
+            link.feat_inputs['sour_dist_seq'], link.feat_inputs['targ_dist_seq'] = geneSentPostion(tokens,
+                                                                                          link.sour,
+                                                                                          link.targ)
+            link.feat_inputs['sour_token'] = link.sour.content.split()
+            link.feat_inputs['targ_token'] = link.targ.content.split()
+            link.feat_inputs['sour_dist'], link.feat_inputs['targ_dist']  = getEndPosition(link.sour, link.targ)
+
+    ## create word index map or pre-trained embedding
     if pretrained_file and os.path.isfile(os.path.join(os.getenv("HOME"), pretrained_file)):
         pre_model, word_idx = load_pre(os.path.join(os.getenv("HOME"), pretrained_file))
     else:
         pre_model = None
-        word_idx = word2idx(doc_dic, link_type)
+        word_idx = feat2idx(doc_dic, 'token_seq', link_type, feat_idx={'zeropadding': 0})
+
+    ## create feat index map
+    left_dist_idx = feat2idx(doc_dic, 'sour_dist_seq', link_type, feat_idx={'zeropadding': 0})
+    dist_idx = feat2idx(doc_dic, 'targ_dist_seq', link_type, feat_idx=left_dist_idx)
     rel_idx = rel2idx(doc_dic, link_type)
-    print('max seq length:', max_len, ', vocab size:', len(word_idx), ', position size:', len(pos_idx),
-          ', relation categories:', len(rel_idx))
-    return doc_dic, word_idx, pos_idx, rel_idx, max_len, pre_model
+    max_len = max_length(doc_dic, 'token_seq', link_type)
+    max_token_len = max(max_length(doc_dic, 'sour_dist', link_type), max_length(doc_dic, 'sour_dist', link_type))
+    print('max seq length:', max_len,
+          ', vocab size:', len(word_idx),
+          ', position size:', len(dist_idx),
+          ', relation categories:', len(rel_idx),
+          ', max sequence lenth:', max_len,
+          ', max mention length:', max_token_len)
+    return doc_dic, word_idx, dist_idx, rel_idx, max_len, max_token_len, pre_model
 
 
 def sample_train(all, dev, test, rate=1.0, seed=123):
@@ -229,14 +248,37 @@ def main():
     anchorml = "/Users/fei-c/Resources/timex/Release0531/ALL"
     link_type = 'Event-Timex'
     pkl_file = "data/0531_%s.pkl" % (link_type)
-    doc2pkl(anchorml, pkl_file, link_type)
-    doc_dic, word_idx, pos_idx, rel_idx, max_len, pre_model = prepare_global(pkl_file, None)
+    pickle_doc(anchorml, pkl_file, link_type)
+    # doc_dic, word_idx, pos_idx, rel_idx, max_len, pre_model = prepare_global(pkl_file, None)
     # print(len(doc_dic), len(word_idx), len(rel_idx), max_len)
     # prepare_data(doc_dic, TA_TEST, word_idx, pos_idx, rel_idx, max_len, link_type)
     #
     # TA_TRAIN = sample_train(doc_dic.keys(), TA_DEV, TA_TEST, rate=0.5)
     # print(len(TA_TRAIN), len(TA_DEV), len(TA_TEST), (len(TA_TRAIN) + len(TA_DEV) + len(TA_TEST)))
 
-
 if __name__ == '__main__':
     main()
+
+
+import unittest
+
+class TestTempData(unittest.TestCase):
+
+    def test_prepare_global(self):
+        link_type = 'Event-Timex'
+        pkl_file = "data/0531_%s.pkl" % (link_type)
+        doc_dic, word_idx, dist_idx, rel_idx, max_len, max_token_len, pre_model = prepare_global(pkl_file, None)
+
+    def test_prepare_feat_dataset(self):
+        link_type = 'Event-Timex'
+        pkl_file = "data/0531_%s.pkl" % (link_type)
+        doc_dic, word_idx, dist_idx, rel_idx, max_len, max_token_len, pre_model = prepare_global(pkl_file, None)
+        train_inputs, train_target = prepare_feats_dataset(doc_dic, TA_TEST, word_idx, dist_idx, rel_idx, max_len, max_token_len, link_type, feat_types=['token_seq',
+                                                                                                                                                        'sour_dist_seq',
+                                                                                                                                                        'targ_dist_seq',
+                                                                                                                                                        'sour_token',
+                                                                                                                                                        'targ_token',
+                                                                                                                                                        'sour_dist',
+                                                                                                                                                        'targ_dist'])
+        print([feat.shape for feat in train_inputs], train_target.shape)
+
