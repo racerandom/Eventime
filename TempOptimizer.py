@@ -35,7 +35,6 @@ INPUT_COL, TARGET_COL = 0, 1
 def batch_to_device(inputs, device):
     for input in inputs:
         input.to(device=device)
-    return inputs
 
 
 def is_best_score(score, best_score, monitor):
@@ -161,32 +160,34 @@ class TempOptimizer(nn.Module):
 
     def shape_dataset(self):
 
-        print('train feat number: %i, target length: %i' % (len(self.train_data[0]), len(self.train_data[1])))
-        print('train feat shapes:', [feat.shape for feat in self.train_data[0]])
+        print('train feat number: %i, target length: %i' % (len(self.train_feats), len(self.train_target)))
+        print('train feat shapes:', [feat.shape for feat in self.train_feats])
 
-        print('dev feat number: %i, target length: %i' % (len(self.dev_data[0]), len(self.dev_data[1])))
-        print('dev feat shapes:', [feat.shape for feat in self.dev_data[0]])
+        print('dev feat number: %i, target length: %i' % (len(self.dev_feats), len(self.dev_target)))
+        print('dev feat shapes:', [feat.shape for feat in self.dev_feats])
 
-        print('test feat number: %i, target length: %i' % (len(self.test_data[0]), len(self.test_data[1])))
-        print('test feat shapes:', [feat.shape for feat in self.test_data[0]])
+        print('test feat number: %i, target length: %i' % (len(self.test_feats), len(self.test_target)))
+        print('test feat shapes:', [feat.shape for feat in self.test_feats])
 
 
     def generate_feats_dataset(self):
 
-        self.train_data = prepare_feats_dataset(self.doc_dic, self.TRAIN_SET, self.word_idx, self.pos_idx, self.rel_idx,
+        self.train_feats, self.train_target = prepare_feats_dataset(self.doc_dic, self.TRAIN_SET, self.word_idx, self.pos_idx, self.rel_idx,
                                                 self.MAX_LEN, self.max_token_len, link_type=self.link_type, feat_types=self.feat_types)
 
-        self.dev_data = prepare_feats_dataset(self.doc_dic, self.DEV_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
+        self.dev_feats, self.dev_target = prepare_feats_dataset(self.doc_dic, self.DEV_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
                                               self.max_token_len, link_type=self.link_type, feat_types=self.feat_types)
 
-        self.test_data = prepare_feats_dataset(self.doc_dic, self.TEST_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
+        self.test_feats, self.test_target = prepare_feats_dataset(self.doc_dic, self.TEST_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
                                                self.max_token_len, link_type=self.link_type, feat_types=self.feat_types)
 
-        self.dev_data[0] = batch_to_device(self.dev_data[0], device)
-        self.dev_data[1].to(device=device)
+        batch_to_device(self.dev_feats, device)
+        self.dev_target.to(device=device)
+        print('dev target is cuda:', self.dev_target.is_cuda)
 
-        self.dev_data[0] = batch_to_device(self.test_data[0], device)
-        self.test_data[1].to(device=device)
+        batch_to_device(self.test_feats, device)
+        self.test_target.to(device=device)
+        print('test target is cuda:', self.test_target.is_cuda)
 
 
 
@@ -218,31 +219,31 @@ class TempOptimizer(nn.Module):
         self.eval_test(model, is_report=True)
 
     @staticmethod
-    def eval_data(model, data, action_labels, feat_types, is_report):
+    def eval_data(model, feats, target, action_labels, feat_types, is_report):
 
         model.eval()
 
         with torch.no_grad():
-            out = model(feat_types, *data[INPUT_COL])
-            loss = F.nll_loss(out, data[TARGET_COL]).item()
+            out = model(feat_types, *feats)
+            loss = F.nll_loss(out, target).item()
 
             pred = torch.argmax(out, dim=1)
-            acc = (pred == data[TARGET_COL]).sum().item() / float(pred.numel())
+            acc = (pred == target).sum().item() / float(pred.numel())
 
             if is_report:
                 logging.info('-' * 80)
-                logging.info(classification_report(pred, data[TARGET_COL],
+                logging.info(classification_report(pred, target,
                                             target_names=action_labels))
 
             return loss, acc
 
     def eval_val(self, model, is_report=False):
 
-        return TempOptimizer.eval_data(model, self.dev_data, self.ACTIONS, self.feat_types, is_report)
+        return TempOptimizer.eval_data(model, self.dev_feats, self.dev_target, self.ACTIONS, self.feat_types, is_report)
 
     def eval_test(self, model, is_report=False):
 
-        return TempOptimizer.eval_data(model, self.test_data, self.ACTIONS, self.feat_types, is_report)
+        return TempOptimizer.eval_data(model, self.test_feats, self.test_target, self.ACTIONS, self.feat_types, is_report)
 
     def eval_with_params(self, **params):
 
@@ -289,7 +290,7 @@ class TempOptimizer(nn.Module):
 
         print(self.feat_types)
 
-        train_dataset = MultipleDatasets(*self.train_data[INPUT_COL], self.train_data[TARGET_COL])
+        train_dataset = MultipleDatasets(*self.train_feats, self.train_target)
 
         train_data_loader = Data.DataLoader(
             dataset=train_dataset,
@@ -319,7 +320,7 @@ class TempOptimizer(nn.Module):
             for step, train_sample in enumerate(train_data_loader):
 
                 train_feats, train_target = train_sample[:-1], train_sample[-1]
-                train_feats = batch_to_device(train_feats, device)
+                batch_to_device(train_feats, device)
                 train_target.to(device=device)
 
                 model.train()
@@ -331,18 +332,16 @@ class TempOptimizer(nn.Module):
                 loss.backward(retain_graph=True)
                 optimizer.step()
                 total_loss.append(loss.data.item())
-                # diff = torch.eq(torch.argmax(pred_out, dim=1), target)
                 pred = torch.argmax(pred_out, dim=1)
                 total_acc.append((pred == train_target).sum().item() / float(pred.numel()))
 
             model.eval()
 
             with torch.no_grad():
-                dev_out = model(self.feat_types, *self.dev_data[INPUT_COL])
-                dev_loss = F.nll_loss(dev_out, self.dev_data[TARGET_COL]).item()
-                # dev_diff = torch.eq(torch.argmax(dev_out, dim=1), self.dev_data[REL_COL])
+                dev_out = model(self.feat_types, *self.dev_feats)
+                dev_loss = F.nll_loss(dev_out, self.dev_target).item()
                 dev_pred = torch.argmax(dev_out, dim=1)
-                dev_acc = ( dev_pred == self.dev_data[TARGET_COL]).sum().item() / float(dev_pred.numel())
+                dev_acc = ( dev_pred == self.dev_target).sum().item() / float(dev_pred.numel())
                 dev_score = dev_loss if self.monitor == 'val_loss' else dev_acc
 
                 test_loss, test_acc = self.eval_test(model)
