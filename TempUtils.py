@@ -26,7 +26,7 @@ def embed_txt2bin(embed_file):
 
 def pre2embed(pre_vectors):
     pre_weights = torch.FloatTensor(pre_vectors)
-    print("[Pre-trained embeddings] weight size: ", pre_weights.size())
+    #print("[Pre-trained embeddings] weight size: ", pre_weights.size())
     return nn.Embedding.from_pretrained(pre_weights, freeze=True)
 
 
@@ -141,6 +141,12 @@ def getEndPosition(sour, targ):
     for tok_id in targ.tok_ids:
             right_mention.append(tok_id - sour.tok_ids[-1])
     return left_mention, right_mention
+
+def getMentionDist(tokens, sour):
+    dist = []
+    for tok in tokens:
+        dist.append(tok.tok_id - sour.tok_ids[-1])
+    return dist
 
 
 def dict2str(dic):

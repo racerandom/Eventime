@@ -500,20 +500,38 @@ class TimeMLDoc:
 
     def geneSentTokens(self, source, target):
 
-        left_id = source.tok_ids[0]
-        right_id = target.tok_ids[-1]
+        begin_id = source.tok_ids[0]
+        end_id = target.tok_ids[-1]
 
         for i in range(source.tok_ids[0], -1 , -1):
             if self.tokens[i].sent_id != source.sent_id:
                 break
-            left_id = i
+            begin_id = i
 
         for j in range(target.tok_ids[-1], len(self.tokens) , 1):
             if self.tokens[j].sent_id != target.sent_id:
                 break
-            right_id = j
+            end_id = j
 
-        toks = self.tokens[left_id: right_id + 1]
+        toks = self.tokens[begin_id: end_id + 1]
+        return toks
+
+    def geneSentOfMention(self, source):
+
+        begin_id = source.tok_ids[0]
+        end_id = source.tok_ids[-1]
+
+        for i in range(source.tok_ids[0], -1 , -1):
+            if self.tokens[i].sent_id != source.sent_id:
+                break
+            begin_id = i
+
+        for j in range(source.tok_ids[-1], len(self.tokens) , 1):
+            if self.tokens[j].sent_id != source.sent_id:
+                break
+            end_id = j
+
+        toks = self.tokens[begin_id: end_id + 1]
         return toks
 
     def geneEventDCTPair(self, window=1):

@@ -51,7 +51,10 @@ def is_best_score(score, best_score, monitor):
 
 class TempOptimizer(nn.Module):
 
-    def __init__(self, pkl_file, classifier, word_dim, epoch_nb, link_type, monitor, feat_types, train_rate=1.0, max_evals=500, pretrained_file='Resources/embed/giga-aacw.d200.bin'):
+    def __init__(self, pkl_file, classifier, word_dim, epoch_nb, link_type, monitor, feat_types,
+                 train_rate=1.0,
+                 max_evals=500,
+                 pretrained_file='Resources/embed/giga-aacw.d200.bin'):
 
         ## initialize the param space
         if classifier in ['CNN', 'AttnCNN']:
@@ -112,10 +115,12 @@ class TempOptimizer(nn.Module):
         print("Train data: %i docs, Dev data: %i docs, Test data: %i docs..." % (len(self.TRAIN_SET),
                                                                                  len(self.DEV_SET),
                                                                                  len(self.TEST_SET)))
-        # self.train_data, self.dev_data, self.test_data = self.generate_data()
 
-        self.config = "c=%s_pre=%s_r=%.1f_wd=%i_mo=%s_ep=%i_me=%i" % (classifier,
-                                                                        pretrained_file.split('/')[-1].split('.')[0],
+
+        self.config = "lt=%s_c=%s_pre=%s_r=%.1f_wd=%i_mo=%s_ep=%i_me=%i" % (
+                                                                        link_type,
+                                                                        classifier,
+                                                                        pretrained_file.split('/')[-1].split('.')[0] if pretrained_file else 'None',
                                                                         train_rate,
                                                                         word_dim,
                                                                         monitor,
@@ -163,6 +168,7 @@ class TempOptimizer(nn.Module):
 
     def shape_dataset(self):
 
+        print('[Prepare train/dev/test data]')
         print('train feat number: %i, target length: %i' % (len(self.train_feats), len(self.train_target)))
         print('train feat shapes:', [feat.shape for feat in self.train_feats])
 
@@ -186,11 +192,9 @@ class TempOptimizer(nn.Module):
 
         self.dev_feats = batch_to_device(dev_feats, device)
         self.dev_target = dev_target.to(device=device)
-        print('dev target is cuda:', self.dev_target.is_cuda)
 
         self.test_feats = batch_to_device(test_feats, device)
         self.test_target = test_target.to(device=device)
-        print('test target is cuda:', self.test_target.is_cuda)
 
 
 
@@ -413,9 +417,9 @@ class TempOptimizer(nn.Module):
 
 def main():
 
-    classifier = "AttnCNN"
-    link_type = 'Event-Timex'
-    pkl_file = "data/0531_%s.pkl" % (link_type)
+    classifier = "CNN"
+    link_type = 'Event-DCT'
+    pkl_file = "data/0531.pkl"
     word_dim = 300
     epoch_nb = 1
     monitor = 'val_loss'
@@ -425,12 +429,15 @@ def main():
                   'sour_token',
                   'targ_token',
                   'sour_dist',
-                  'targ_dist']
+                  'targ_dist'] if link_type in ['Event-Timex', 'Event-Event'] else ['token_seq',
+                                                                                    'sour_dist_seq',
+                                                                                    'sour_token']
 
     temp_extractor = TempOptimizer(pkl_file, classifier, word_dim, epoch_nb, link_type, monitor, feat_types,
                                    train_rate=1.0,
                                    max_evals=1,
-                                   # pretrained_file='Resources/embed/deps.words.bin'
+                                   # pretrained_file=None,
+                                   pretrained_file='Resources/embed/deps.words.bin',
                                    )
     temp_extractor.generate_feats_dataset() ## prepare train, dev, test data for input to the model
     temp_extractor.shape_dataset()

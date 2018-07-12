@@ -119,8 +119,6 @@ def prepare_feats_dataset(doc_dic, dataset, word_idx, dist_idx, rel_idx, max_len
                 continue
             for link in doc.get_links_by_type(link_type):
                 feat.append(link.feat_inputs[feat_type])
-                if len(link.sour.tok_ids) == 8 or len(link.targ.tok_ids) == 8:
-                    print(link.targ.tok_ids, link.targ.content)
 
         if feat_type in ['token_seq']:
             feat_tensor = torch.tensor(padding_2d(prepare_seq_2d(feat, word_idx), max_len))
@@ -206,14 +204,19 @@ def prepare_global(pkl_file, pretrained_file, link_type='Event-Timex'):
     ## add feats into link.feat_inputs
     for doc in doc_dic.values():
         for link in doc.get_links_by_type(link_type):
-            tokens = doc.geneSentTokens(link.sour, link.targ)
-            link.feat_inputs['token_seq'] = [tok.content for tok in tokens]
-            link.feat_inputs['sour_dist_seq'], link.feat_inputs['targ_dist_seq'] = geneSentPostion(tokens,
-                                                                                          link.sour,
-                                                                                          link.targ)
-            link.feat_inputs['sour_token'] = link.sour.content.split()
-            link.feat_inputs['targ_token'] = link.targ.content.split()
-            link.feat_inputs['sour_dist'], link.feat_inputs['targ_dist']  = getEndPosition(link.sour, link.targ)
+            if link_type in ['Event-Timex', 'Event-Event']:
+                tokens = doc.geneSentTokens(link.sour, link.targ)
+                link.feat_inputs['token_seq'] = [tok.content for tok in tokens]
+                link.feat_inputs['sour_dist_seq'] = getMentionDist(tokens, link.sour)
+                link.feat_inputs['targ_dist_seq'] = getMentionDist(tokens, link.targ)
+                link.feat_inputs['sour_token'] = link.sour.content.split()
+                link.feat_inputs['targ_token'] = link.targ.content.split()
+                link.feat_inputs['sour_dist'], link.feat_inputs['targ_dist']  = getEndPosition(link.sour, link.targ)
+            elif link_type in ['Event-DCT']:
+                tokens = doc.geneSentOfMention(link.sour)
+                link.feat_inputs['token_seq'] = [tok.content for tok in tokens]
+                link.feat_inputs['sour_dist_seq'] = getMentionDist(tokens, link.sour)
+                link.feat_inputs['sour_token'] = link.sour.content.split()
 
     ## create word index map or pre-trained embedding
     if pretrained_file and os.path.isfile(os.path.join(os.getenv("HOME"), pretrained_file)):
@@ -223,11 +226,15 @@ def prepare_global(pkl_file, pretrained_file, link_type='Event-Timex'):
         word_idx = feat2idx(doc_dic, 'token_seq', link_type, feat_idx={'zeropadding': 0})
 
     ## create feat index map
-    left_dist_idx = feat2idx(doc_dic, 'sour_dist_seq', link_type, feat_idx={'zeropadding': 0})
-    dist_idx = feat2idx(doc_dic, 'targ_dist_seq', link_type, feat_idx=left_dist_idx)
+    if link_type in ['Event-Timex', 'Event-Event']:
+        left_dist_idx = feat2idx(doc_dic, 'sour_dist_seq', link_type, feat_idx={'zeropadding': 0})
+        dist_idx = feat2idx(doc_dic, 'targ_dist_seq', link_type, feat_idx=left_dist_idx)
+        max_token_len = max(max_length(doc_dic, 'sour_token', link_type), max_length(doc_dic, 'sour_token', link_type))
+    elif link_type in ['Event-DCT']:
+        dist_idx = feat2idx(doc_dic, 'sour_dist_seq', link_type, feat_idx={'zeropadding': 0})
+        max_token_len = max_length(doc_dic, 'sour_token', link_type)
     rel_idx = rel2idx(doc_dic, link_type)
     max_len = max_length(doc_dic, 'token_seq', link_type)
-    max_token_len = max(max_length(doc_dic, 'sour_dist', link_type), max_length(doc_dic, 'sour_dist', link_type))
     print('max seq length:', max_len,
           ', vocab size:', len(word_idx),
           ', position size:', len(dist_idx),

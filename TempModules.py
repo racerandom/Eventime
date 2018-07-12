@@ -108,21 +108,32 @@ def batch_action2out(out_scores, norm_times, IX_TO_ACTION, BATCH_SIZE):
 
 class TempCNN(nn.Module):
 
-    def __init__(self, seq_len, token_len, action_size, verbose_level=0, **params):
+    def __init__(self, seq_len, token_len, action_size, feat_types, verbose_level=0, **params):
         super(TempCNN, self).__init__()
         self.verbose_level = verbose_level
         self.embedding_dropout = nn.Dropout(p=params['dropout_emb'])
-        self.c1 = nn.Conv1d(params['word_dim'] + 2 * params['pos_dim'], params['filter_nb'], params['kernel_len'])
+        c1_input_dim = 0
+        for feat_type in feat_types:
+            if feat_type.split('_')[-1] == 'seq':
+                if feat_type.split('_')[-2] == 'token':
+                    c1_input_dim += params['word_dim']
+                elif feat_type.split('_')[-2] == 'dist':
+                    c1_input_dim += params['pos_dim']
+        self.c1 = nn.Conv1d(c1_input_dim, params['filter_nb'], params['kernel_len'])
         self.p1 = nn.MaxPool1d(seq_len - params['kernel_len'] + 1)
         self.tok_p1 = nn.MaxPool1d(token_len)
         self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
-        self.fc1 = nn.Linear(params['filter_nb'] + 2 * params['word_dim'] + 2 * params['pos_dim'], params['fc_hidden_dim'])
+        fc1_input_dim = params['filter_nb']
+        for feat_type in feat_types:
+            if feat_type.split('_')[-1] == 'token':
+                fc1_input_dim += params['word_dim']
+            elif feat_type.split('_')[-1] == 'dist':
+                fc1_input_dim += params['pos_dim']
+        self.fc1 = nn.Linear(fc1_input_dim, params['fc_hidden_dim'])
         self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
         self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
 
     def forward(self, feat_types, *feat_inputs):
-
-        ## input (batch_size, seq_len, input_dim) => (batch_size, input_dim, seq_len)
 
         seq_inputs = []
 
@@ -131,6 +142,7 @@ class TempCNN(nn.Module):
                 if self.verbose_level:
                     print(feat_type, feat.shape)
                 seq_inputs.append(feat)
+        ## input (batch_size, seq_len, input_dim) => (batch_size, input_dim, seq_len)
         seq_inputs = torch.cat(seq_inputs, dim=2).transpose(1, 2)
         embed_inputs = self.embedding_dropout(seq_inputs)
 
@@ -169,15 +181,28 @@ class TempCNN(nn.Module):
 
 class TempAttnCNN(nn.Module):
 
-    def __init__(self, seq_len, token_len, action_size, verbose=0, **params):
+    def __init__(self, seq_len, token_len, action_size, feat_types, verbose=0, **params):
         super(TempAttnCNN, self).__init__()
         self.verbose_level = verbose
         self.embedding_dropout = nn.Dropout(p=params['dropout_emb'])
-        self.c1 = nn.Conv1d(params['word_dim'] + 2 * params['pos_dim'], params['filter_nb'], params['kernel_len'])
+        c1_input_dim = 0
+        for feat_type in feat_types:
+            if feat_type.split('_')[-1] == 'seq':
+                if feat_type.split('_')[-2] == 'token':
+                    c1_input_dim += params['word_dim']
+                elif feat_type.split('_')[-2] == 'dist':
+                    c1_input_dim += params['pos_dim']
+        self.c1 = nn.Conv1d(c1_input_dim, params['filter_nb'], params['kernel_len'])
         self.attn_W = torch.nn.Parameter(torch.randn(params['filter_nb'], requires_grad=True))
         self.tok_p1 = nn.MaxPool1d(token_len)
         self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
-        self.fc1 = nn.Linear(params['filter_nb'] + 2 * params['word_dim'] + 2 * params['pos_dim'], params['fc_hidden_dim'])
+        fc1_input_dim = params['filter_nb']
+        for feat_type in feat_types:
+            if feat_type.split('_')[-1] == 'token':
+                fc1_input_dim += params['word_dim']
+            elif feat_type.split('_')[-1] == 'dist':
+                fc1_input_dim += params['pos_dim']
+        self.fc1 = nn.Linear(fc1_input_dim, params['fc_hidden_dim'])
         self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
         self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
 
@@ -208,10 +233,6 @@ class TempAttnCNN(nn.Module):
         attn_alpha = F.softmax(torch.bmm(W, attn_M), dim=2)  # rnn1_alpha: [batch_size, 1, kernel_out]
         attn_out = F.tanh(torch.bmm(c1_out, attn_alpha.transpose(1, 2)))  # attn_out: [batch_size, filter_nb, 1]
 
-        # p1_out = self.p1(c1_out).squeeze(-1)
-
-        # if self.verbose_level:
-        #     print("p1_output size:", p1_out.shape)
 
         cat_inputs = [attn_out.squeeze()]
         for feat, feat_type in zip(feat_inputs, feat_types):
@@ -222,8 +243,9 @@ class TempAttnCNN(nn.Module):
                 cat_inputs.append(self.tok_p1(feat.transpose(1, 2)).squeeze(-1))
         cat_out = torch.cat(cat_inputs, dim=1)
         cat_out = self.cat_dropout(cat_out)
-        # if self.verbose_level:
-        #     print("cat_output size:", cat_out.shape)
+
+        if self.verbose_level:
+            print("cat_output size:", cat_out.shape)
 
         fc1_out = F.relu(self.fc1(cat_out))
         fc1_out = self.fc1_drop(fc1_out)
@@ -231,8 +253,6 @@ class TempAttnCNN(nn.Module):
 
         if self.verbose_level:
             print()
-
-        # print(self.attn_W[:5])
 
         return fc2_out
 
@@ -325,7 +345,6 @@ class TempAttnRNN(nn.Module):
         fc1_out = self.fc1_drop(fc1_out)
         fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
 
-
         return fc2_out
 
 
@@ -343,18 +362,17 @@ class TempClassifier(nn.Module):
         self.position_embeddings = nn.Embedding(pos_size, params['pos_dim'], padding_idx=0)
 
         if self.classifier == 'CNN':
-            self.temp_detector = TempCNN(max_len, max_token_len, action_size, verbose_level=self.verbose_level, **params)
+            self.temp_detector = TempCNN(max_len, max_token_len, action_size, feat_types, verbose_level=self.verbose_level, **params)
         elif self.classifier == 'AttnCNN':
-            self.temp_detector = TempAttnCNN(max_len, max_token_len, action_size, verbose_level=self.verbose_level, **params)
+            self.temp_detector = TempAttnCNN(max_len, max_token_len, action_size, feat_types, verbose_level=self.verbose_level, **params)
         elif self.classifier == 'RNN':
-            self.temp_detector = TempRNN(max_len, max_token_len, action_size, verbose_level=self.verbose_level, **params)
+            self.temp_detector = TempRNN(max_len, max_token_len, action_size, feat_types, verbose_level=self.verbose_level, **params)
         elif self.classifier == 'AttnRNN':
-            self.temp_detector = TempAttnRNN(max_len, max_token_len, action_size, **params)
+            self.temp_detector = TempAttnRNN(max_len, max_token_len, action_size, feat_types, **params)
         else:
             raise Exception("[ERROR]Wrong classifier param [%s] selected...." % (self.classifier) )
 
     def forward(self, feat_types, *feat_inputs):
-        # print(dct_input.size(), pos_in.size())
 
         assert(len(feat_inputs) == len(feat_types))
 
@@ -364,29 +382,20 @@ class TempClassifier(nn.Module):
 
         for feat, feat_type in zip(feat_inputs, feat_types):
             if feat_type in ['token_seq']:
-                embedded_inputs.append(self.word_embeddings(feat.squeeze(1)))
+                embedded_inputs.append(self.word_embeddings(feat))
             elif feat_type in ['sour_dist_seq', 'targ_dist_seq']:
-                embedded_inputs.append(self.position_embeddings(feat.squeeze(1)))
+                embedded_inputs.append(self.position_embeddings(feat))
             elif feat_type in ['sour_token', 'targ_token']:
-                embedded_inputs.append(self.word_embeddings(feat.squeeze(1)))
+                # print(feat.shape, feat.squeeze(1).shape, self.word_embeddings(feat.squeeze(1)).shape)
+                embedded_inputs.append(self.word_embeddings(feat))
             elif feat_type in ['sour_dist', 'targ_dist']:
-                embedded_inputs.append(self.position_embeddings(feat.squeeze(1)))
+                embedded_inputs.append(self.position_embeddings(feat))
 
         if self.verbose_level:
             print(len(embedded_inputs))
 
         temp_out = self.temp_detector(feat_types, *embedded_inputs)
 
-        # if self.verbose_level:
-        #     print("word_embeded input:", word_embeded.size())
-        # batch_size, max_len, _ = word_embeded.size()
-        #
-        # pos_embeded = self.position_embeddings(pos_in.squeeze(1))
-        # pos_embeded = self.embedding_dropout(pos_embeded)
-        # if self.verbose_level:
-        #     print("pos_embeded input:", pos_embeded.view(batch_size, max_len, -1).size())
-
-        # temp_out = self.temp_detector(word_embeded, pos_embeded.view(batch_size, max_len, -1))
         return temp_out
 
 
