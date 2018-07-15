@@ -15,6 +15,7 @@ import pdb
 import gensim
 import time, operator
 from sklearn.metrics import classification_report
+import matplotlib.pyplot as plt
 
 from TempModules import *
 from TempData import *
@@ -30,6 +31,19 @@ if torch.cuda.is_available():
 
 is_pretrained = True
 INPUT_COL, TARGET_COL = 0, 1
+
+
+def setup_logger(logger_name, log_file, level=logging.INFO):
+    l = logging.getLogger(logger_name)
+    formatter = logging.Formatter('%(message)s')
+    fileHandler = logging.FileHandler(log_file, mode='w')
+    fileHandler.setFormatter(formatter)
+    streamHandler = logging.StreamHandler()
+    streamHandler.setFormatter(formatter)
+
+    l.setLevel(level)
+    l.addHandler(fileHandler)
+    l.addHandler(streamHandler)
 
 
 def batch_to_device(inputs, device):
@@ -108,16 +122,8 @@ class TempOptimizer(nn.Module):
         self.ACTIONS = [ key for key, value in sorted(self.rel_idx.items(), key=operator.itemgetter(1))]
 
 
-        ## Data and records
-        self.TRAIN_SET = sample_train(self.doc_dic.keys(), TA_DEV, TA_TEST, rate=train_rate) # return training data
-        self.DEV_SET = TA_DEV
-        self.TEST_SET = TA_TEST
-        print("Train data: %i docs, Dev data: %i docs, Test data: %i docs..." % (len(self.TRAIN_SET),
-                                                                                 len(self.DEV_SET),
-                                                                                 len(self.TEST_SET)))
 
-
-        self.config = "lt=%s_c=%s_pre=%s_r=%.1f_wd=%i_mo=%s_ep=%i_me=%i" % (
+        self.config = "lt=%s_c=%s_pre=%s_r=%.2f_wd=%i_mo=%s_ep=%i_me=%i" % (
                                                                         link_type,
                                                                         classifier,
                                                                         pretrained_file.split('/')[-1].split('.')[0] if pretrained_file else 'None',
@@ -131,63 +137,46 @@ class TempOptimizer(nn.Module):
         self.best_scores = []
         self.val_losses, self.val_acces = [], []
         self.test_losses, self.test_acces = [], []
-        logging.basicConfig(filename='logs/%s.log' % self.config,
-                            filemode='w',
-                            level=logging.INFO)
-
-
-    def generate_data(self):
-
-        train_word_in, train_pos_in, train_rel_in = prepare_dataset(self.doc_dic, self.TRAIN_SET, self.word_idx, self.pos_idx, self.rel_idx,
-                                                                 self.MAX_LEN, link_type=self.link_type)
-
-        dev_word_in, dev_pos_in, dev_rel_in = prepare_dataset(self.doc_dic, self.DEV_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
-                                                           link_type=self.link_type)
-
-        test_word_in, test_pos_in, test_rel_in = prepare_dataset(self.doc_dic, self.TEST_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
-                                                              link_type=self.link_type)
-
-        train_data = (
-            train_word_in,
-            train_pos_in,
-            train_rel_in
-        )
-
-        dev_data = (dev_word_in.to(device=device),
-                    dev_pos_in.to(device=device),
-                    dev_rel_in.to(device=device)
-        )
-
-        test_data = (test_word_in.to(device=device),
-                     test_pos_in.to(device=device),
-                     test_rel_in.to(device=device)
-        )
-
-        return train_data, dev_data, test_data
+        # logging.basicConfig(filename='logs/%s.log' % self.config,
+        #                     filemode='w',
+        #                     level=logging.INFO)
+        setup_logger(self.config, 'logs/%s.log' % self.config)
+        self.logger = logging.getLogger(self.config)
 
 
     def shape_dataset(self):
 
-        print('[Prepare train/dev/test data]')
-        print('train feat number: %i, target length: %i' % (len(self.train_feats), len(self.train_target)))
-        print('train feat shapes:', [feat.shape for feat in self.train_feats])
+        self.logger.info('[Prepare train/dev/test data]')
+        self.logger.info('train feat number: %i, target length: %i' % (len(self.train_feats), len(self.train_target)))
+        self.logger.info('train feat shapes: %s' % [feat.shape for feat in self.train_feats])
 
-        print('dev feat number: %i, target length: %i' % (len(self.dev_feats), len(self.dev_target)))
-        print('dev feat shapes:', [feat.shape for feat in self.dev_feats])
+        self.logger.info('dev feat number: %i, target length: %i' % (len(self.dev_feats), len(self.dev_target)))
+        self.logger.info('dev feat shapes: %s' % [feat.shape for feat in self.dev_feats])
 
-        print('test feat number: %i, target length: %i' % (len(self.test_feats), len(self.test_target)))
-        print('test feat shapes:', [feat.shape for feat in self.test_feats])
+        self.logger.info('test feat number: %i, target length: %i' % (len(self.test_feats), len(self.test_target)))
+        self.logger.info('test feat shapes: %s' % [feat.shape for feat in self.test_feats])
 
 
-    def generate_feats_dataset(self):
+    def generate_feats_dataset(self, train_rate=1.0):
 
-        self.train_feats, self.train_target = prepare_feats_dataset(self.doc_dic, self.TRAIN_SET, self.word_idx, self.pos_idx, self.rel_idx,
+
+        ## split train/dev/test doc ids
+        TRAIN_SET = sample_train(self.doc_dic.keys(), TA_DEV, TA_TEST, rate=train_rate)  # return training data
+        DEV_SET = TA_DEV
+        TEST_SET = TA_TEST
+        self.logger.info("Train data: %i docs, Dev data: %i docs, Test data: %i docs..." % (len(TRAIN_SET),
+                                                                                 len(DEV_SET),
+                                                                                 len(TEST_SET)))
+
+
+        ## prepare data based on doc ids
+        self.train_feats, self.train_target = prepare_feats_dataset(self.doc_dic, TRAIN_SET, self.word_idx, self.pos_idx, self.rel_idx,
                                                 self.MAX_LEN, self.max_token_len, link_type=self.link_type, feat_types=self.feat_types)
 
-        dev_feats, dev_target = prepare_feats_dataset(self.doc_dic, self.DEV_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
+        dev_feats, dev_target = prepare_feats_dataset(self.doc_dic, DEV_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
                                               self.max_token_len, link_type=self.link_type, feat_types=self.feat_types)
 
-        test_feats, test_target = prepare_feats_dataset(self.doc_dic, self.TEST_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
+        test_feats, test_target = prepare_feats_dataset(self.doc_dic, TEST_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
                                                self.max_token_len, link_type=self.link_type, feat_types=self.feat_types)
 
         self.dev_feats = batch_to_device(dev_feats, device)
@@ -206,7 +195,7 @@ class TempOptimizer(nn.Module):
             for key, values in self.param_space.items():
                 params[key] = random.choice(values)
 
-            logging.info('[optim %i]: params: %s' % (eval_i, params))
+            self.logger.info('[optim %i]: params: %s' % (eval_i, params))
             self.train_model(**params)
 
         # print(self.best_scores)
@@ -223,10 +212,10 @@ class TempOptimizer(nn.Module):
         model.load_state_dict(checkpoint['state_dict'])
 
         # print(self.eval_val(model))
-        self.eval_test(model, is_report=True)
+        return self.eval_test(model, is_report=True)
 
     @staticmethod
-    def eval_data(model, feats, target, action_labels, feat_types, is_report):
+    def eval_data(model, feats, target, action_labels, feat_types, is_report, logger=None):
 
         model.eval()
 
@@ -238,19 +227,20 @@ class TempOptimizer(nn.Module):
             acc = (pred == target).sum().item() / float(pred.numel())
 
             if is_report:
-                logging.info('-' * 80)
-                logging.info(classification_report(pred, target,
-                                            target_names=action_labels))
+                logger.info('-' * 80)
+                logger.info(classification_report(pred,
+                                                  target,
+                                                  target_names=action_labels))
 
             return loss, acc
 
     def eval_val(self, model, is_report=False):
 
-        return TempOptimizer.eval_data(model, self.dev_feats, self.dev_target, self.ACTIONS, self.feat_types, is_report)
+        return TempOptimizer.eval_data(model, self.dev_feats, self.dev_target, self.ACTIONS, self.feat_types, is_report, logger=self.logger)
 
     def eval_test(self, model, is_report=False):
 
-        return TempOptimizer.eval_data(model, self.test_feats, self.test_target, self.ACTIONS, self.feat_types, is_report)
+        return TempOptimizer.eval_data(model, self.test_feats, self.test_target, self.ACTIONS, self.feat_types, is_report, logger=self.logger)
 
     def eval_with_params(self, **params):
 
@@ -263,7 +253,7 @@ class TempOptimizer(nn.Module):
             num_workers=1,
         )
 
-        print('Starting to train a new model with parameters', params)
+        self.logger.info('Starting to train a new model with parameters', params)
 
         model = TempClassifier(self.VOCAB_SIZE,
                                self.POS_SIZE,
@@ -378,7 +368,7 @@ class TempOptimizer(nn.Module):
                                         }, glob_is_best, self.GLOB_BEST_MODEL_PATH)
 
 
-            logging.info("Epoch %i ,loss: %.4f, accuracy: %.4f, %.5s seconds, dev loss: %.4f, dev accuracy: %.4f | test loss: %.4f, acc %.4f %s" % (
+            self.logger.info("Epoch %i ,loss: %.4f, accuracy: %.4f, %.5s seconds, dev loss: %.4f, dev accuracy: %.4f | test loss: %.4f, acc %.4f %s" % (
                                                                    epoch,
                                                                    sum(total_loss) / float(len(total_loss)),
                                                                    sum(total_acc) / float(len(total_acc)),
@@ -398,20 +388,20 @@ class TempOptimizer(nn.Module):
         glob_checkpoint = torch.load(self.GLOB_BEST_MODEL_PATH,
                                 map_location=lambda storage, loc: storage)
 
-        logging.info("Current params: %s" % params)
-        logging.info("best loss of current params: %.4f, acc: %.4f | test loss: %.4f, acc %.4f" % (local_best_state['val_loss'],
+        # self.logger.info("Current params: %s" % params)
+        self.logger.info("best loss of current params: %.4f, acc: %.4f | test loss: %.4f, acc %.4f" % (local_best_state['val_loss'],
                                                                                                    local_best_state['val_acc'],
                                                                                                    local_best_state['test_loss'],
                                                                                                    local_best_state['test_acc']))
-        logging.info("params of glob best loss: %s" % glob_checkpoint['params'])
-        logging.info("glob monitor %s, best_score: %.4f, loss: %.4f,  acc: %.4f', | test loss: %.4f, acc %.4f" % (
+        self.logger.info("params of glob best loss: %s" % glob_checkpoint['params'])
+        self.logger.info("glob monitor %s, best_score: %.4f, loss: %.4f,  acc: %.4f', | test loss: %.4f, acc %.4f" % (
                                                                                         glob_checkpoint['monitor'],
                                                                                         glob_checkpoint['best_score'],
                                                                                         glob_checkpoint['val_loss'],
                                                                                         glob_checkpoint['val_acc'],
                                                                                         glob_checkpoint['test_loss'],
                                                                                         glob_checkpoint['test_acc']))
-        logging.info("*" * 80)
+        self.logger.info("*" * 80)
 
 
 
@@ -420,6 +410,7 @@ def main():
     classifier = "CNN"
     link_type = 'Event-DCT'
     pkl_file = "data/0531.pkl"
+    train_rate = 1.0
     word_dim = 300
     epoch_nb = 1
     monitor = 'val_loss'
@@ -433,19 +424,36 @@ def main():
                                                                                     'sour_dist_seq',
                                                                                     'sour_token']
 
-    temp_extractor = TempOptimizer(pkl_file, classifier, word_dim, epoch_nb, link_type, monitor, feat_types,
-                                   train_rate=1.0,
-                                   max_evals=1,
-                                   # pretrained_file=None,
-                                   pretrained_file='Resources/embed/deps.words.bin',
-                                   )
-    temp_extractor.generate_feats_dataset() ## prepare train, dev, test data for input to the model
-    temp_extractor.shape_dataset()
-    temp_extractor.optimize_model()
-    temp_extractor.eval_best_model()
+
+
+    piece_nb = 4
+    train_percentage, train_acc = [], []
+    for i in range(1, piece_nb + 1, 1):
+        train_rate = 1 / piece_nb * i
+        print("[Traing data rate: %.2f]" % train_rate)
+        train_percentage.append(train_rate)
+        temp_extractor = TempOptimizer(pkl_file, classifier, word_dim, epoch_nb, link_type, monitor, feat_types,
+                                       train_rate=train_rate,
+                                       max_evals=1,
+                                       pretrained_file='Resources/embed/deps.words.bin',
+                                       )
+        temp_extractor.generate_feats_dataset(train_rate=train_rate) ## prepare train, dev, test data for input to the model
+        temp_extractor.shape_dataset()
+        temp_extractor.optimize_model()
+        best_loss, best_acc = temp_extractor.eval_best_model()
+        train_acc.append(best_acc)
     # params = {'classifier':classifier, 'filter_nb': 120, 'kernel_len': 3, 'batch_size': 128, 'fc_hidden_dim': 240, 'pos_dim': 10, 'dropout_emb': 0.0, 'dropout_cat': 0.5, 'dropout_fc': 0.5, 'lr': 0.01, 'weight_decay': 1e-05, 'word_dim': 300}
     # temp_extractor.train_model(**params)
     # temp_extractor.eval_model()
+
+    ## plot figure
+    fig = plt.figure()
+    fig.suptitle('train curve', fontsize=16)
+    plt.xlabel('Training Data (percentage of all)', fontsize=12)
+    plt.ylabel('Accuracy', fontsize=12)
+    plt.plot(train_percentage, train_acc, 'b^')
+    fig.savefig('logs/%s.jpg' % temp_extractor.config)
+
 
 
 if __name__ == '__main__':

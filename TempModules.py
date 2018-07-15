@@ -267,10 +267,26 @@ class TempRNN(nn.Module):
         self.verbose_level = verbose
 
         ## neural layers
-        self.rnn1 = nn.LSTM(params['word_dim'] + 2 * params['pos_dim'], params['filter_nb'] // 2, num_layers=1, batch_first=True, bidirectional=True)
+        self.embedding_dropout = nn.Dropout(p=params['dropout_emb'])
+        rnn1_input_dim = 0
+        for feat_type in feat_types:
+            if feat_type.split('_')[-1] == 'seq':
+                if feat_type.split('_')[-2] == 'token':
+                    rnn1_input_dim += params['word_dim']
+                elif feat_type.split('_')[-2] == 'dist':
+                    rnn1_input_dim += params['pos_dim']
+        self.rnn1 = nn.LSTM(rnn1_input_dim, params['filter_nb'] // 2, num_layers=1, batch_first=True, bidirectional=True)
         self.rnn1hid_drop = nn.Dropout(p=params['dropout_rnn'])
+
         self.cat_drop = nn.Dropout(p=params['dropout_cat'])
-        self.fc1 = nn.Linear(params['filter_nb'] + 4 * params['pos_dim'], params['fc_hidden_dim'])
+        fc1_input_dim = params['filter_nb']
+        for feat_type in feat_types:
+            if feat_type.split('_')[-1] == 'token':
+                fc1_input_dim += params['word_dim']
+            elif feat_type.split('_')[-1] == 'dist':
+                fc1_input_dim += params['pos_dim']
+
+        self.fc1 = nn.Linear(fc1_input_dim, params['fc_hidden_dim'])
         self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
         self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
 
@@ -278,24 +294,39 @@ class TempRNN(nn.Module):
         return (torch.zeros(2, batch_size, self.hidden_dim // 2).to(device),
                 torch.zeros(2, batch_size, self.hidden_dim // 2).to(device))
 
-    def forward(self, word_input, position_input):
+    def forward(self, feat_types, *feat_inputs):
 
         ## RNN1 network
-        cat_input = torch.cat((word_input, position_input), dim=2) # [batch, len, dim]
-        if self.verbose_level:
-            print("cat_input size:", cat_input.shape)
-        # cat_input = cat_input.transpose(0, 1) # from [batch, len, dim] to [len, batch, dim]
 
-        self.rnn1_hidden = self.init_hidden(cat_input.shape[0])
-        rnn1_out, self.rnn1_hidden = self.rnn1(cat_input, self.rnn1_hidden)
+        seq_inputs = []
+
+        for feat, feat_type in zip(feat_inputs, feat_types):
+            if feat_type.split('_')[-1] == 'seq':
+                if self.verbose_level:
+                    print(feat_type, feat.shape)
+                seq_inputs.append(feat)
+        seq_inputs = torch.cat(seq_inputs, dim=2)
+        embed_inputs = self.embedding_dropout(seq_inputs) # [batch, len, dim]
+
+        if self.verbose_level:
+            print("embedd_input size:", embed_inputs.shape)
+
+        self.rnn1_hidden = self.init_hidden(embed_inputs.shape[0])
+        rnn1_out, self.rnn1_hidden = self.rnn1(embed_inputs, self.rnn1_hidden)
         if self.verbose_level:
             print("rnn_out size:", rnn1_out.shape, "position_input,", position_input.shape)
 
-        ## catenate the RNN1 output and position embeddings: hidden_dim + 2 * 2 * pos_dim
-        cat_out = torch.cat((rnn1_out[:, -1, :], position_input[:, 0, :], position_input[:, -1, :]), dim=1)
+        cat_inputs = [rnn1_out[-1]]
+        for feat, feat_type in zip(feat_inputs, feat_types):
+            if feat_type.split('_')[-1] != 'seq':
+                if self.verbose_level:
+                    print(feat_type, feat.shape)
+                    print('tok pool:', self.tok_p1(feat).squeeze(-1).shape)
+                cat_inputs.append(self.tok_p1(feat).squeeze(-1))
+        cat_out = torch.cat(cat_inputs, dim=1)
+        cat_out = self.cat_dropout(cat_out)
         if self.verbose_level:
-            print("cat_out shape:", cat_out.shape)
-        cat_out = self.cat_drop(cat_out)
+            print("cat_output size:", cat_out.shape)
 
         ## FC and softmax layer
         fc1_out = F.relu(self.fc1(cat_out))
