@@ -407,12 +407,19 @@ class TempOptimizer(nn.Module):
 
 def main():
 
-    classifier = "CNN"
+
+    ## plot figure
+    fig = plt.figure()
+    fig.suptitle('train curve', fontsize=16)
+    plt.xlabel('Training Data (percentage of all)', fontsize=12)
+    plt.ylabel('Accuracy', fontsize=12)
+
+
+    classifier = "AttnCNN"
     link_type = 'Event-DCT'
     pkl_file = "data/0531.pkl"
-    train_rate = 1.0
     word_dim = 300
-    epoch_nb = 1
+    epoch_nb = 5
     monitor = 'val_loss'
     feat_types = ['token_seq',
                   'sour_dist_seq',
@@ -425,13 +432,13 @@ def main():
                                                                                     'sour_token']
 
 
+    piece_nb = 3
 
-    piece_nb = 4
-    train_percentage, train_acc = [], []
+    train_per, train_acc = [], []
     for i in range(1, piece_nb + 1, 1):
         train_rate = 1 / piece_nb * i
         print("[Traing data rate: %.2f]" % train_rate)
-        train_percentage.append(train_rate)
+        train_per.append(train_rate)
         temp_extractor = TempOptimizer(pkl_file, classifier, word_dim, epoch_nb, link_type, monitor, feat_types,
                                        train_rate=train_rate,
                                        max_evals=1,
@@ -442,16 +449,14 @@ def main():
         temp_extractor.optimize_model()
         best_loss, best_acc = temp_extractor.eval_best_model()
         train_acc.append(best_acc)
+    plt.plot(train_per, train_acc, marker='^', label=classifier)
+
     # params = {'classifier':classifier, 'filter_nb': 120, 'kernel_len': 3, 'batch_size': 128, 'fc_hidden_dim': 240, 'pos_dim': 10, 'dropout_emb': 0.0, 'dropout_cat': 0.5, 'dropout_fc': 0.5, 'lr': 0.01, 'weight_decay': 1e-05, 'word_dim': 300}
     # temp_extractor.train_model(**params)
     # temp_extractor.eval_model()
 
-    ## plot figure
-    fig = plt.figure()
-    fig.suptitle('train curve', fontsize=16)
-    plt.xlabel('Training Data (percentage of all)', fontsize=12)
-    plt.ylabel('Accuracy', fontsize=12)
-    plt.plot(train_percentage, train_acc, 'b^')
+
+    # plt.plot(train_percentage, train_acc, 'b^')
     fig.savefig('logs/%s.jpg' % temp_extractor.config)
 
 

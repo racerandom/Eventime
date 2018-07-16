@@ -181,9 +181,9 @@ class TempCNN(nn.Module):
 
 class TempAttnCNN(nn.Module):
 
-    def __init__(self, seq_len, token_len, action_size, feat_types, verbose=0, **params):
+    def __init__(self, seq_len, token_len, action_size, feat_types, verbose_level=0, **params):
         super(TempAttnCNN, self).__init__()
-        self.verbose_level = verbose
+        self.verbose_level = verbose_level
         self.embedding_dropout = nn.Dropout(p=params['dropout_emb'])
         c1_input_dim = 0
         for feat_type in feat_types:
@@ -233,15 +233,16 @@ class TempAttnCNN(nn.Module):
         attn_alpha = F.softmax(torch.bmm(W, attn_M), dim=2)  # rnn1_alpha: [batch_size, 1, kernel_out]
         attn_out = F.tanh(torch.bmm(c1_out, attn_alpha.transpose(1, 2)))  # attn_out: [batch_size, filter_nb, 1]
 
+        if self.verbose_level:
+            print("attn_output size:", attn_out.squeeze(-1).shape)
 
-        cat_inputs = [attn_out.squeeze()]
+        cat_inputs = [attn_out.squeeze(-1)]
         for feat, feat_type in zip(feat_inputs, feat_types):
             if feat_type.split('_')[-1] != 'seq':
                 if self.verbose_level:
-                    print(feat_type, feat.shape)
-                    print('tok pool:', self.tok_p1(feat.transpose(1, 2)).squeeze(-1).shape)
+                    print(feat_type, self.tok_p1(feat.transpose(1, 2)).squeeze(-1).shape)
                 cat_inputs.append(self.tok_p1(feat.transpose(1, 2)).squeeze(-1))
-        cat_out = torch.cat(cat_inputs, dim=1)
+        cat_out = torch.cat(cat_inputs, dim=-1)
         cat_out = self.cat_dropout(cat_out)
 
         if self.verbose_level:
@@ -381,7 +382,7 @@ class TempAttnRNN(nn.Module):
 
 class TempClassifier(nn.Module):
 
-    def __init__(self, vocab_size, pos_size, action_size, max_len, max_token_len, feat_types, pre_model=None, verbose_level=0, **params):
+    def __init__(self, vocab_size, pos_size, action_size, max_len, max_token_len, feat_types, pre_model=None, verbose_level=1, **params):
         super(TempClassifier, self).__init__()
         self.classifier = params['classifier']
         self.verbose_level = verbose_level
