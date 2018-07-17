@@ -16,6 +16,7 @@ import gensim
 import time, operator
 from sklearn.metrics import classification_report
 import matplotlib.pyplot as plt
+plt.switch_backend('agg')
 
 from TempModules import *
 from TempData import *
@@ -415,7 +416,7 @@ def main():
     plt.ylabel('Accuracy', fontsize=12)
 
 
-    classifier = "AttnCNN"
+    classifier = "CNN"
     link_type = 'Event-DCT'
     pkl_file = "data/0531.pkl"
     word_dim = 300
@@ -437,6 +438,7 @@ def main():
     train_per, train_acc = [], []
     for i in range(1, piece_nb + 1, 1):
         train_rate = 1 / piece_nb * i
+        print("Link type:", link_type)
         print("[Traing data rate: %.2f]" % train_rate)
         train_per.append(train_rate)
         temp_extractor = TempOptimizer(pkl_file, classifier, word_dim, epoch_nb, link_type, monitor, feat_types,

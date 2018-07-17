@@ -161,10 +161,9 @@ class TempCNN(nn.Module):
         for feat, feat_type in zip(feat_inputs, feat_types):
             if feat_type.split('_')[-1] != 'seq':
                 if self.verbose_level:
-                    print(feat_type, feat.shape)
-                    print('tok pool:', self.tok_p1(feat.transpose(1, 2)).squeeze(-1).shape)
+                    print(feat_type, self.tok_p1(feat.transpose(1, 2)).squeeze(-1).shape)
                 cat_inputs.append(self.tok_p1(feat.transpose(1, 2)).squeeze(-1))
-        cat_out = torch.cat(cat_inputs, dim=1)
+        cat_out = torch.cat(cat_inputs, dim=-1)
         cat_out = self.cat_dropout(cat_out)
         if self.verbose_level:
             print("cat_output size:", cat_out.shape)
@@ -424,7 +423,7 @@ class TempClassifier(nn.Module):
                 embedded_inputs.append(self.position_embeddings(feat))
 
         if self.verbose_level:
-            print(len(embedded_inputs))
+            print("number of feat types:", len(embedded_inputs))
 
         temp_out = self.temp_detector(feat_types, *embedded_inputs)
 
