@@ -69,19 +69,25 @@ class TempOptimizer(nn.Module):
     def __init__(self, pkl_file, classifier, word_dim, epoch_nb, link_type, monitor, feat_types,
                  train_rate=1.0,
                  max_evals=500,
-                 pretrained_file='Resources/embed/giga-aacw.d200.bin'):
+                 pretrained_file='Resources/embed/giga-aacw.d200.bin',
+                 screen_verbose=0):
 
         ## initialize the param space
         if classifier in ['CNN', 'AttnCNN']:
             self.param_space = {
-                            'filter_nb': range(100, 500 + 1, 10),
+                            'filter_nb': range(100, 500 + 1, 20),
+                            'char_emb': [False],
+                            'char_dim': range(10, 50 + 1, 10),
+                            'char_hidden_dim': range(10, 50 + 1, 10),
                             'kernel_len': [2, 3, 4, 5, 6, 7, 8],
                             'batch_size': [16, 32, 64, 128],
                             'fc_hidden_dim': range(100, 500 + 1, 20),
-                            'pos_dim': range(5, 30 + 1, 5),
-                            'dropout_emb': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+                            'pos_dim': range(10, 50 + 1, 10),
+                            'dropout_emb': [0.0],
                             'dropout_cat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
                             'dropout_fc': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+                            'cat_word_tok': [True, False],
+                            'cat_dist_tok': [True, False],
                             # 'optimizer': ['adadelta', 'adam','rmsprop', 'sgd'],
                             'lr':[1e-2, 1e-3],
                             'weight_decay':[1e-3, 1e-4, 1e-5, 0]
@@ -89,9 +95,11 @@ class TempOptimizer(nn.Module):
         elif classifier in ['RNN', 'AttnRNN']:
             self.param_space = {
                 'filter_nb': range(100, 500 + 1, 10),
+                'char_in_dim': range(10, 50 + 1, 10),
+                'char_hidden_dim': range(10, 50 + 1, 10),
                 'batch_size': [16, 32, 64, 128],
                 'fc_hidden_dim': range(100, 500 + 1, 10),
-                'pos_dim': range(5, 30 + 1, 5),
+                'pos_dim': range(10, 50 + 1, 10),
                 'dropout_emb': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
                 'dropout_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
                 'dropout_cat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
@@ -112,13 +120,13 @@ class TempOptimizer(nn.Module):
         self.param_space['word_dim'] = [word_dim]
 
 
-        self.doc_dic, self.word_idx, self.pos_idx, self.rel_idx, self.max_len, self.max_token_len, self.pre_model = prepare_global(pkl_file,
+        self.doc_dic, self.word_idx, self.char_idx, self.pos_idx, self.rel_idx, \
+        self.MAX_SEQ_LEN, self.MAX_TOK_LEN, self.MAX_CHAR_LEN, self.pre_model = prepare_global(pkl_file,
                                                                                                                pretrained_file,
                                                                                                                link_type=link_type)
-        self.VOCAB_SIZE = len(self.word_idx)
+        self.WVOCAB_SIZE = len(self.word_idx)
+        self.CVOCAB_SIZE = len(self.word_idx)
         self.POS_SIZE = len(self.pos_idx)
-        self.MAX_LEN = self.max_len
-        self.MAX_TOKEN_LEN = self.max_token_len
         self.ACTION_SIZE = len(self.rel_idx)
         self.ACTIONS = [ key for key, value in sorted(self.rel_idx.items(), key=operator.itemgetter(1))]
 
@@ -138,11 +146,11 @@ class TempOptimizer(nn.Module):
         self.best_scores = []
         self.val_losses, self.val_acces = [], []
         self.test_losses, self.test_acces = [], []
-        # logging.basicConfig(filename='logs/%s.log' % self.config,
-        #                     filemode='w',
-        #                     level=logging.INFO)
+
+        ## logger
         setup_logger(self.config, 'logs/%s.log' % self.config)
         self.logger = logging.getLogger(self.config)
+        self.screen_verbose = screen_verbose
 
 
     def shape_dataset(self):
@@ -171,22 +179,23 @@ class TempOptimizer(nn.Module):
 
 
         ## prepare data based on doc ids
-        self.train_feats, self.train_target = prepare_feats_dataset(self.doc_dic, TRAIN_SET, self.word_idx, self.pos_idx, self.rel_idx,
-                                                self.MAX_LEN, self.max_token_len, link_type=self.link_type, feat_types=self.feat_types)
+        self.train_feats, self.train_target = prepare_feats_dataset(self.doc_dic, TRAIN_SET, self.word_idx, self.char_idx, self.pos_idx, self.rel_idx,
+                                                                    self.MAX_SEQ_LEN, self.MAX_TOK_LEN, self.MAX_CHAR_LEN,
+                                                                    link_type=self.link_type, feat_types=self.feat_types)
 
-        dev_feats, dev_target = prepare_feats_dataset(self.doc_dic, DEV_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
-                                              self.max_token_len, link_type=self.link_type, feat_types=self.feat_types)
+        dev_feats, dev_target = prepare_feats_dataset(self.doc_dic, DEV_SET, self.word_idx, self.char_idx, self.pos_idx, self.rel_idx,
+                                                      self.MAX_SEQ_LEN, self.MAX_TOK_LEN, self.MAX_CHAR_LEN,
+                                                      link_type=self.link_type, feat_types=self.feat_types)
 
-        test_feats, test_target = prepare_feats_dataset(self.doc_dic, TEST_SET, self.word_idx, self.pos_idx, self.rel_idx, self.MAX_LEN,
-                                               self.max_token_len, link_type=self.link_type, feat_types=self.feat_types)
+        test_feats, test_target = prepare_feats_dataset(self.doc_dic, TEST_SET, self.word_idx, self.char_idx, self.pos_idx, self.rel_idx,
+                                                        self.MAX_SEQ_LEN, self.MAX_TOK_LEN, self.MAX_CHAR_LEN,
+                                                        link_type=self.link_type, feat_types=self.feat_types)
 
         self.dev_feats = batch_to_device(dev_feats, device)
         self.dev_target = dev_target.to(device=device)
 
         self.test_feats = batch_to_device(test_feats, device)
         self.test_target = test_target.to(device=device)
-
-
 
 
     def optimize_model(self):
@@ -203,25 +212,31 @@ class TempOptimizer(nn.Module):
         # print(self.val_acces)
         # print(self.test_acces)
 
-
     def eval_best_model(self):
 
         checkpoint = (torch.load(self.GLOB_BEST_MODEL_PATH, map_location=lambda storage, loc: storage))
 
-        model = TempClassifier(self.VOCAB_SIZE, self.POS_SIZE, self.ACTION_SIZE, self.MAX_LEN, self.MAX_TOKEN_LEN, self.feat_types, pre_model=self.pre_model, **checkpoint['params']).to(device=device)
+        model = TempClassifier(self.WVOCAB_SIZE, self.CVOCAB_SIZE, self.POS_SIZE, self.ACTION_SIZE,
+                               self.MAX_SEQ_LEN, self.MAX_TOK_LEN, self.MAX_CHAR_LEN,
+                               self.feat_types,
+                               pre_model=self.pre_model,
+                               verbose_level=self.screen_verbose,
+                               **checkpoint['params']).to(device=device)
 
         model.load_state_dict(checkpoint['state_dict'])
 
-        # print(self.eval_val(model))
-        return self.eval_test(model, is_report=True)
+        if self.screen_verbose:
+            print(model)
+
+        return self.eval_test(model, is_report=True, **checkpoint['params'])
 
     @staticmethod
-    def eval_data(model, feats, target, action_labels, feat_types, is_report, logger=None):
+    def eval_data(model, feats, target, action_labels, feat_types, is_report, logger=None, **params):
 
         model.eval()
 
         with torch.no_grad():
-            out = model(feat_types, *feats)
+            out = model(feat_types, *feats, **params)
             loss = F.nll_loss(out, target).item()
 
             pred = torch.argmax(out, dim=1)
@@ -235,13 +250,13 @@ class TempOptimizer(nn.Module):
 
             return loss, acc
 
-    def eval_val(self, model, is_report=False):
+    def eval_val(self, model, is_report=False, **params):
 
-        return TempOptimizer.eval_data(model, self.dev_feats, self.dev_target, self.ACTIONS, self.feat_types, is_report, logger=self.logger)
+        return TempOptimizer.eval_data(model, self.dev_feats, self.dev_target, self.ACTIONS, self.feat_types, is_report, logger=self.logger, **params)
 
-    def eval_test(self, model, is_report=False):
+    def eval_test(self, model, is_report=False, **params):
 
-        return TempOptimizer.eval_data(model, self.test_feats, self.test_target, self.ACTIONS, self.feat_types, is_report, logger=self.logger)
+        return TempOptimizer.eval_data(model, self.test_feats, self.test_target, self.ACTIONS, self.feat_types, is_report, logger=self.logger, **params)
 
     def eval_with_params(self, **params):
 
@@ -256,10 +271,8 @@ class TempOptimizer(nn.Module):
 
         self.logger.info('Starting to train a new model with parameters', params)
 
-        model = TempClassifier(self.VOCAB_SIZE,
-                               self.POS_SIZE,
-                               self.ACTION_SIZE,
-                               self.MAX_LEN,
+        model = TempClassifier(self.WVOCAB_SIZE, self.CVOCAB_SIZE, self.POS_SIZE, self.ACTION_SIZE,
+                               self.MAX_SEQ_LEN, self.MAX_TOK_LEN, self.MAX_CHAR_LEN,
                                self.feat_types,
                                pre_model=self.pre_model,
                                **params).to(device=device)
@@ -281,8 +294,8 @@ class TempOptimizer(nn.Module):
 
 
         ## switch to eval mode
-        self.eval_val(model)
-        self.eval_test(model)
+        self.eval_val(model, **params)
+        self.eval_test(model, **params)
 
     def train_model(self, **params):
 
@@ -299,17 +312,22 @@ class TempOptimizer(nn.Module):
 
         local_best_score, local_best_state = None, None
 
-        model = TempClassifier(self.VOCAB_SIZE, self.POS_SIZE, self.ACTION_SIZE, self.MAX_LEN, self.MAX_TOKEN_LEN, self.feat_types, pre_model=self.pre_model,
+        model = TempClassifier(self.WVOCAB_SIZE, self.CVOCAB_SIZE, self.POS_SIZE, self.ACTION_SIZE,
+                               self.MAX_SEQ_LEN, self.MAX_TOK_LEN, self.MAX_CHAR_LEN,
+                               self.feat_types,
+                               pre_model=self.pre_model,
+                               verbose_level=self.screen_verbose,
                                **params).to(device=device)
 
         optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()),
                                lr=params['lr'],
                                weight_decay=params['weight_decay'])  ##  fixed a error when using pre-trained embeddings
 
-        # print(model)
-        # for name, param in model.named_parameters():
-        #     if param.requires_grad:
-        #         print('*', name)
+        if self.screen_verbose:
+            print(model)
+            for name, param in model.named_parameters():
+                if param.requires_grad:
+                    print('*', name)
 
         for epoch in range(1, self.EPOCH_NUM + 1):
             total_loss = []
@@ -324,7 +342,7 @@ class TempOptimizer(nn.Module):
                 # word_input, position_input, target = word_input.to(device), position_input.to(device), target.to(device)
 
                 model.zero_grad()
-                pred_out = model(self.feat_types, *train_feats)
+                pred_out = model(self.feat_types, *train_feats, **params)
                 loss = F.nll_loss(pred_out, train_target)
                 loss.backward(retain_graph=True)
                 optimizer.step()
@@ -335,13 +353,13 @@ class TempOptimizer(nn.Module):
             model.eval()
 
             with torch.no_grad():
-                dev_out = model(self.feat_types, *self.dev_feats)
+                dev_out = model(self.feat_types, *self.dev_feats, **params)
                 dev_loss = F.nll_loss(dev_out, self.dev_target).item()
                 dev_pred = torch.argmax(dev_out, dim=1)
                 dev_acc = ( dev_pred == self.dev_target).sum().item() / float(dev_pred.numel())
                 dev_score = dev_loss if self.monitor == 'val_loss' else dev_acc
 
-                test_loss, test_acc = self.eval_test(model)
+                test_loss, test_acc = self.eval_test(model, **params)
 
             local_is_best, local_best_score = is_best_score(dev_score, local_best_score, self.monitor)
 
@@ -417,23 +435,25 @@ def main():
 
 
     classifier = "CNN"
-    link_type = 'Event-DCT'
+    link_type = 'Event-Timex'
     pkl_file = "data/0531.pkl"
     word_dim = 300
-    epoch_nb = 5
+    epoch_nb = 2
     monitor = 'val_loss'
-    feat_types = ['token_seq',
+    feat_types = ['word_seq',
+                  'char_seq',
                   'sour_dist_seq',
                   'targ_dist_seq',
-                  'sour_token',
-                  'targ_token',
-                  'sour_dist',
-                  'targ_dist'] if link_type in ['Event-Timex', 'Event-Event'] else ['token_seq',
-                                                                                    'sour_dist_seq',
-                                                                                    'sour_token']
+                  'sour_word_tok',
+                  'targ_word_tok',
+                  'sour_dist_tok',
+                  'targ_dist_tok'] if link_type in ['Event-Timex',
+                                                    'Event-Event'] else ['word_seq',
+                                                                        'sour_dist_seq',
+                                                                        'sour_word_tok']
 
 
-    piece_nb = 3
+    piece_nb = 1
 
     train_per, train_acc = [], []
     for i in range(1, piece_nb + 1, 1):
@@ -445,6 +465,7 @@ def main():
                                        train_rate=train_rate,
                                        max_evals=1,
                                        pretrained_file='Resources/embed/deps.words.bin',
+                                       screen_verbose=0,
                                        )
         temp_extractor.generate_feats_dataset(train_rate=train_rate) ## prepare train, dev, test data for input to the model
         temp_extractor.shape_dataset()

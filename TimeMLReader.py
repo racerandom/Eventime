@@ -218,6 +218,8 @@ def load_extraml(extraml_file, events, timexs, signals):
     return words, sent_ids
 
 
+
+
 def load_anchorml_sentid(anchor_file, extraml_file, verbose=0):
 
     ## load sent ids information from the original timebank extraml files

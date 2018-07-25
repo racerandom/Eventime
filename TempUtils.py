@@ -47,21 +47,48 @@ def prepare_seq_2d(seq_2d, to_ix, unk_ix=0):
     return ix_seq_2d
 
 
+## convert 3D char sequences to char_index sequences
+def prepare_seq_3d(seq_3d, to_ix, unk_ix=0):
+    ix_seq_3d = [[[tok2ix(char, to_ix, unk_ix=unk_ix) for char in seq_1d] for seq_1d in seq_2d] for seq_2d in seq_3d]
+
+    return ix_seq_3d
+
+
 def prepare_sequence_pos(seq_2d, to_ix):
     ix_seq = [[[to_ix[p_l], to_ix[p_r]] for p_l, p_r in seq_1d] for seq_1d in seq_2d]
     return ix_seq
 
 
 ## padding 2D index sequences to a fixed given length
-def padding_2d(seq_2d, max_len, pad=0, direct='right'):
+def padding_2d(seq_2d, max_seq_len, pad=0, direct='right'):
 
     for seq_1d in seq_2d:
-        for i in range(0, max_len - len(seq_1d)):
+        for i in range(0, max_seq_len - len(seq_1d)):
             if direct in ['right']:
                 seq_1d.append(pad)
             else:
                 seq_1d.insert(0, pad)
     return seq_2d
+
+
+## padding 3D char index sequences with fixed max_seq_len, max_char_len
+def padding_3d(seq_3d, max_seq_len, max_char_len, pad=0, direct='right'):
+
+    for seq_2d in seq_3d:
+
+        for seq_1d in seq_2d:
+            for i in range(max_char_len - len(seq_1d)):
+                if direct in ['right']:
+                    seq_1d.append(pad)
+                else:
+                    seq_1d.insert(0, pad)
+
+        for j in range(max_seq_len - len(seq_2d)):
+            if direct in ['right']:
+                seq_2d.append([pad] * max_char_len)
+            else:
+                seq_2d.insert(0, [pad] * max_char_len)
+    return seq_3d
 
 
 def padding_pos(seq_2d, max_len, pad=[0, 0], direct='right'):
@@ -90,6 +117,28 @@ def feat2idx(doc_dic, feat_name, link_type, feat_idx=None):
         for link in doc.get_links_by_type(link_type):
             for feat in link.feat_inputs[feat_name]:
                 feat_idx.setdefault(feat, len(feat_idx))
+    return feat_idx
+
+
+def wvocab2cvocab(word_vocab):
+    char_vocab = set()
+    for word in word_vocab:
+        char_vocab.update(list(word.lower()))
+    return char_vocab
+
+
+def doc2fvocab(doc_dic, feat_name, link_type):
+    feat_vocab = set()
+    for doc in doc_dic.values():
+        for link in doc.get_links_by_type(link_type):
+            for feat in link.feat_inputs[feat_name]:
+                feat_vocab.add(feat)
+    return feat_vocab
+
+
+def vocab2idx(vocab, feat_idx=None):
+    for feat in vocab:
+        feat_idx.setdefault(feat, len(feat_idx))
     return feat_idx
 
 
