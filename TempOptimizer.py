@@ -76,9 +76,8 @@ class TempOptimizer(nn.Module):
         if classifier in ['CNN', 'AttnCNN']:
             self.param_space = {
                             'filter_nb': range(100, 500 + 1, 20),
-                            'char_emb': [False],
-                            'char_dim': range(10, 50 + 1, 10),
-                            'char_hidden_dim': range(10, 50 + 1, 10),
+                            'char_emb': [True],
+                            'char_dim': range(20, 50 + 1, 10),
                             'kernel_len': [2, 3, 4, 5, 6, 7, 8],
                             'batch_size': [16, 32, 64, 128],
                             'fc_hidden_dim': range(100, 500 + 1, 20),
@@ -119,17 +118,16 @@ class TempOptimizer(nn.Module):
         self.EPOCH_NUM = epoch_nb
         self.param_space['word_dim'] = [word_dim]
 
-
         self.doc_dic, self.word_idx, self.char_idx, self.pos_idx, self.rel_idx, \
         self.MAX_SEQ_LEN, self.MAX_TOK_LEN, self.MAX_CHAR_LEN, self.pre_model = prepare_global(pkl_file,
-                                                                                                               pretrained_file,
-                                                                                                               link_type=link_type)
+                                                                                               pretrained_file,
+                                                                                               link_type=link_type)
+
         self.WVOCAB_SIZE = len(self.word_idx)
-        self.CVOCAB_SIZE = len(self.word_idx)
+        self.CVOCAB_SIZE = len(self.char_idx)
         self.POS_SIZE = len(self.pos_idx)
         self.ACTION_SIZE = len(self.rel_idx)
         self.ACTIONS = [ key for key, value in sorted(self.rel_idx.items(), key=operator.itemgetter(1))]
-
 
 
         self.config = "lt=%s_c=%s_pre=%s_r=%.2f_wd=%i_mo=%s_ep=%i_me=%i" % (
@@ -176,7 +174,6 @@ class TempOptimizer(nn.Module):
         self.logger.info("Train data: %i docs, Dev data: %i docs, Test data: %i docs..." % (len(TRAIN_SET),
                                                                                  len(DEV_SET),
                                                                                  len(TEST_SET)))
-
 
         ## prepare data based on doc ids
         self.train_feats, self.train_target = prepare_feats_dataset(self.doc_dic, TRAIN_SET, self.word_idx, self.char_idx, self.pos_idx, self.rel_idx,
@@ -412,7 +409,7 @@ class TempOptimizer(nn.Module):
                                                                                                    local_best_state['val_acc'],
                                                                                                    local_best_state['test_loss'],
                                                                                                    local_best_state['test_acc']))
-        self.logger.info("params of glob best loss: %s" % glob_checkpoint['params'])
+        self.logger.info("params of glob best loss: %s, epoch: %s" % (glob_checkpoint['params'], glob_checkpoint['epoch']))
         self.logger.info("glob monitor %s, best_score: %.4f, loss: %.4f,  acc: %.4f', | test loss: %.4f, acc %.4f" % (
                                                                                         glob_checkpoint['monitor'],
                                                                                         glob_checkpoint['best_score'],
@@ -427,6 +424,24 @@ class TempOptimizer(nn.Module):
 def main():
 
 
+    ## a pre-defined param set.
+    params = {'filter_nb': 460,
+              'char_emb': True,
+              'char_dim': 50,
+              'kernel_len': 4,
+              'batch_size': 16,
+              'fc_hidden_dim': 300,
+              'pos_dim': 50,
+              'dropout_emb': 0.0,
+              'dropout_cat': 0.65,
+              'dropout_fc': 0.35,
+              'cat_word_tok': False,
+              'cat_dist_tok': False,
+              'lr': 0.001,
+              'weight_decay': 0.001,
+              'classifier': 'AttnCNN',
+              'word_dim': 200}
+
     ## plot figure
     fig = plt.figure()
     fig.suptitle('train curve', fontsize=16)
@@ -434,11 +449,11 @@ def main():
     plt.ylabel('Accuracy', fontsize=12)
 
 
-    classifier = "CNN"
+    classifier = "AttnCNN"
     link_type = 'Event-Timex'
     pkl_file = "data/0531.pkl"
-    word_dim = 300
-    epoch_nb = 2
+    word_dim = 200
+    epoch_nb = 5
     monitor = 'val_loss'
     feat_types = ['word_seq',
                   'char_seq',
@@ -449,8 +464,9 @@ def main():
                   'sour_dist_tok',
                   'targ_dist_tok'] if link_type in ['Event-Timex',
                                                     'Event-Event'] else ['word_seq',
-                                                                        'sour_dist_seq',
-                                                                        'sour_word_tok']
+                                                                         'char_seq',
+                                                                         'sour_dist_seq',
+                                                                         'sour_word_tok']
 
 
     piece_nb = 1
@@ -464,12 +480,13 @@ def main():
         temp_extractor = TempOptimizer(pkl_file, classifier, word_dim, epoch_nb, link_type, monitor, feat_types,
                                        train_rate=train_rate,
                                        max_evals=1,
-                                       pretrained_file='Resources/embed/deps.words.bin',
-                                       screen_verbose=0,
+                                       # pretrained_file='Resources/embed/deps.words.bin',
+                                       screen_verbose=1,
                                        )
         temp_extractor.generate_feats_dataset(train_rate=train_rate) ## prepare train, dev, test data for input to the model
         temp_extractor.shape_dataset()
-        temp_extractor.optimize_model()
+        # temp_extractor.optimize_model()
+        temp_extractor.train_model(**params)
         best_loss, best_acc = temp_extractor.eval_best_model()
         train_acc.append(best_acc)
     plt.plot(train_per, train_acc, marker='^', label=classifier)
