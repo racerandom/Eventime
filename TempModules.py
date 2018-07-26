@@ -172,6 +172,7 @@ class TempCNN(nn.Module):
                 if which_feat(feat_type) in ['word', 'dist']:
                     seq_inputs.append(feat)
                 elif params['char_emb'] and which_feat(feat_type) in ['char']:
+                    self.char_hidden = self.init_char_hidden(batch * self.max_seq_len)
                     char_outs, self.char_hidden = self.char_rnn(feat, self.char_hidden)
                     char_out = char_outs[:,-1,:].view((batch, self.max_seq_len, -1))
                     seq_inputs.append(char_out)
