@@ -69,6 +69,7 @@ class TempOptimizer(nn.Module):
     def __init__(self, pkl_file, classifier, word_dim, epoch_nb, link_type, monitor, feat_types,
                  train_rate=1.0,
                  max_evals=500,
+                 mode='tune',
                  pretrained_file='Resources/embed/giga-aacw.d200.bin',
                  screen_verbose=0):
 
@@ -83,6 +84,7 @@ class TempOptimizer(nn.Module):
                             'fc_hidden_dim': range(100, 500 + 1, 20),
                             'pos_dim': range(10, 50 + 1, 10),
                             'dropout_emb': [0.0],
+                            'mention_cat':['sum', 'max'],
                             'dropout_cat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
                             'dropout_fc': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
                             'cat_word_tok': [True, False],
@@ -113,6 +115,7 @@ class TempOptimizer(nn.Module):
         self.monitor = monitor
         self.link_type = link_type
         self.max_evals = max_evals
+        self.mode = mode
         self.feat_types = feat_types
         self.WORD_DIM = word_dim
         self.EPOCH_NUM = epoch_nb
@@ -130,8 +133,9 @@ class TempOptimizer(nn.Module):
         self.ACTIONS = [ key for key, value in sorted(self.rel_idx.items(), key=operator.itemgetter(1))]
 
 
-        self.config = "lt=%s_c=%s_pre=%s_r=%.2f_wd=%i_mo=%s_ep=%i_me=%i" % (
+        self.config = "lt=%s_m=%s_c=%s_pre=%s_r=%.2f_wd=%i_mo=%s_ep=%i_me=%i" % (
                                                                         link_type,
+                                                                        self.mode,
                                                                         classifier,
                                                                         pretrained_file.split('/')[-1].split('.')[0] if pretrained_file else 'None',
                                                                         train_rate,
@@ -435,11 +439,12 @@ def main():
               'dropout_emb': 0.0,
               'dropout_cat': 0.65,
               'dropout_fc': 0.35,
-              'cat_word_tok': False,
+              'mention_cat': 'sum',
+              'cat_word_tok': True,
               'cat_dist_tok': False,
               'lr': 0.001,
               'weight_decay': 0.001,
-              'classifier': 'AttnCNN',
+              'classifier': 'CNN',
               'word_dim': 200}
 
     ## plot figure
@@ -454,6 +459,7 @@ def main():
     pkl_file = "data/0531.pkl"
     word_dim = 200
     epoch_nb = 5
+    mode = 'train'  # 'tune' or 'train'
     monitor = 'val_loss'
     feat_types = ['word_seq',
                   'char_seq',
@@ -479,14 +485,17 @@ def main():
         train_per.append(train_rate)
         temp_extractor = TempOptimizer(pkl_file, classifier, word_dim, epoch_nb, link_type, monitor, feat_types,
                                        train_rate=train_rate,
-                                       max_evals=1,
+                                       max_evals=200,
+                                       mode = mode,
                                        # pretrained_file='Resources/embed/deps.words.bin',
                                        screen_verbose=1,
                                        )
         temp_extractor.generate_feats_dataset(train_rate=train_rate) ## prepare train, dev, test data for input to the model
         temp_extractor.shape_dataset()
-        # temp_extractor.optimize_model()
-        temp_extractor.train_model(**params)
+        if mode in ['tune']:
+            temp_extractor.optimize_model()
+        elif mode in ['train']:
+            temp_extractor.train_model(**params)
         best_loss, best_acc = temp_extractor.eval_best_model()
         train_acc.append(best_acc)
     plt.plot(train_per, train_acc, marker='^', label=classifier)

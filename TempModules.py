@@ -186,17 +186,14 @@ class TempCNN(nn.Module):
         cat_inputs = [p1_out]
         for feat, feat_type in zip(feat_inputs, feat_types):
             if not is_seq_feat(feat_type):
-
-                if which_feat(feat_type) == 'word':
-                    if params['cat_word_tok']:
-                        if self.verbose_level == 2:
-                            print(feat_type, self.tok_p1(feat.transpose(1, 2)).squeeze(-1).shape)
-                        cat_inputs.append(self.tok_p1(feat.transpose(1, 2)).squeeze(-1))
-                elif which_feat(feat_type) == 'dist':
-                    if params['cat_dist_tok']:
-                        if self.verbose_level == 2:
-                            print(feat_type, self.tok_p1(feat.transpose(1, 2)).squeeze(-1).shape)
-                        cat_inputs.append(self.tok_p1(feat.transpose(1, 2)).squeeze(-1))
+                if (which_feat(feat_type) == 'word' and params['cat_word_tok']) or (which_feat(feat_type) == 'dist' and params['cat_dist_tok']):
+                    if params['mention_cat'] == 'sum':
+                        mention_feat = feat.sum(1)
+                    elif params['mention_cat'] == 'max':
+                        mention_feat = self.tok_p1(feat.transpose(1, 2)).squeeze(-1)
+                    cat_inputs.append(mention_feat)
+                    if self.verbose_level == 2:
+                        print(feat_type, feat.shape, mention_feat.shape)
         cat_out = torch.cat(cat_inputs, dim=-1)
         cat_out = self.cat_dropout(cat_out)
         if self.verbose_level == 2:
@@ -290,17 +287,14 @@ class TempAttnCNN(nn.Module):
         cat_inputs = [attn_out.squeeze(-1)]
         for feat, feat_type in zip(feat_inputs, feat_types):
             if not is_seq_feat(feat_type):
-
-                if which_feat(feat_type) == 'word':
-                    if params['cat_word_tok']:
-                        if self.verbose_level == 2:
-                            print(feat_type, self.tok_p1(feat.transpose(1, 2)).squeeze(-1).shape)
-                        cat_inputs.append(self.tok_p1(feat.transpose(1, 2)).squeeze(-1))
-                elif which_feat(feat_type) == 'dist':
-                    if params['cat_dist_tok']:
-                        if self.verbose_level == 2:
-                            print(feat_type, self.tok_p1(feat.transpose(1, 2)).squeeze(-1).shape)
-                        cat_inputs.append(self.tok_p1(feat.transpose(1, 2)).squeeze(-1))
+                if (which_feat(feat_type) == 'word' and params['cat_word_tok']) or (which_feat(feat_type) == 'dist' and params['cat_dist_tok']):
+                    if params['mention_cat'] == 'sum':
+                        mention_feat = feat.sum(1)
+                    elif params['mention_cat'] == 'max':
+                        mention_feat = self.tok_p1(feat.transpose(1, 2)).squeeze(-1)
+                    cat_inputs.append(mention_feat)
+                    if self.verbose_level == 2:
+                        print(feat_type, feat.shape, mention_feat.shape)
         cat_out = torch.cat(cat_inputs, dim=-1)
         cat_out = self.cat_dropout(cat_out)
         if self.verbose_level == 2:

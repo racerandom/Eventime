@@ -233,6 +233,7 @@ def prepare_global(pkl_file, pretrained_file, link_type='Event-Timex'):
             elif link_type in ['Event-DCT']:
                 tokens = doc.geneSentOfMention(link.sour)
                 link.feat_inputs['word_seq'] = [tok.content for tok in tokens]
+                link.feat_inputs['char_seq'] = [list(tok.content.lower()) for tok in tokens]
                 link.feat_inputs['sour_dist_seq'] = getMentionDist(tokens, link.sour)
                 link.feat_inputs['sour_word_tok'] = link.sour.content.split()
 
