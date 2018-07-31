@@ -134,9 +134,9 @@ class TempCNN(nn.Module):
                 elif params['char_emb'] and which_feat(feat_type) in ['char']:
                     c1_input_dim += params['char_dim']
         self.c1 = nn.Conv1d(c1_input_dim, params['filter_nb'], params['kernel_len'])
-
         self.kernel_dim = self.max_seq_len - params['kernel_len'] + 1
         self.p1 = nn.MaxPool1d(self.kernel_dim)
+        self.conv_dropout = nn.Dropout(p=params['dropout_conv'])
 
         # self.tok_p1 = nn.MaxPool1d(max_tok_len)
         self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
@@ -189,7 +189,7 @@ class TempCNN(nn.Module):
 
 
         ## step 3: concat tok feats
-        cat_inputs = [p1_out]
+        cat_inputs = [self.conv_dropout(p1_out)]
         for feat, feat_type in zip(feat_inputs, feat_types):
             if not is_seq_feat(feat_type):
                 if (which_feat(feat_type) == 'word' and params['cat_word_tok']) or (which_feat(feat_type) == 'dist' and params['cat_dist_tok']):
@@ -200,11 +200,10 @@ class TempCNN(nn.Module):
                     elif params['mention_cat'] == 'mean':
                         mention_feat = feat.mean(dim=1)
                         # mention_feat = self.tok_p1(feat.transpose(1, 2)).squeeze(-1)
-                    cat_inputs.append(mention_feat)
+                    cat_inputs.append(self.cat_dropout(mention_feat))
                     if self.verbose_level == 2:
                         print(feat_type, feat.shape, mention_feat.shape)
         cat_out = torch.cat(cat_inputs, dim=-1)
-        cat_out = self.cat_dropout(cat_out)
         if self.verbose_level == 2:
             print("cat_output size:", cat_out.shape)
 
@@ -245,10 +244,10 @@ class TempAttnCNN(nn.Module):
                     c1_input_dim += params['char_dim']
 
         self.c1 = nn.Conv1d(c1_input_dim, params['filter_nb'], params['kernel_len'])
-
         self.kernel_dim = self.max_seq_len - params['kernel_len'] + 1
         attn_dim = params['filter_nb'] if params['attn_targ'] == 'filter_nb' else self.kernel_dim
         self.attn_W = torch.nn.Parameter(torch.randn(attn_dim, requires_grad=True))
+        self.conv_dropout = nn.Dropout(p=params['dropout_conv'])
 
         #self.tok_p1 = nn.MaxPool1d(max_tok_len)
         self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
@@ -304,7 +303,7 @@ class TempAttnCNN(nn.Module):
             print("attn_output size:", attn_out.squeeze(-1).shape)
 
         ## step 3: concat tok feats
-        cat_inputs = [attn_out.squeeze(-1)]
+        cat_inputs = [self.conv_dropout(attn_out.squeeze(-1))]
         for feat, feat_type in zip(feat_inputs, feat_types):
             if not is_seq_feat(feat_type):
                 if (which_feat(feat_type) == 'word' and params['cat_word_tok']) or (which_feat(feat_type) == 'dist' and params['cat_dist_tok']):
@@ -315,11 +314,11 @@ class TempAttnCNN(nn.Module):
                     elif params['mention_cat'] == 'mean':
                         mention_feat = feat.mean(dim=1)
                         # mention_feat = self.tok_p1(feat.transpose(1, 2)).squeeze(-1)
-                    cat_inputs.append(mention_feat)
+                    cat_inputs.append(self.cat_dropout(mention_feat))
                     if self.verbose_level == 2:
                         print(feat_type, feat.shape, '->', mention_feat.shape)
         cat_out = torch.cat(cat_inputs, dim=-1)
-        cat_out = self.cat_dropout(cat_out)
+
         if self.verbose_level == 2:
             print("cat_output size:", cat_out.shape)
 

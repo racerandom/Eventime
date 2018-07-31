@@ -76,14 +76,14 @@ class TempOptimizer(nn.Module):
         ## initialize the param space
         if classifier in ['CNN', 'AttnCNN']:
             self.param_space = {
-                            'filter_nb': range(100, 500 + 1, 20),
                             'char_emb': [True],
                             'char_dim': range(20, 50 + 1, 10),
                             'kernel_len': [2, 3, 4, 5, 6, 7, 8],
                             'batch_size': [16, 32, 64, 128],
-                            'fc_hidden_dim': range(100, 500 + 1, 20),
                             'pos_dim': range(10, 50 + 1, 10),
                             'dropout_emb': [0.0],
+                            'filter_nb': range(100, 500 + 1, 20),
+                            'dropout_conv': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
                             'attn_targ': ['filter_nb', 'max_len'],
                             'mention_cat':['sum', 'max'],
                             'dropout_cat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
@@ -92,6 +92,7 @@ class TempOptimizer(nn.Module):
                             'cat_dist_tok': [True, False],
                             # 'optimizer': ['adadelta', 'adam','rmsprop', 'sgd'],
                             'fc_layer':[True, False],
+                            'fc_hidden_dim': range(100, 500 + 1, 20),
                             'lr':[1e-2, 1e-3],
                             'weight_decay':[1e-3, 1e-4, 1e-5, 0]
                             }
@@ -432,7 +433,7 @@ def main():
 
 
     ## a pre-defined param set.
-    params = {'filter_nb': 480,
+    params = {
               'char_emb': True,
               'char_dim': 50,
               'kernel_len': 4,
@@ -440,6 +441,8 @@ def main():
               'fc_hidden_dim': 480,
               'attn_targ': 'filter_nb',
               'pos_dim': 50,
+              'filter_nb': 480,
+              'dropout_conv': 0.2,
               'dropout_emb': 0.0,
               'dropout_cat': 0.5,
               'dropout_fc': 0.5,
@@ -463,7 +466,7 @@ def main():
     link_type = 'Event-Timex'
     pkl_file = "data/0531.pkl"
     word_dim = 200
-    epoch_nb = 5
+    epoch_nb = 20
     mode = 'train'  # 'tune' or 'train'
     monitor = 'val_loss'
     feat_types = ['word_seq',
