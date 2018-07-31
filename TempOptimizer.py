@@ -84,12 +84,14 @@ class TempOptimizer(nn.Module):
                             'fc_hidden_dim': range(100, 500 + 1, 20),
                             'pos_dim': range(10, 50 + 1, 10),
                             'dropout_emb': [0.0],
+                            'attn_targ': ['filter_nb', 'max_len'],
                             'mention_cat':['sum', 'max'],
                             'dropout_cat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
                             'dropout_fc': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
                             'cat_word_tok': [True, False],
                             'cat_dist_tok': [True, False],
                             # 'optimizer': ['adadelta', 'adam','rmsprop', 'sgd'],
+                            'fc_layer':[True, False],
                             'lr':[1e-2, 1e-3],
                             'weight_decay':[1e-3, 1e-4, 1e-5, 0]
                             }
@@ -346,6 +348,7 @@ class TempOptimizer(nn.Module):
                 pred_out = model(self.feat_types, *train_feats, **params)
                 loss = F.nll_loss(pred_out, train_target)
                 loss.backward(retain_graph=True)
+                torch.nn.utils.clip_grad_norm(model.parameters(), max_norm=1)
                 optimizer.step()
                 total_loss.append(loss.data.item())
                 pred = torch.argmax(pred_out, dim=1)
@@ -429,22 +432,24 @@ def main():
 
 
     ## a pre-defined param set.
-    params = {'filter_nb': 460,
+    params = {'filter_nb': 480,
               'char_emb': True,
               'char_dim': 50,
               'kernel_len': 4,
               'batch_size': 16,
-              'fc_hidden_dim': 300,
+              'fc_hidden_dim': 480,
+              'attn_targ': 'filter_nb',
               'pos_dim': 50,
               'dropout_emb': 0.0,
-              'dropout_cat': 0.65,
-              'dropout_fc': 0.35,
+              'dropout_cat': 0.5,
+              'dropout_fc': 0.5,
               'mention_cat': 'sum',
               'cat_word_tok': True,
               'cat_dist_tok': False,
+              'fc_layer':False,
               'lr': 0.001,
-              'weight_decay': 0.001,
-              'classifier': 'CNN',
+              'weight_decay': 0.0001,
+              'classifier': 'AttnCNN',
               'word_dim': 200}
 
     ## plot figure
@@ -488,7 +493,7 @@ def main():
                                        max_evals=200,
                                        mode = mode,
                                        # pretrained_file='Resources/embed/deps.words.bin',
-                                       screen_verbose=1,
+                                       screen_verbose=2,
                                        )
         temp_extractor.generate_feats_dataset(train_rate=train_rate) ## prepare train, dev, test data for input to the model
         temp_extractor.shape_dataset()

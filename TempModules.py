@@ -134,7 +134,10 @@ class TempCNN(nn.Module):
                 elif params['char_emb'] and which_feat(feat_type) in ['char']:
                     c1_input_dim += params['char_dim']
         self.c1 = nn.Conv1d(c1_input_dim, params['filter_nb'], params['kernel_len'])
-        self.p1 = nn.MaxPool1d(max_seq_len - params['kernel_len'] + 1)
+
+        self.kernel_dim = self.max_seq_len - params['kernel_len'] + 1
+        self.p1 = nn.MaxPool1d(self.kernel_dim)
+
         self.tok_p1 = nn.MaxPool1d(max_tok_len)
         self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
         fc1_input_dim = params['filter_nb']
@@ -146,9 +149,12 @@ class TempCNN(nn.Module):
                 elif which_feat(feat_type) == 'dist':
                     if params['cat_dist_tok']:
                         fc1_input_dim += params['pos_dim']
-        self.fc1 = nn.Linear(fc1_input_dim, params['fc_hidden_dim'])
-        self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
-        self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
+        if params['fc_layer']:
+            self.fc1 = nn.Linear(fc1_input_dim, params['fc_hidden_dim'])
+            self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
+            self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
+        elif not params['fc_layer']:
+            self.fc2 = nn.Linear(fc1_input_dim, action_size)
 
 
     def forward(self, feat_types, *feat_inputs, **params):
@@ -201,9 +207,12 @@ class TempCNN(nn.Module):
 
 
         ## step4: fc layers
-        fc1_out = F.relu(self.fc1(cat_out))
-        fc1_out = self.fc1_drop(fc1_out)
-        fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
+        if params['fc_layer']:
+            fc1_out = F.relu(self.fc1(cat_out))
+            fc1_out = self.fc1_drop(fc1_out)
+            fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
+        elif not params['fc_layer']:
+            fc2_out = F.log_softmax(self.fc2(cat_out), dim=1)
 
         if self.verbose_level == 2:
             print()
@@ -233,10 +242,14 @@ class TempAttnCNN(nn.Module):
                     c1_input_dim += params['char_dim']
 
         self.c1 = nn.Conv1d(c1_input_dim, params['filter_nb'], params['kernel_len'])
-        self.attn_W = torch.nn.Parameter(torch.randn(params['filter_nb'], requires_grad=True))
+
+        self.kernel_dim = self.max_seq_len - params['kernel_len'] + 1
+        attn_dim = params['filter_nb'] if params['attn_targ'] == 'filter_nb' else self.kernel_dim
+        self.attn_W = torch.nn.Parameter(torch.randn(attn_dim, requires_grad=True))
+
         self.tok_p1 = nn.MaxPool1d(max_tok_len)
         self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
-        fc1_input_dim = params['filter_nb']
+        fc1_input_dim = attn_dim
         for feat_type in feat_types:
             if not is_seq_feat(feat_type):
                 if which_feat(feat_type) == 'word':
@@ -245,9 +258,12 @@ class TempAttnCNN(nn.Module):
                 elif which_feat(feat_type) == 'dist':
                     if params['cat_dist_tok']:
                         fc1_input_dim += params['pos_dim']
-        self.fc1 = nn.Linear(fc1_input_dim, params['fc_hidden_dim'])
-        self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
-        self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
+        if params['fc_layer']:
+            self.fc1 = nn.Linear(fc1_input_dim, params['fc_hidden_dim'])
+            self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
+            self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
+        elif not params['fc_layer']:
+            self.fc2 = nn.Linear(fc1_input_dim, action_size)
 
     def forward(self, feat_types, *feat_inputs, **params):
 
@@ -265,7 +281,6 @@ class TempAttnCNN(nn.Module):
         seq_inputs = torch.cat(seq_inputs, dim=2).transpose(1, 2)
         embed_inputs = self.embedding_dropout(seq_inputs)
 
-
         ## step2: conv + attn
         batch_size = embed_inputs.shape[0]
         if self.verbose_level == 2:
@@ -275,7 +290,9 @@ class TempAttnCNN(nn.Module):
         if self.verbose_level == 2:
             print("c1_output size:", c1_out.shape)
 
-        attn_M = F.tanh(c1_out)  # attn_M: [batch, filter_nb, kernel_out]
+        # c1_out: [batch, filter_nb, kernel_out]
+        c1_out = c1_out if params['attn_targ'] == 'filter_nb' else c1_out.transpose(1, 2)
+        attn_M = F.tanh(c1_out)
         W = self.attn_W.unsqueeze(0).expand(batch_size, -1, -1)  # W: [batch_size, 1, filter_nb]
         attn_alpha = F.softmax(torch.bmm(W, attn_M), dim=2)  # rnn1_alpha: [batch_size, 1, kernel_out]
         attn_out = F.tanh(torch.bmm(c1_out, attn_alpha.transpose(1, 2)))  # attn_out: [batch_size, filter_nb, 1]
@@ -294,16 +311,19 @@ class TempAttnCNN(nn.Module):
                         mention_feat = self.tok_p1(feat.transpose(1, 2)).squeeze(-1)
                     cat_inputs.append(mention_feat)
                     if self.verbose_level == 2:
-                        print(feat_type, feat.shape, mention_feat.shape)
+                        print(feat_type, feat.shape, '->', mention_feat.shape)
         cat_out = torch.cat(cat_inputs, dim=-1)
         cat_out = self.cat_dropout(cat_out)
         if self.verbose_level == 2:
             print("cat_output size:", cat_out.shape)
 
         ## step4: fc layers
-        fc1_out = F.relu(self.fc1(cat_out))
-        fc1_out = self.fc1_drop(fc1_out)
-        fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
+        if params['fc_layer']:
+            fc1_out = F.relu(self.fc1(cat_out))
+            fc1_out = self.fc1_drop(fc1_out)
+            fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
+        elif not params['fc_layer']:
+            fc2_out = F.log_softmax(self.fc2(cat_out), dim=1)
 
         if self.verbose_level == 2:
             print()
