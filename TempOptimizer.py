@@ -443,7 +443,7 @@ def main():
               'dropout_emb': 0.0,
               'dropout_cat': 0.5,
               'dropout_fc': 0.5,
-              'mention_cat': 'sum',
+              'mention_cat': 'mean',
               'cat_word_tok': True,
               'cat_dist_tok': False,
               'fc_layer':False,
@@ -459,7 +459,7 @@ def main():
     plt.ylabel('Accuracy', fontsize=12)
 
 
-    classifier = "AttnCNN"
+    classifier = "CNN"
     link_type = 'Event-Timex'
     pkl_file = "data/0531.pkl"
     word_dim = 200

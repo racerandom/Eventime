@@ -138,7 +138,7 @@ class TempCNN(nn.Module):
         self.kernel_dim = self.max_seq_len - params['kernel_len'] + 1
         self.p1 = nn.MaxPool1d(self.kernel_dim)
 
-        self.tok_p1 = nn.MaxPool1d(max_tok_len)
+        # self.tok_p1 = nn.MaxPool1d(max_tok_len)
         self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
         fc1_input_dim = params['filter_nb']
         for feat_type in feat_types:
@@ -194,9 +194,12 @@ class TempCNN(nn.Module):
             if not is_seq_feat(feat_type):
                 if (which_feat(feat_type) == 'word' and params['cat_word_tok']) or (which_feat(feat_type) == 'dist' and params['cat_dist_tok']):
                     if params['mention_cat'] == 'sum':
-                        mention_feat = feat.sum(1)
+                        mention_feat = feat.sum(dim=1)
                     elif params['mention_cat'] == 'max':
-                        mention_feat = self.tok_p1(feat.transpose(1, 2)).squeeze(-1)
+                        mention_feat = feat.max(dim=1)[0]
+                    elif params['mention_cat'] == 'mean':
+                        mention_feat = feat.mean(dim=1)
+                        # mention_feat = self.tok_p1(feat.transpose(1, 2)).squeeze(-1)
                     cat_inputs.append(mention_feat)
                     if self.verbose_level == 2:
                         print(feat_type, feat.shape, mention_feat.shape)
@@ -247,7 +250,7 @@ class TempAttnCNN(nn.Module):
         attn_dim = params['filter_nb'] if params['attn_targ'] == 'filter_nb' else self.kernel_dim
         self.attn_W = torch.nn.Parameter(torch.randn(attn_dim, requires_grad=True))
 
-        self.tok_p1 = nn.MaxPool1d(max_tok_len)
+        #self.tok_p1 = nn.MaxPool1d(max_tok_len)
         self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
         fc1_input_dim = attn_dim
         for feat_type in feat_types:
@@ -306,9 +309,12 @@ class TempAttnCNN(nn.Module):
             if not is_seq_feat(feat_type):
                 if (which_feat(feat_type) == 'word' and params['cat_word_tok']) or (which_feat(feat_type) == 'dist' and params['cat_dist_tok']):
                     if params['mention_cat'] == 'sum':
-                        mention_feat = feat.sum(1)
+                        mention_feat = feat.sum(dim=1)
                     elif params['mention_cat'] == 'max':
-                        mention_feat = self.tok_p1(feat.transpose(1, 2)).squeeze(-1)
+                        mention_feat = feat.max(dim=1)[0]
+                    elif params['mention_cat'] == 'mean':
+                        mention_feat = feat.mean(dim=1)
+                        # mention_feat = self.tok_p1(feat.transpose(1, 2)).squeeze(-1)
                     cat_inputs.append(mention_feat)
                     if self.verbose_level == 2:
                         print(feat_type, feat.shape, '->', mention_feat.shape)
