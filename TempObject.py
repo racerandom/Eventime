@@ -2,13 +2,22 @@ from TempNormalization import *
 from TempOrder import InduceMethod
 import TempUtils
 
-from nltk import sent_tokenize, word_tokenize
+# from nltk import sent_tokenize, word_tokenize
+from TempSyntax import *
+
+
+# corenlp = CoreNLPServer()
+# sent_tokenize = corenlp.get_sent
+
 
 class Token:
+
     def __init__(self, **args):
         self.content = args.setdefault('content', None)
         self.tok_id = args.setdefault('tok_id', None)
         self.sent_id = args.setdefault('sent_id', None)
+        self.conll_id = args.setdefault('conll_id', None) ## token id for conll dependency format
+        self.pos = args.setdefault('pos', None)
 
     @property
     def content(self):
@@ -17,6 +26,14 @@ class Token:
     @content.setter
     def content(self, content):
         self.__content = content
+
+    @property
+    def pos(self):
+        return self.__pos
+
+    @pos.setter
+    def pos(self, pos):
+        self.__pos = pos
 
     @property
     def tok_id(self):
@@ -33,11 +50,20 @@ class Token:
     @sent_id.setter
     def sent_id(self, sent_id):
         self.__sent_id = sent_id
-    
+
+    @property
+    def conll_id(self):
+        return self.__conll_id
+
+    @conll_id.setter
+    def conll_id(self, conll_id):
+        self.__conll_id = conll_id
+
     @property
     def mention_type(self):
         return type(self)
-    
+
+
 class Mention:
     def __init__(self, **args):
         self.content = args.setdefault('content', None)
@@ -72,6 +98,7 @@ class Mention:
     def mention_type(self):
         return type(self)
 
+
 class Signal(Mention):
     def __init__(self, **args):
         super().__init__(**args)
@@ -92,6 +119,7 @@ class Signal(Mention):
     @property
     def mention_type(self):
         return "Signal"
+
 
 class Timex(Mention):
     def __init__(self, **args):
@@ -198,6 +226,7 @@ class Timex(Mention):
     def mention_type(self):
         return "DCT" if self.isDCT() else "Timex"
 
+
 class EventBase(Mention):
     def __init__(self, **args):
         super().__init__(**args)
@@ -233,6 +262,10 @@ class EventBase(Mention):
     def normalize_value(self):
         if self.__value:
             self.__tanchor = normalize_tanchor(self.__value)
+
+    def normalize_anchor(self):
+        if self.__value:
+            self.__tanchor = normalize_anchor(self.__value)
 
     @property
     def tanchor(self):
@@ -300,6 +333,7 @@ class Event(EventBase):
     def mention_type(self):
         return "Event"
 
+
 class TempLink:
 
     def __init__(self, **args):
@@ -362,6 +396,7 @@ class TempLink:
         else:
             return "%s-%s" % (self.sour.mention_type, self.targ.mention_type)
 
+
 class TimeMLDoc:
     def __init__(self, **args):
         self.docid = args['docid']
@@ -371,6 +406,7 @@ class TimeMLDoc:
         self.timexs = {}
         self.signals = {}
         self.temp_links = {}
+        self.syntaxer = TempSyntax()
 
     @property
     def docid(self):
@@ -461,15 +497,31 @@ class TimeMLDoc:
     def extendTokens(self, tokens):
         self.tokens.extend(tokens)
 
+    ## assign sent_id and conll_id for each token in a doc
     def setSentIds2tok(self):
+
+        corenlp = TempSyntax()
+        sent_tokenize = corenlp.get_sent
+
         tok_seq = ' '.join([ tokc.content for tokc in self.tokens])
         sent_seq = sent_tokenize(tok_seq)
+
         index = 0
         for s_id in range(len(sent_seq)):
-            for w_id in range(len(sent_seq[s_id].split())):
-                # print(s_id, sent_seq[s_id], index, self.tokens[index].content)
-                self.tokens[index].sent_id = s_id + 1
-                index += 1
+            sent = sent_seq[s_id]
+            conll_id = 1
+            while sent:
+                if sent.startswith(self.tokens[index].content):
+                    sent = sent[len(self.tokens[index].content):].strip()
+                    self.tokens[index].sent_id = s_id + 1
+                    self.tokens[index].conll_id = conll_id
+                    conll_id += 1
+                    index += 1
+                else:
+                    print(sent)
+                    print(index, self.tokens[index].content)
+                    raise Exception("Sentence and token aren't matching")
+
 
     def setSentIds2mention(self):
         self.setSentIds2tok()
@@ -534,47 +586,88 @@ class TimeMLDoc:
         toks = self.tokens[begin_id: end_id + 1]
         return toks
 
-    def geneEventDCTPair(self, window=1):
+
+    def getSDPFromMentionToRoot(self, mention, direct='mention2root', dep_ver='SD'):
+        sent_tokens = self.geneSentOfMention(mention)
+        try:
+            dep_graph = self.syntaxer.get_dep_graph(' '.join([ token.content.replace(' ', '-') for token in sent_tokens]), dep_ver=dep_ver)
+            mention_conll_ids = [ self.tokens[tok_id].conll_id for tok_id in mention.tok_ids]
+            if direct == 'mention2root':
+                sdp_conll_ids = self.syntaxer.get_sdp(dep_graph, mention_conll_ids[0], 0)[:-1]
+            elif direct == 'root2mention':
+                sdp_conll_ids = self.syntaxer.get_sdp(dep_graph, 0, mention_conll_ids[0])[1:]
+            else:
+                raise Exception("[Error] Unknown sdp direct arg!!!")
+            sdp_conll_ids = reformSDPforMention(mention_conll_ids, sdp_conll_ids)
+            return ([ dep_graph.get_by_address(conll_id)['word'] for conll_id in sdp_conll_ids],
+                    [ dep_graph.get_by_address(conll_id)['tag'] for conll_id in sdp_conll_ids],
+                    [ dep_graph.get_by_address(conll_id)['rel'] for conll_id in sdp_conll_ids],
+                    [dep_graph.get_by_address(conll_id)['word'] for conll_id in mention_conll_ids],
+                    [dep_graph.get_by_address(conll_id)['tag'] for conll_id in mention_conll_ids],
+                    [dep_graph.get_by_address(conll_id)['rel'] for conll_id in mention_conll_ids])
+        except Exception as ex:
+            print(ex)
+            print(mention.content)
+            print(' '.join([ tok.content for tok in sent_tokens]))
+            return None
+
+
+    def getTlinkListByMention(self, mention_id, link_types=['Event-DCT', 'Event-Timex']):
+        tlinks = []
+        for link_type in link_types:
+            for link in self.temp_links[link_type]:
+                if link.sour.id == mention_id or link.targ.id == mention_id:
+                    tlinks.append(link)
+        return tlinks
+
+
+    def geneEventDCTPair(self, oper=False):
         lid = 0
         for eid, event in self.events.items():
             # print(InduceMethod.induce_relation(event, self.dct))
             link = TempLink(lid='led%i' % lid ,
                                         sour=event,
                                         targ=self.dct,
-                                        rel=InduceMethod.induce_relation(event, self.dct))
+                                        rel=InduceMethod.induceRelationWithSourEvent(event, self.dct) if not oper else
+                                            InduceMethod.induceRelationWithSourEvent(event, self.dct))
             self.add_temp_link(link)
             lid += 1
 
-    def geneEventTimexPair(self, sent_win):
+    def geneEventTimexPair(self, sent_win, order='fixed', oper=False):
         lid = 0
         for eid, event in self.events.items():
             for tid, timex in self.timexs.items():
                 if abs(timex.sent_id - event.sent_id) > sent_win:
                     continue
-                if event.tok_ids[0] <= timex.tok_ids[0]:  # specifying: a tlink is always from left to right
+                if order == 'tok_id':
+                    if event.tok_ids[0] <= timex.tok_ids[0]:  # specifying: a tlink is always from left to right
+                        sour, targ = event, timex
+                    else:
+                        sour, targ = timex, event
+                elif order == 'fixed':
                     sour, targ = event, timex
-                else:
-                    sour, targ = timex, event
                 link = TempLink(lid='let%i' % lid ,
                                               sour=sour,
                                               targ=targ,
-                                              rel=InduceMethod.induce_relation(sour, targ))
+                                              rel=InduceMethod.induceRelationWithSourEvent(sour, targ) if not oper else
+                                                  InduceMethod.induceRelationWithSourEvent(sour, targ))
                 tokens = self.geneSentTokens(sour, targ)
                 link.interwords = [tok.content for tok in tokens]
                 link.interpos = TempUtils.geneSentPostion(tokens, sour, targ)
                 self.add_temp_link(link)
                 lid += 1
 
-    def geneEventsPair(self, sent_win):
+    def geneEventsPair(self, sent_win, oper=False):
         lid = 0
         for sour_eid, sour_event in self.events.items():
             for targ_eid, targ_event in self.events.items():
                 if 0 <= (targ_event.sent_id - sour_event.sent_id) <= sent_win:
                     if targ_event.tok_ids[0] > sour_event.tok_ids[0]:
-                        link = TempLink(lid='led%i' % lid ,
+                        link = TempLink(lid='lee%i' % lid ,
                                                       sour=sour_event,
                                                       targ=targ_event,
-                                                      rel=InduceMethod.induce_relation(sour_event, targ_event))
+                                                      rel=InduceMethod.induce_relation(sour_event, targ_event)
+                                                          if not oper else InduceMethod.induce_operation(sour_event, targ_event))
                         tokens = self.geneSentTokens(sour_event, targ_event)
                         link.interwords = [tok.content for tok in tokens]
                         link.interpos = TempUtils.geneSentPostion(tokens, sour_event, targ_event)
@@ -604,10 +697,14 @@ class TimeMLDoc:
             for key, timex in self.timexs.items():
                 print(key, timex.content, timex.value, timex.tanchor)
 
-    def normalize_event_value(self, verbose=0):
+    def normalize_event_value(self, anchor_type='anchor0', verbose=0):
         for key, event in self.events.items():
             try:
-                event.normalize_value()
+                if anchor_type == 'anchor0':
+                    event.tanchor = normalize_anchor(event.value)
+                elif anchor_type == 'anchor1':
+                    event.tanchor = normalize_tanchor(event.value)
+                # print(event.value, normalize_anchor(event.value))
             except Exception as ex:
                 print("Normalize event error:", key, event.value)
 

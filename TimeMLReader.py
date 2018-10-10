@@ -9,9 +9,14 @@ from TempObject import *
 from TempOrder import InduceMethod
 from TempNormalization import *
 import TempUtils
+from TempSyntax import TempSyntax
+
+# corenlp = CoreNLPServer()
+# word_tokenize = corenlp.get_token
 
 
 def load_mentions(timeml_file):
+
     events, timexs, signals = [], [], []
     root = ET.parse(timeml_file).getroot()
 
@@ -31,8 +36,15 @@ def load_mentions(timeml_file):
 
 
 def load_anchorml(file_name):
+
+    corenlp = TempSyntax()
+    word_tokenize = corenlp.get_token
+
     print('*' * 80)
     print(file_name)
+
+
+
     root = ET.parse(file_name).getroot()
     doc = None
 
@@ -53,7 +65,8 @@ def load_anchorml(file_name):
             if elem.text:
                 # toks = elem.text.split()
                 # for i in range(len(toks)):
-                tokenized = word_tokenize(elem.text)
+                tokenized = word_tokenize(elem.text.replace(" ", " "))
+                # print(tokenized)
                 for j in range(len(tokenized)):
                     tokc = Token(content=tokenized[j], tok_id=len(doc.tokens))
                     doc.tokens.append(tokc)
@@ -65,6 +78,7 @@ def load_anchorml(file_name):
                 #     tokenized = word_tokenize(toks[i])
                 #     content.extend(tokenized)
                 tokenized = word_tokenize(mention_elem.text)
+                # print(tokenized)
                 for j in range(len(tokenized)):
                     tokc = Token(content=tokenized[j], tok_id=len(doc.tokens))
                     content.append(tokenized[j])
@@ -82,9 +96,11 @@ def load_anchorml(file_name):
                 #     toks = mention_elem.tail.split()
                 #     for i in range(len(toks)):
                     tokenized = word_tokenize(mention_elem.tail)
+                    # print(tokenized)
                     for j in range(len(tokenized)):
                         tokc = Token(content=tokenized[j], tok_id=len(doc.tokens))
                         doc.tokens.append(tokc)
+    corenlp.close()
     return doc
 
 
@@ -216,8 +232,6 @@ def load_extraml(extraml_file, events, timexs, signals):
                         sent_id += 1
     print(labs)
     return words, sent_ids
-
-
 
 
 def load_anchorml_sentid(anchor_file, extraml_file, verbose=0):
@@ -514,14 +528,15 @@ class TestTimeMLReader(unittest.TestCase):
 
     def test_save_batch_load(self):
         file_dir = "/Users/fei-c/Resources/timex/TimeAnchor2/DNS"
-        out_file = "tanchor.txt"
+        out_file = "data/tanchor.txt"
         save_batch_load(file_dir, out_file)
 
     def test_load_anchorml(self):
         doc = load_anchorml("/Users/fei-c/Resources/timex/納品0521jsa/ALL/ALL044_wsj_0173.tml")
-#        print([ tok.content for tok in doc.tokens])
-        event1 = doc.events[0]
-        event2 = doc.events[1]
+        print([ tok.content for tok in doc.tokens])
+        print(doc.events)
+        event1 = doc.events['e1']
+        event2 = doc.events['e2']
         print(event1.content, event1.tok_ids)
         print(event2.content, event2.tok_ids)
         print(doc.geneInterTokens(event1, event2))
@@ -529,17 +544,18 @@ class TestTimeMLReader(unittest.TestCase):
         print(doc.geneInterPostion(event1, event2))
 
     def test_load_anchorml2(self):
-        doc = load_anchorml("/Users/fei-c/Resources/timex/納品0521jsa/ALL/ALL044_wsj_0173.tml")
+        doc = load_anchorml("/Users/fei-c/Resources/timex/Release0531/ALL/DNS014_APW19980227.0489.tml")
         print(len(doc.tokens), doc.tokens[-1].tok_id)
         doc.setSentIds2mention()
         for key, timex in doc.timexs.items():
             print(key, timex.sent_id)
+        for tok in doc.tokens:
+            print(tok.content, tok.tok_id, tok.conll_id, tok.sent_id)
 
     def test_compare_annotations(self):
-
         class_dic = {'I_ACTION': [0, 0], 'OCCURRENCE': [0, 0], 'PERCEPTION': [0, 0], 'REPORTING': [0, 0], 'ASPECTUAL': [0, 0], 'I_STATE': [0, 0], 'STATE': [0, 0], 'ALL':[0, 0]}
         file_dir = "/Users/fei-c/Resources/timex/TimeAnchor2/DNS"
-        out_file = "tanchor.txt"
+        out_file = "data/tanchor.txt"
         tanchor_file = "/Users/fei-c/Resources/timex/Event Time Corpus/event-times_normalized.tab"
         doc_list = save_batch_load(file_dir, out_file)
         doc_num = load_tanchor_num(tanchor_file)
@@ -640,7 +656,6 @@ class TestTimeMLReader(unittest.TestCase):
                     print(key, timex.content, ex)
             for key, timex in doc.timexs.items():
                 print(key, timex.content, timex.value, timex.tanchor)
-
 
     def test_generate_links(self):
         anchorml_dir = "/Users/fei-c/Resources/timex/Release0531/ALL"

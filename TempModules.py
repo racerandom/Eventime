@@ -36,6 +36,7 @@ def get_index_of_max(scores):
 ACTION_TO_IX = {'COL0':0, 'COL1':1, 'COL2':2, 'COL01':3, 'COL12':4, 'COL012':5, 'NONE':6}
 IX_TO_ACTION = {v: k for k, v in ACTION_TO_IX.items()}
 
+
 def select_action(out_score, IX_TO_ACTION):
     sample = random.random()
     if sample > EPS_THRES:
@@ -43,41 +44,41 @@ def select_action(out_score, IX_TO_ACTION):
         return IX_TO_ACTION[index]
     else:
         return IX_TO_ACTION[random.randrange(7)]
-    
+
 
 def action2out(action, curr_out, curr_time, IX_TO_ACTION):
-    
+
     def update_col0(curr_out, curr_time):
         curr_out[0] = curr_time
         return curr_out
-    
+
     def update_col1(curr_out, curr_time):
         curr_out[1] = curr_time
         return curr_out
-    
+
     def update_col2(curr_out, curr_time):
         curr_out[2] = curr_time
         return curr_out
-    
+
     def update_col01(curr_out, curr_time):
         curr_out[0] = curr_time
         curr_out[1] = curr_time
         return curr_out
-        
+
     def update_col12(curr_out, curr_time):
         curr_out[1] = curr_time
         curr_out[2] = curr_time
         return curr_out
-    
+
     def update_col012(curr_out, curr_time):
         curr_out[0] = curr_time
         curr_out[1] = curr_time
         curr_out[2] = curr_time
         return curr_out
-    
+
     def update_none(curr_out, curr_time):
         return curr_out
-    
+
     if action == 'COL0':
         return update_col0(curr_out, curr_time)
     elif action == 'COL1':
@@ -94,8 +95,8 @@ def action2out(action, curr_out, curr_time, IX_TO_ACTION):
         return update_none(curr_out, curr_time)
     else:
         raise Exception("[ERROR]Wrong action!!!")
-    
-        
+
+
 def batch_action2out(out_scores, norm_times, IX_TO_ACTION, BATCH_SIZE):
     preds_out = torch.ones(BATCH_SIZE, 3) * -1 ## initial prediction
     for i in range(out_scores.size()[0]):
@@ -110,8 +111,31 @@ def is_seq_feat(feat_type):
     return feat_type.split('_')[-1] == 'seq'
 
 
+def is_feat(feat_type):
+    if isinstance(feat_type, str):
+        feat_toks = feat_type.split('_')
+        if len(feat_toks) == 3 and feat_toks[0] in ['sour', 'targ'] and feat_toks[-1] in ['seq', 'tok'] and feat_toks[1] in ['word', 'char', 'pos', 'dep']:
+            return True
+        else:
+            return False
+    else:
+        return False
+
+
+def which_branch(feat_type):
+    return feat_type.split('_')[0]
+
+
 def which_feat(feat_type):
     return feat_type.split('_')[-2]
+
+
+def seq_input_dim(params, word_dim):
+    input_dim = word_dim
+    input_dim += params['char_dim']
+    input_dim += params['pos_dim']
+    input_dim += params['dep_dim']
+    return input_dim
 
 
 class TempCNN(nn.Module):
@@ -161,7 +185,7 @@ class TempCNN(nn.Module):
 
         ## step 1: concat seq feats
         seq_inputs = []
-
+        
         for feat, feat_type in zip(feat_inputs, feat_types):
             if is_seq_feat(feat_type):
                 if self.verbose_level == 2:
@@ -335,6 +359,174 @@ class TempAttnCNN(nn.Module):
 
         return fc2_out
 
+
+class TempBranchRNN(nn.Module):
+
+    def __init__(self, wvocab_size, cvocab_size, pos_size, dep_size, action_size,
+                 max_seq_len, max_mention_len, max_word_len,
+                 pre_embed=None,
+                 verbose=0, **params):
+
+        super(TempBranchRNN, self).__init__()
+        self.params = params
+        self.hidden_dim = self.params['rnn_dim']
+        self.max_seq_len = max_seq_len
+        self.max_mention_len = max_mention_len
+        self.max_word_len = max_word_len
+        self.verbose = verbose
+
+        if isinstance(pre_embed, np.ndarray):
+            self.word_dim = pre_embed.shape[1]
+            self.word_embeddings = TempUtils.pre2embed(pre_embed)
+
+        self.char_dim = params['char_dim']
+        if self.char_dim:
+            self.char_embeddings = nn.Embedding(cvocab_size, self.char_dim, padding_idx=0)
+            self.char_hidden_dim = params['char_dim']
+            self.char_rnn = nn.LSTM(self.char_dim, self.char_hidden_dim // 2,
+                                    num_layers=1,
+                                    batch_first=True,
+                                    bidirectional=True)
+
+        self.pos_dim = params['pos_dim']
+        if self.pos_dim:
+            self.pos_embeddings = nn.Embedding(pos_size, self.pos_dim, padding_idx=0)
+
+        self.dep_dim = params['dep_dim']
+        if self.dep_dim:
+            self.dep_embeddings = nn.Embedding(dep_size, self.dep_dim, padding_idx=0)
+
+        self.seq_input_dim = seq_input_dim(self.params, self.word_dim)
+
+        self.sour_rnn = nn.LSTM(self.seq_input_dim,
+                                self.hidden_dim // 2,
+                                num_layers=1,
+                                batch_first=True,
+                                bidirectional=True)
+
+        if self.params['link_type'] not in ['Event-DCT']:
+            self.targ_rnn = nn.LSTM(self.seq_input_dim,
+                                    self.hidden_dim // 2,
+                                    num_layers=1,
+                                    batch_first=True,
+                                    bidirectional=True)
+
+        if self.params['rnn_pool']:
+            self.rnn_pool = nn.MaxPool1d(self.max_seq_len)
+
+        self.sour_rnn_drop = nn.Dropout(p=self.params['dropout_sour_rnn'])
+        if self.params['link_type'] not in ['Event-DCT']:
+            self.targ_rnn_drop = nn.Dropout(p=self.params['dropout_targ_rnn'])
+
+        self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
+
+        self.fc1_input_dim = self.hidden_dim + self.word_dim + self.pos_dim + self.dep_dim
+        if self.params['link_type'] not in ['Event-DCT']:
+            self.fc1_input_dim *= 2
+
+        self.fc1 = nn.Linear(self.fc1_input_dim, self.params['fc_hidden_dim'])
+        self.fc1_drop = nn.Dropout(p=self.params['dropout_fc'])
+        self.fc2 = nn.Linear(self.params['fc_hidden_dim'], action_size)
+
+    def init_hidden(self, batch_size, hidden_dim):
+        return (torch.zeros(2, batch_size, hidden_dim // 2).to(device),
+                torch.zeros(2, batch_size, hidden_dim // 2).to(device))
+
+    def forward(self, **input_dict):
+
+        batch_size = input_dict['sour_word_seq'].shape[0]
+
+        self.sour_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
+        self.targ_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
+
+        sour_seq_input, targ_seq_input = [], []
+
+        for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and is_seq_feat(k)}.items():
+
+            if self.word_dim and which_feat(feat_type) == 'word':
+                embed_feat = self.word_embeddings(feat)
+            elif self.pos_dim and which_feat(feat_type) == 'pos':
+                embed_feat = self.pos_embeddings(feat)
+            elif self.dep_dim and which_feat(feat_type) == 'dep':
+                embed_feat = self.dep_embeddings(feat)
+            elif self.char_dim and which_feat(feat_type) == 'char':
+                embed_char = self.char_embeddings(feat.view(batch_size * self.max_seq_len, self.max_word_len))
+                self.char_hidden = self.init_hidden(batch_size * self.max_seq_len, self.char_hidden_dim)
+                char_outs, self.char_hidden = self.char_rnn(embed_char, self.char_hidden)
+                embed_feat = char_outs[:, -1, :].view((batch_size, self.max_seq_len, -1))
+            else:
+                continue
+
+            if which_branch(feat_type) == 'sour':
+                sour_seq_input.append(embed_feat)
+            elif which_branch(feat_type) == 'targ':
+                targ_seq_input.append(embed_feat)
+            else:
+                raise Exception('[Error] Unknown branch name when cat seq input...', which_branch(feat_type))
+
+        sour_seq_tensor = torch.cat(sour_seq_input, dim=2)
+        sour_rnn_out, self.sour_rnn_hidden = self.sour_rnn(sour_seq_tensor, self.sour_rnn_hidden)
+
+        if targ_seq_input:
+            targ_seq_tensor = torch.cat(targ_seq_input, dim=2)
+            targ_rnn_out, self.targ_rnn_hidden = self.targ_rnn(targ_seq_tensor, self.targ_rnn_hidden)
+
+        cat_input = []
+        if self.params['rnn_pool']:
+            sour_rnn_out = self.rnn_pool(sour_rnn_out.transpose(1, 2)).squeeze()
+            if targ_seq_input:
+                targ_rnn_out = self.rnn_pool(targ_rnn_out.transpose(1, 2)).squeeze()
+        else:
+            sour_rnn_out = self.sour_rnn_drop(sour_rnn_out[:, -1, :])
+            if targ_seq_input:
+                targ_rnn_out = self.targ_rnn_drop(targ_rnn_out[:, -1, :])
+        cat_input.append(sour_rnn_out)
+        if targ_seq_input:
+            cat_input.append(targ_rnn_out)
+
+        feat_input = []
+        for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and not is_seq_feat(k)}.items():
+
+            if self.word_dim and which_feat(feat_type) == 'word':
+                embed_feat = self.word_embeddings(feat)
+            elif self.pos_dim and which_feat(feat_type) == 'pos':
+                embed_feat = self.pos_embeddings(feat)
+            elif self.dep_dim and which_feat(feat_type) == 'dep':
+                embed_feat = self.dep_embeddings(feat)
+            # elif self.char_dim and which_feat(feat_type) == 'char':
+            #     embed_char = self.char_embeddings(feat.view(batch_size * self.max_seq_len, self.max_word_len))
+            #     self.char_hidden = self.init_hidden(batch_size * self.max_seq_len, self.char_hidden_dim)
+            #     char_outs, self.char_hidden = self.char_rnn(embed_char, self.char_hidden)
+            #     embed_feat = char_outs[:, -1, :].view((batch_size, self.max_seq_len, -1))
+            else:
+                continue
+
+            if self.params['mention_cat'] == 'sum':
+                embed_feat = embed_feat.sum(dim=1)
+            elif self.params['mention_cat'] == 'max':
+                embed_feat = embed_feat.max(dim=1)[0]
+            elif self.params['mention_cat'] == 'mean':
+                embed_feat = embed_feat.mean(dim=1)
+
+            if which_branch(feat_type) == 'sour':
+                feat_input.append(embed_feat)
+            elif which_branch(feat_type) == 'targ':
+                feat_input.append(embed_feat)
+            else:
+                raise Exception('[Error]Unknown branch name when cat tok input...', which_branch(feat_type))
+
+        cat_input.append(self.feat_drop(torch.cat(feat_input, dim=1)))
+
+        fc_input = torch.cat(cat_input, dim=1)
+
+        ## FC and softmax layer
+        fc1_out = F.relu(self.fc1(fc_input))
+        fc1_out = self.fc1_drop(fc1_out)
+        fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
+
+        return fc2_out
+
+
 class TempRNN(nn.Module):
 
     def __init__(self, seq_len, action_size, verbose=0, **params):
@@ -500,11 +692,9 @@ class TempClassifier(nn.Module):
         else:
             raise Exception("[ERROR]Wrong classifier param [%s] selected...." % (self.classifier) )
 
-
     def init_char_hidden(self, batch_size):
         return (torch.zeros(2, batch_size, self.char_hidden_dim // 2).to(device),
                 torch.zeros(2, batch_size, self.char_hidden_dim // 2).to(device))
-
 
     def forward(self, feat_types, *feat_inputs, **params):
 
@@ -572,17 +762,17 @@ class DCTDetector(nn.Module):
         ## initialize parameters
         self.dct_hidden_dim = dct_hidden_dim
         self.batch_size = batch_size
-        
+
         ## initialize neural layers
         self.dct_tagger = nn.LSTM(embedding_dim, dct_hidden_dim // 2, num_layers=1, batch_first=True, bidirectional=True)
         self.tagger_dropout = nn.Dropout(p=0.5)
         self.dct_hidden2action = nn.Linear(dct_hidden_dim, action_size)
         self.dct_hidden = self.init_dct_hidden()
-        
+
     def init_dct_hidden(self):
         return (torch.zeros(2, self.batch_size, self.dct_hidden_dim // 2, device=device),
                 torch.zeros(2, self.batch_size, self.dct_hidden_dim // 2, device=device))
-          
+
     def forward(self, dct_embeds):
         # print(dct_embeds)
         self.init_dct_hidden()
@@ -592,15 +782,15 @@ class DCTDetector(nn.Module):
         dct_score = F.log_softmax(dct_out, dim=1)
         # print(dct_score)
         return dct_score
-        
+
 class TimeDetector(nn.Module):
-    
+
     def __init__(self, embedding_dim, time_hidden_dim, action_size, batch_size):
         super(TimeDetector, self).__init__()
         ## initialize parameters
         self.time_hidden_dim = time_hidden_dim
         self.batch_size = batch_size
-        
+
         ## initialize neural layers
         self.left_tagger = nn.LSTM(embedding_dim, time_hidden_dim // 2, num_layers=1, batch_first=True, bidirectional=True)
         self.left_tagger_dropout = nn.Dropout(p=0.5)
@@ -609,15 +799,15 @@ class TimeDetector(nn.Module):
         self.time_hidden2action = nn.Linear(time_hidden_dim * 2, action_size)
         self.left_hidden = self.init_left_time_hidden()
         self.right_hidden = self.init_right_time_hidden()
-        
+
     def init_left_time_hidden(self):
         return (torch.zeros(2, self.batch_size, self.time_hidden_dim // 2, device=device),
                 torch.zeros(2, self.batch_size, self.time_hidden_dim // 2, device=device))
-    
+
     def init_right_time_hidden(self):
         return (torch.zeros(2, self.batch_size, self.time_hidden_dim // 2, device=device),
                 torch.zeros(2, self.batch_size, self.time_hidden_dim // 2, device=device))
-    
+
     def forward(self, left_embeds, right_embeds):
 
         ## left branch
@@ -688,28 +878,28 @@ class DqnInferrer(nn.Module):
             return time_score.squeeze(0)
 
 class TimeInferrer(nn.Module):
-                                       
+
     def __init__(self, embedding_dim, dct_hidden_dim, time_hidden_dim, vocab_size, action_size, batch_size):
         super(TimeInferrer, self).__init__()
         self.dct_hidden_dim = dct_hidden_dim
         self.time_hidden_dim = time_hidden_dim
         self.batch_size = batch_size
-        self.embedding_dim = embedding_dim                              
+        self.embedding_dim = embedding_dim
         self.word_embeddings = nn.Embedding(vocab_size, embedding_dim)
         self.dct_embedding_dropout = nn.Dropout(p=0.5)
         self.left_embedding_dropout = nn.Dropout(p=0.5)
         self.right_embedding_dropout = nn.Dropout(p=0.5)
         self.dct_detector = DCTDetector(self.embedding_dim,
-                                        self.dct_hidden_dim, 
-                                        action_size, 
+                                        self.dct_hidden_dim,
+                                        action_size,
                                         batch_size)
         self.time_detector = TimeDetector(self.embedding_dim,
-                                          self.time_hidden_dim, 
-                                          action_size, 
+                                          self.time_hidden_dim,
+                                          action_size,
                                           batch_size)
 
     def forward(self, dct_input, time_inputs):
-        
+
         ## event to dct
         dct_var = dct_input.view(self.batch_size, -1)
         dct_embeds = self.word_embeddings(dct_var).view(self.batch_size, dct_input.size()[-1], -1)
@@ -717,7 +907,7 @@ class TimeInferrer(nn.Module):
         dct_score = self.dct_detector(dct_embeds)
         out_scores = dct_score.clone().view(self.batch_size, 1, -1)
 #         print(out_scores.size())
-        
+
         ## event to per time expression
         for time_index in range(time_inputs.size()[1]):
 
@@ -735,8 +925,8 @@ class TimeInferrer(nn.Module):
 #             print(time_score.size())
             out_scores = torch.cat((out_scores, time_score), dim=1)
 #             print(out_scores.size())
-            
-        
+
+
         return out_scores
 
 
@@ -764,8 +954,7 @@ def new_loss(out_scores, target, BATCH_SIZE, update_strategies):
     for i in range(out_scores.size()[0]):
         for cid, time in zip(class_ids[i], norm_times):
             pred_out[i] = update_strategies[cid] * time + (
-                        torch.ones_like(update_strategies[cid], dtype=torch.long) - update_strategies[cid]) * pred_out[
-                               i]
+                        torch.ones_like(update_strategies[cid], dtype=torch.long) - update_strategies[cid]) * pred_out[i]
     diff_t = torch.eq(pred_out, target)
     loss = torch.div((pred_out.numel() - diff_t.sum().float()), pred_out.numel())
     loss.requires_grad_()
@@ -829,11 +1018,6 @@ def main():
         b = list(model.parameters())[1]
         print('Epoch', epoch, 'Step', step, ', Epoch loss: %.4f' % (total_loss / 500), torch.equal(a.data, b.data))
     #     print(model.word_embeddings.data)
-        
+
 if __name__ == "__main__":
     main()
-
-
-
-
-

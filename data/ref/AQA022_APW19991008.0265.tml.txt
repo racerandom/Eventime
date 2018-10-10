@@ -1,0 +1,21 @@
+ CAPE TOWN , South Africa ( AP ) -- Another man has been <e1>arrested</e1> in connection with the <e30>bombings</e30> of U.S. embassies in Kenya and Tanzania <T v='1998'>last year</T> that <e2>killed</e2> 224 people , police <e3>said</e3> <T v='1999-10-08'>today</T> . 
+ `` I can <e4>confirm</e4> that an individual was <e5>arrested</e5> in connection with the embassy <e32>bombings</e32> and the FBI was <e6>involved</e6> '' in making the <e33>arrest</e33> , police spokesman Capt. Rod Beer <e8>said</e8> . 
+ Beer <e9>said</e9> he did not <e10>know</e10> where the man was being held or any more details . 
+ The <e34>arrest</e34> <e12>brought</e12> to nine the number of people in custody in connection with the <e37>bombings</e37> . 
+ U.S. authorities <e13>scheduled</e13> a news <e38>conference</e38> for later <T v='1999-10-08'>today</T> in New York . 
+ The Cape Argus newspaper <e14>reported</e14> <T v='1999-10-08'>today</T> that a Tanzanian man was <e15>arrested</e15> , and that authorities were <e16>searching</e16> for accomplices . 
+ The Argus <e17>quoted</e17> immigration official Jurie de Wet as <e18>saying</e18> the <e40>arrests</e40> <e19>stemmed</e19> from information about requests for asylum and temporary residence in Cape Town . 
+ The U.S. Embassy in Pretoria had no comment . 
+ Seventeen people have been <e20>indicted</e20> in the case . 
+ Eight of those are in custody , but the rest remained fugitives , including Saudi radical Osama bin Laden . 
+ It was not immediately known if the <e45>arrest</e45> <e24>announced</e24> <T v='1999-10-08'>today</T> <e25>stemmed</e25> from the <e46>indictment</e46> . 
+ Bin Laden , who is <e26>accused</e26> of masterminding the <e47>attack</e47> , is on the FBI 's 10 Most Wanted List . 
+ A $ 5 million <e48>reward</e48> has been <e27>offered</e27> for his <e49>capture</e49> . 
+ The bombs <e28>went</e28> off almost simultaneously on <T v='1998-08-07'>Aug. 7 , 1998</T> at U.S. embassies in Nairobi , Kenya and Dar es Salaam , Tanzania .
+ 
+
+
+Comments: It's important to narrow down the date range as precise as we can. In this news, one annotator 'td' missed an important date '1998-08-07'. Many events such as:'e1', 'e33', 'e5', 'e16', etc., are supposed to be infered with 'after 1998-08-07'. It causes low agreement.
+
+
+

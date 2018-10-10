@@ -10,6 +10,8 @@ def load_pre(embed_file, binary=True, addZeroPad=True):
     word2ix = {}
     start_time = time.time()
     pre_model = gensim.models.KeyedVectors.load_word2vec_format(embed_file, binary=binary)
+    if addZeroPad:
+        word2ix['zeropadding'] = 0
     for word, value in pre_model.vocab.items():
         word2ix[word] = value.index + 1 if addZeroPad else 0
     pre_vectors = pre_model.vectors
@@ -127,13 +129,27 @@ def wvocab2cvocab(word_vocab):
     return char_vocab
 
 
-def doc2fvocab(doc_dic, feat_name, link_type):
+def doc2fvocab(doc_dic, feat_name, link_types):
     feat_vocab = set()
     for doc in doc_dic.values():
-        for link in doc.get_links_by_type(link_type):
-            for feat in link.feat_inputs[feat_name]:
-                feat_vocab.add(feat)
+        for link_type in link_types:
+            for link in doc.get_links_by_type(link_type):
+                if feat_name in link.feat_inputs:
+                    for feat in link.feat_inputs[feat_name]:
+                        feat_vocab.add(feat)
     return feat_vocab
+
+
+def doc2featList(doc_dic, dataset, feat_name, link_types):
+    featList = []
+    for doc_id, doc in doc_dic.items():
+        if doc_id not in dataset:
+            continue
+        for link_type in link_types:
+            for link in doc.get_links_by_type(link_type):
+                if feat_name in link.feat_inputs:
+                    feat.append(link.feat_inputs[feat_name])
+    return featList
 
 
 def vocab2idx(vocab, feat_idx=None):
@@ -142,29 +158,33 @@ def vocab2idx(vocab, feat_idx=None):
     return feat_idx
 
 
-def word2idx(doc_dic, link_type):
+def word2idx(doc_dic, link_types):
     tok_idx = {'zeropadding': 0}
     for doc in doc_dic.values():
-        for link in doc.get_links_by_type(link_type):
-            for tok in link.interwords:
-                tok_idx.setdefault(tok, len(tok_idx))
+        for link_type in link_types:
+            for link in doc.get_links_by_type(link_type):
+                for tok in link.interwords:
+                    tok_idx.setdefault(tok, len(tok_idx))
     return tok_idx
 
 
-def rel2idx(doc_dic, link_type):
+def rel2idx(doc_dic, link_types):
     tok_idx = {}
     for doc in doc_dic.values():
-        for link in doc.get_links_by_type(link_type):
-            tok_idx.setdefault(link.rel, len(tok_idx))
+        for link_type in link_types:
+            for link in doc.get_links_by_type(link_type):
+                tok_idx.setdefault(link.rel, len(tok_idx))
     return tok_idx
 
 
-def max_length(doc_dic, feat_name, link_type):
+def max_length(doc_dic, feat_name, link_types):
     word_list = []
     for doc in doc_dic.values():
-        for link in doc.get_links_by_type(link_type):
-            word_list.append(len(link.feat_inputs[feat_name]))
-    return max(word_list)
+        for link_type in link_types:
+            for link in doc.get_links_by_type(link_type):
+                if feat_name in link.feat_inputs:
+                    word_list.append(len(link.feat_inputs[feat_name]))
+    return max(word_list) if word_list else 0
 
 
 def geneInterPostion(word_list):
@@ -196,6 +216,7 @@ def getMentionDist(tokens, sour):
     for tok in tokens:
         dist.append(tok.tok_id - sour.tok_ids[-1])
     return dist
+
 
 
 def dict2str(dic):

@@ -12,7 +12,6 @@ def last_day_of_month(date):
     return date.replace(month=date.month+1, day=1) + timedelta(days=-1)
 
 
-# return 4-tuple out from time value input
 def regular_season(value):
     year = value.split('-')[0]
     season = value.split('-')[1]
@@ -27,8 +26,6 @@ def regular_season(value):
     end = begin + relativedelta(months=3, days=-1)
     return begin, begin, end, end
 
-
-# return 4-tuple out from time value input
 def regular_quarter(value):
     year = value.split('-')[0]
     quarter = int(value.split('-')[1][1])
@@ -58,7 +55,7 @@ def quarter_delta(date, num):
     return begin, begin, end, end
 
 
-# normalize tanchor value in EVENT
+# normalize tanchor value of EVENT
 def normalize_tanchor(value):
 
     def normalize_single_tanchor(value, point='certain'):
@@ -128,8 +125,41 @@ def normalize_tanchor(value):
             return normalize_single_tanchor(value)
 
 
+## normalize anchor of Event (Reimer 2016 data)
+def normalize_anchor(anchor):
 
-# normalize values in TIMEXs to tanchor tuples
+    def normalize_single_anchor(anchor):
+        if re.match("\d{4}-\d{1,2}-\d{1,2}", anchor):
+            match_out = re.compile("\d{4}-\d{1,2}-\d{1,2}").findall(anchor)
+            after = datetime.strptime(match_out[0], '%Y-%m-%d')
+            before = after
+        elif re.match("after(\d{4}-\d{1,2}-\d{1,2})before(\d{4}-\d{1,2}-\d{1,2})", anchor):
+            match_out = re.compile("after(\d{4}-\d{1,2}-\d{1,2})before(\d{4}-\d{1,2}-\d{1,2})").findall(anchor)
+            after = datetime.strptime(match_out[0][0], '%Y-%m-%d')
+            before = datetime.strptime(match_out[0][1], '%Y-%m-%d')
+        elif re.match("after(\d{4}-\d{1,2}-\d{1,2})", anchor):
+            match_out = re.compile("after(\d{4}-\d{1,2}-\d{1,2})").findall(anchor)
+            after = datetime.strptime(match_out[0], '%Y-%m-%d')
+            before = None
+        elif re.match("before(\d{4}-\d{1,2}-\d{1,2})", anchor):
+            match_out = re.compile("before(\d{4}-\d{1,2}-\d{1,2})").findall(anchor)
+            after = None
+            before = datetime.strptime(match_out[0], '%Y-%m-%d')
+        else:
+            # raise Exception("Cannot normalize single-day anchor:", anchor)
+            return None, None
+
+        return after, before
+
+    if not re.match(r"beginPoint=(.+)endPoint=(.+)", anchor):
+        return normalize_single_anchor(anchor)
+    else:
+        match_out = re.compile(r"beginPoint=(.+)endPoint=(.+)").findall(anchor)
+        ba, bb = normalize_single_anchor(match_out[0][0])
+        ea, eb = normalize_single_anchor(match_out[0][1])
+        return ba, bb, ea, eb
+
+# return 4-value tuple by normalizing timex value input
 def normalize_time(value):
     value = value.strip().split('T')[0]
     if value[0].isdigit():
@@ -218,3 +248,26 @@ def normalize_relative(timex, relative_timex):
             return relative_timex.tanchor[0], relative_timex.tanchor[1]
         else:
             return None
+
+
+class TestTempNormalization(unittest.TestCase):
+
+    def test_normalize_single_anchor(self):
+        anchor0 = "1990-09-01"
+        anchor1 = "after1990-09-01"
+        anchor2 = "before1990-09-28"
+        anchor3 = "after1990-09-01before1990-09-28"
+        print(anchor0, normalize_anchor(anchor0))
+        print(anchor1, normalize_anchor(anchor1))
+        print(anchor2, normalize_anchor(anchor2))
+        print(anchor3, normalize_anchor(anchor3))
+
+    def test_normalize_multi_anchor(self):
+        anchor1 = "beginPoint=after1998-02-01before1998-02-04endPoint=after1998-02-05"
+        anchor2 = "beginPoint=1998-02-05endPoint=1998-02-06"
+        anchor3 = "beginPoint=after1998-02-01before1998-02-04endPoint=after1998-02-05before1998-03-06"
+        anchor4 = "beginPoint=1994-04-06endPoint=before1994-12-31"
+        print(anchor1, normalize_anchor(anchor1))
+        print(anchor2, normalize_anchor(anchor2))
+        print(anchor3, normalize_anchor(anchor3))
+        print(anchor4, normalize_anchor(anchor4))

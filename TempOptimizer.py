@@ -47,13 +47,6 @@ def setup_logger(logger_name, log_file, level=logging.INFO):
     l.addHandler(streamHandler)
 
 
-def batch_to_device(inputs, device):
-    device_inputs = []
-    for input in inputs:
-        device_inputs.append(input.to(device=device))
-    return device_inputs
-
-
 def is_best_score(score, best_score, monitor):
     if not best_score:
         is_best = True

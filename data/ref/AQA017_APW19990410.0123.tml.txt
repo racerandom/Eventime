@@ -1,0 +1,11 @@
+ AMHERST , N.Y. ( AP ) -- A rifle <e1>found</e1> near the home of a slain abortion doctor may <e2>yield</e2> important clues for investigators <e3>trying</e3> to <e4>track</e4> down the gunman . 
+ Dr. Barnett Slepian was <e5>killed</e5> in his kitchen by a sniper 's bullet <T v='1998-FA'>last fall</T> . 
+ Investigators <e6>said</e6> <T v='1999-04-09'>Friday</T> they <e7>found</e7> a rifle <e8>buried</e8> near his home in the Buffalo suburb of Amherst . 
+ The gun was <e9>sent</e9> to the FBI laboratory in Washington to <e10>determine</e10> whether it was <e11>used</e11> to <e12>kill</e12> Slepian . 
+ `` If it <e13>'s</e13> not too badly rusted , they may be <e14>able</e14> to <e15>match</e15> the bullet back to the weapon , '' <e16>said</e16> Walter Rowe , forensics sciences professor at George Washington University . 
+ The rifle might also <e17>have</e17> clothing fibers , fingerprints or a serial number that can be <e18>traced</e18> to the buyer , Rowe <e19>said</e19> . <e20>Buried</e20> a foot beneath the ground , the weapon was <e21>unearthed</e21> during a <e22>search</e22> of a heavily wooded , four-acre area <T v='1999-04-08'>Thursday</T> . 
+ Investigators did not <e23>say</e23> how close the weapon <e24>was</e24> to the house . 
+ Anti-abortion protester James Kopp is being <e25>sought</e25> as a material witness in the <e26>shooting</e26> . 
+ Investigators <e27>said</e27> Kopp 's car was <e28>seen</e28> in the neighborhood in the <T v='1998-FA'>days</T> before the <e29>slaying</e29> . 
+ Kopp <e30>vanished</e30> after the <e31>shooting</e31> , and the car was <e32>found</e32> <e33>abandoned</e33> at the Newark , N.J. , airport in <T v='1998-12'>December</T> . 
+ Officials <e34>said</e34> DNA test results <e35>showed</e35> a likelihood that a strand of hair <e36>discovered</e36> behind Slepian 's home <e37>came</e37> from Kopp .

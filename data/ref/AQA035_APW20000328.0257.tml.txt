@@ -1,0 +1,20 @@
+ HAVANA ( AP ) -- President Fidel Castro <e1>said</e1> <T v='2000-03-28'>Tuesday</T> his government <e2>told</e2> U.S. officials it is worried that Miami-based exiles might <e5>take</e5> Elian Gonzalez to another country or even <e6>harm</e6> him if they <e7>lose</e7> their <e26>battle</e26> to <e8>block</e8> the boy 's <e27>return</e27> to Cuba . 
+ Reading from Cuban intelligence documents on state television , Castro <e9>said</e9> a group of Cuban-Americans in Miami was <e10>studying</e10> the possibility of <e11>taking</e11> Elian and his Miami relatives to a third nation , probably Nicaragua or Costa Rica . 
+ Castro <e12>said</e12> his government had <e13>shared</e13> its concerns with the U.S. State Department about the possibility of such a <e31>move</e31> '' which could <e14>cause</e14> damage not only to a child , but to the reputation of the United States . '' 
+ A State Department duty officer <e15>said</e15> she had no information on a <e34>threat</e34> to Elian and was unaware of Castro 's remarks . 
+ In Miami , the boy 's great-uncle , Lazaro Gonzalez , <e16>denied</e16> that he would <e17>send</e17> Elian out of the country , or that he himself would <e18>leave</e18> . '' 
+ It never even <e19>entered</e19> my mind , '' he <e20>said</e20> . '' 
+ This is my home . '' 
+ The Cuban leader first <e21>raised</e21> those worries during another live television <e37>appearance</e37> <T v='2000-03-26TNI'>Sunday night</T> during a <e38>speech</e38> to about 700 Cuban university students . 
+ But it was not until <T v='2000-03-28'>Tuesday</T> that Castro <e23>revealed</e23> that those concerns had been <e24>shared</e24> directly with the U.S. government .
+ 
+ 
+ Comments:
+ 1) The annotation being consistent with the tense of events is important.
+ 	a)'e5', 'e6' and 'e7' (might + 'simple present tense') more likely mean something could occur in the future. Also, 'e17' shows clear evidence that this news doc is talking about the possibility of a future event.
+ 	b) 'was <e10>studying</e10>' ('Past continuous tense') is supposed to be assigned with the end date "before 2000-03-28", instead of on "2000-03-28".
+	
+ 2) In this news, 'e15' and 'e16' are judging Castro 's remarks, which occur Tuesday (DCT). So, it's a clear evidence that 'e15' and 'e16' occur on the same day. It's better for annotators to carefully review the annotation.
+ 
+ 
+ 

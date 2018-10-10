@@ -26,6 +26,21 @@ class InduceMethod():
             "ended_by": "end",
             }
 
+    transformer = {"after": "after",
+                   "before": "before",
+                   "include": "include",
+                   "is_included": "is_included",
+                   "same": "same",
+                   "samespan": "same",
+                   "vague": "vague",
+                   "partialvague": "vague",
+                   "overlap": "overlap",
+                   "begin": "begin",
+                   "begun_by": "begun_by",
+                   "end": "end",
+                   "ended_by": "ended_by"
+                   }
+
     @staticmethod
     def reverse_relation(rel):
         return InduceMethod.label_dic[rel]
@@ -138,6 +153,48 @@ class InduceMethod():
             return InduceMethod.reverse_relation(InduceMethod.compare_singlemultiple(targ.tanchor, sour.tanchor))
         elif len(sour.tanchor) == 4 and len(targ.tanchor) == 4:
             return InduceMethod.compare_2multiple(sour.tanchor, targ.tanchor)
+
+    @staticmethod
+    def induceRelationWithSourEvent(sour, targ):
+        relation = InduceMethod.transformer[InduceMethod.induce_relation(sour, targ)]
+        day_type = 'single' if sour.tanchor and len(sour.tanchor) == 2 else 'multiple'
+        if not relation:
+            return None
+        else:
+            if relation in ['after', 'before', 'is_included']:
+                return "%s_%s" % (relation, day_type)
+            else:
+                return relation
+
+    @staticmethod
+    def induce_operation(sour, targ):
+
+        operation = ""
+
+        if not sour.tanchor or not targ.tanchor:
+            operation = "00000000"
+            return operation
+
+        if len(sour.tanchor) == 2:
+            sour.tanchor = (sour.tanchor[0], sour.tanchor[1], None, None)
+
+        if len(targ.tanchor) == 4:
+            targ.tanchor = (targ.tanchor[0], targ.tanchor[3])
+
+        for t_day in targ.tanchor:
+            if t_day:
+                for s_day in sour.tanchor:
+                    operation += "1" if s_day == t_day else "0"
+            else:
+                operation += "0000"
+
+        return operation
+
+
+
+
+
+
 
 
 
