@@ -48,6 +48,12 @@ class InduceMethod():
     @staticmethod
     def compare_2single(sour, targ):
 
+        def is_none(entity):
+            if not entity[0] and not entity[1]:
+                return True
+            else:
+                return False
+
         def certain_certain(sour, targ):
             if sour[0] < targ[0]:
                 return "before"
@@ -74,16 +80,19 @@ class InduceMethod():
             else:
                 return "vague"
 
-        if not sour or not targ:
-            return "vague"
-        elif sour[0] == sour[1] and targ[0] == targ[1]:    # two certain single-days
-            return certain_certain(sour, targ)
-        elif sour[0] == sour[1] and targ[0] != targ[1]:     # certain - uncertain single-days
-            return certain_uncertain(sour, targ)
-        elif sour[0] != sour[1] and targ[0] == targ[1]:     # uncertain - certain single-days
-            return InduceMethod.reverse_relation(certain_uncertain(targ, sour))
-        else:                                                # uncertain - uncertain single-days
-            return uncertain_uncertain(sour, targ)
+        try:
+            if not sour or not targ or is_none(sour) or is_none(targ):
+                return "vague"
+            elif sour[0] == sour[1] and targ[0] == targ[1]:    # two certain single-days
+                return certain_certain(sour, targ)
+            elif sour[0] == sour[1] and targ[0] != targ[1]:     # certain - uncertain single-days
+                return certain_uncertain(sour, targ)
+            elif sour[0] != sour[1] and targ[0] == targ[1]:     # uncertain - certain single-days
+                return InduceMethod.reverse_relation(certain_uncertain(targ, sour))
+            else:                                                # uncertain - uncertain single-days
+                return uncertain_uncertain(sour, targ)
+        except Exception as ex:
+            print(sour, targ)
 
     @staticmethod
     def compare_singlemultiple(sour, targ):
@@ -172,24 +181,20 @@ class InduceMethod():
         operation = ""
 
         if not sour.tanchor or not targ.tanchor:
-            operation = "00000000"
+            operation = "0000000000000000"
             return operation
 
         if len(sour.tanchor) == 2:
             sour.tanchor = (sour.tanchor[0], sour.tanchor[1], None, None)
 
-        if len(targ.tanchor) == 4:
-            targ.tanchor = (targ.tanchor[0], targ.tanchor[3])
+        if len(targ.tanchor) == 2:
+            targ.tanchor = (targ.tanchor[0], targ.tanchor[1], None, None)
 
         for t_day in targ.tanchor:
-            if t_day:
-                for s_day in sour.tanchor:
-                    operation += "1" if s_day == t_day else "0"
-            else:
-                operation += "0000"
+            for s_day in sour.tanchor:
+                operation += "1" if s_day == t_day else "0"
 
         return operation
-
 
 
 

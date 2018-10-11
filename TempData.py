@@ -671,11 +671,16 @@ class TestTempData(unittest.TestCase):
         pickle_doc(anchorml, pkl_file, link_type)
 
     def test_anchor_file2doc(self):
+        sent_win = 0
+        oper = True
         timeml_dir = os.path.join(os.path.dirname(__file__), "data/Timebank")
         anchor_file = os.path.join(os.path.dirname(__file__), "data/event-times_normalized.tab")
-        pkl_file = os.path.join(os.path.dirname(__file__), "data/unittest-%s-%s.pkl" % (timeml_dir.split('/')[-1], anchor_file.split('/')[-1]))
-        sent_win = 1
-        anchor_file2doc(timeml_dir, anchor_file, pkl_file, sent_win, oper=False)
+        pkl_file = os.path.join(os.path.dirname(__file__),
+                                "data/unittest-%s-%s_w%i_%s.pkl" % (timeml_dir.split('/')[-1],
+                                                                    anchor_file.split('/')[-1],
+                                                                    sent_win,
+                                                                    'oper' if oper else 'order'))
+        # anchor_file2doc(timeml_dir, anchor_file, pkl_file, sent_win, oper=True)
 
         doc_dic = load_doc(pkl_file)
 

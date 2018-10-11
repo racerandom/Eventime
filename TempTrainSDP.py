@@ -24,15 +24,17 @@ def copyData2device(data, device):
 
 
 def preprocessData(**params):
-    sent_win = 1
-    link_type = 'Event-Timex'
+    sent_win = 10
+    oper = True
     timeml_dir = os.path.join(os.path.dirname(__file__), "data/Timebank")
     anchor_file = os.path.join(os.path.dirname(__file__), "data/event-times_normalized.tab")
-    pkl_file = os.path.join(os.path.dirname(__file__), "data/unittest-%s-%s_w%i.pkl" % (timeml_dir.split('/')[-1],
-                                                                                        anchor_file.split('/')[-1],
-                                                                                        sent_win))
+    pkl_file = os.path.join(os.path.dirname(__file__),
+                            "data/unittest-%s-%s_w%i_%s.pkl" % (timeml_dir.split('/')[-1],
+                                                                anchor_file.split('/')[-1],
+                                                                sent_win,
+                                                                'oper' if oper else 'order'))
 
-    # anchor_file2doc(timeml_dir, anchor_file, pkl_file, sent_win, oper=False)
+    # anchor_file2doc(timeml_dir, anchor_file, pkl_file, sent_win, oper=True)
 
     doc_dic, word_idx, char_idx, pos_idx, dep_idx, rel_idx, \
     max_seq_len, max_mention_len, max_word_len = prepareGlobalSDP(pkl_file, link_types=['Event-DCT', 'Event-Timex'])
@@ -178,11 +180,11 @@ def main():
         'max_norm': 5,
          }
 
-    # doc_dic, word_idx, char_idx, pos_idx, dep_idx, rel_idx, \
-    # max_seq_len, max_mention_len, max_word_len = preprocessData(**params)
-    #
-    # save_doc((doc_dic, word_idx, char_idx, pos_idx, dep_idx, rel_idx,
-    #           max_seq_len, max_mention_len, max_word_len), 'data/temp_model.pkl')
+    doc_dic, word_idx, char_idx, pos_idx, dep_idx, rel_idx, \
+    max_seq_len, max_mention_len, max_word_len = preprocessData(**params)
+
+    save_doc((doc_dic, word_idx, char_idx, pos_idx, dep_idx, rel_idx,
+              max_seq_len, max_mention_len, max_word_len), 'data/temp_model.pkl')
 
     doc_dic, word_idx, char_idx, pos_idx, dep_idx, rel_idx, \
     max_seq_len, max_mention_len, max_word_len = load_doc('data/temp_model.pkl')

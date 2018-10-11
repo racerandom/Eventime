@@ -629,7 +629,7 @@ class TimeMLDoc:
                                         sour=event,
                                         targ=self.dct,
                                         rel=InduceMethod.induceRelationWithSourEvent(event, self.dct) if not oper else
-                                            InduceMethod.induceRelationWithSourEvent(event, self.dct))
+                                            InduceMethod.induce_operation(event, self.dct))
             self.add_temp_link(link)
             lid += 1
 
@@ -650,7 +650,7 @@ class TimeMLDoc:
                                               sour=sour,
                                               targ=targ,
                                               rel=InduceMethod.induceRelationWithSourEvent(sour, targ) if not oper else
-                                                  InduceMethod.induceRelationWithSourEvent(sour, targ))
+                                                  InduceMethod.induce_operation(sour, targ))
                 tokens = self.geneSentTokens(sour, targ)
                 link.interwords = [tok.content for tok in tokens]
                 link.interpos = TempUtils.geneSentPostion(tokens, sour, targ)

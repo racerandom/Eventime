@@ -146,8 +146,8 @@ def normalize_anchor(anchor):
             after = None
             before = datetime.strptime(match_out[0], '%Y-%m-%d')
         else:
-            # raise Exception("Cannot normalize single-day anchor:", anchor)
-            return None, None
+            print("Cannot normalize single-day anchor:", anchor)
+            return None
 
         return after, before
 
