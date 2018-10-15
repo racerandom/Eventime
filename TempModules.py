@@ -154,10 +154,12 @@ def getPartOfTensor3D(tensor, index, pad_direct="right"):
     max_seq_len, dim = index.shape[1], tensor.shape[2]
     T = [t[i[i.nonzero().squeeze(dim=1)]-1] for t, i in zip(tensor, index)]
     if pad_direct == "right":
-        padded_T = [torch.cat((t, torch.zeros(max_seq_len - len(t), dim).to(device)), dim=0) for t in T if len(t) < max_seq_len]
+        padded_T = [torch.cat((t, torch.zeros(max_seq_len - len(t), dim).to(device)), dim=0) for t in T if len(t) <= max_seq_len]
     else:
-        padded_T = [torch.cat((torch.zeros(max_seq_len - len(t), dim).to(device), t), dim=0) for t in T if len(t) < max_seq_len]
-    return torch.stack(padded_T)
+        padded_T = [torch.cat((torch.zeros(max_seq_len - len(t), dim).to(device), t), dim=0) for t in T if len(t) <= max_seq_len]
+    sdp_tensor = torch.stack(padded_T)
+    assert tensor.shape[0] == sdp_tensor.shape[0]
+    return sdp_tensor
 
 
 class TempCNN(nn.Module):
@@ -468,9 +470,6 @@ class sentSdpRNN(nn.Module):
                              (self.hidden_dim if self.params['sdp_rnn'] else 0) + \
                              (self.hidden_dim if self.params['sdp_rnn'] and self.link_type != "Event-DCT" else 0)
 
-        if self.params['link_type'] not in ['Event-DCT']:
-            self.fc1_input_dim *= 2
-
         self.fc1 = nn.Linear(self.fc1_input_dim, self.params['fc_hidden_dim'])
         self.fc1_drop = nn.Dropout(p=self.params['dropout_fc'])
         self.fc2 = nn.Linear(self.params['fc_hidden_dim'], action_size)
@@ -519,22 +518,23 @@ class sentSdpRNN(nn.Module):
         """
         SDP layer
         """
-        self.sour_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
-        sour_sdp_out, self.sour_rnn_hidden = self.sour_rnn(sour_sdp_input, self.sour_rnn_hidden)
-        if self.params['seq_rnn_pool']:
-            sour_sdp_out = self.seq_rnn_pool(sour_sdp_out.transpose(1, 2)).squeeze()
-        else:
-            sour_sdp_out = sour_sdp_out[:, -1, :]
-
-        if self.link_type in ['Event-Timex', 'Event-Event']:
-            self.targ_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
-            targ_sdp_out, self.targ_rnn_hidden = self.targ_rnn(targ_sdp_input, self.targ_rnn_hidden)
+        if self.params['sdp_rnn']:
+            self.sour_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
+            sour_sdp_out, self.sour_rnn_hidden = self.sour_rnn(sour_sdp_input, self.sour_rnn_hidden)
             if self.params['seq_rnn_pool']:
-                targ_sdp_out = self.seq_rnn_pool(targ_sdp_out.transpose(1, 2)).squeeze()
+                sour_sdp_out = self.seq_rnn_pool(sour_sdp_out.transpose(1, 2)).squeeze()
             else:
-                targ_sdp_out = targ_sdp_out[:, -1, :]
+                sour_sdp_out = sour_sdp_out[:, -1, :]
 
-        # print("output tensor of SDP rnn", sour_sdp_out.shape)
+            if self.link_type in ['Event-Timex', 'Event-Event']:
+                self.targ_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
+                targ_sdp_out, self.targ_rnn_hidden = self.targ_rnn(targ_sdp_input, self.targ_rnn_hidden)
+                if self.params['seq_rnn_pool']:
+                    targ_sdp_out = self.seq_rnn_pool(targ_sdp_out.transpose(1, 2)).squeeze()
+                else:
+                    targ_sdp_out = targ_sdp_out[:, -1, :]
+
+            # print("output tensor of SDP rnn", sour_sdp_out.shape)
 
         """
         concatenate seq rnn + sent rnn + feat

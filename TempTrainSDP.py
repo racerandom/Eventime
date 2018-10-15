@@ -159,7 +159,7 @@ def eval_data(model, feat_dict, target, rel_idx):
 
 def main():
 
-    link_type = 'Event-DCT'
+    link_type = 'Event-Timex'
 
     params = {
         'sent_win': 1,
@@ -180,7 +180,7 @@ def main():
         'seq_rnn_pool': True,
         'sent_rnn_pool': True,
         'sent_rnn': True,
-        'sdp_rnn': False,
+        'sdp_rnn': True,
         'dropout_fc': 0.5,
         'batch_size': 64,
         'epoch_num': 20,
