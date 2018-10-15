@@ -24,8 +24,8 @@ def copyData2device(data, device):
 
 
 def preprocessData(**params):
-    sent_win = 10
-    oper = True
+    sent_win = params['sent_win']
+    oper = params['oper_label']
     timeml_dir = os.path.join(os.path.dirname(__file__), "data/Timebank")
     anchor_file = os.path.join(os.path.dirname(__file__), "data/event-times_normalized.tab")
     pkl_file = os.path.join(os.path.dirname(__file__),
@@ -34,40 +34,41 @@ def preprocessData(**params):
                                                                 sent_win,
                                                                 'oper' if oper else 'order'))
 
-    # anchor_file2doc(timeml_dir, anchor_file, pkl_file, sent_win, oper=True)
+    if params['reset']:
+        anchor_file2doc(timeml_dir, anchor_file, pkl_file, sent_win, oper=oper)
 
-    doc_dic, word_idx, char_idx, pos_idx, dep_idx, rel_idx, \
-    max_seq_len, max_mention_len, max_word_len = prepareGlobalSDP(pkl_file, link_types=['Event-DCT', 'Event-Timex'])
+    doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
+    max_sent_len, max_seq_len, max_mention_len, max_word_len = prepareGlobalSDP(pkl_file, link_types=['Event-DCT', 'Event-Timex'])
 
-    return doc_dic, word_idx, char_idx, pos_idx, dep_idx, rel_idx, \
-           max_seq_len, max_mention_len, max_word_len
+    return doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
+           max_sent_len, max_seq_len, max_mention_len, max_word_len
 
 
-def splitData(doc_dic, word_idx, char_idx, pos_idx, dep_idx, rel_idx,
-              max_seq_len, max_mention_len, max_word_len, link_type):
+def splitData(doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
+              max_sent_len, max_seq_len, max_mention_len, max_word_len, link_type):
 
     '''
     print train/dev/test feats shape
     '''
-    train_data = feat2tensorSDP(doc_dic, TBD_TRAIN, word_idx, char_idx, pos_idx, dep_idx, rel_idx,
-                                               max_seq_len, max_mention_len, max_word_len, link_type)
+    train_data = feat2tensorSDP(doc_dic, TBD_TRAIN, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
+                                max_sent_len, max_seq_len, max_mention_len, max_word_len, link_type)
 
-    dev_data = feat2tensorSDP(doc_dic, TBD_DEV, word_idx, char_idx, pos_idx, dep_idx, rel_idx,
-                                           max_seq_len, max_mention_len, max_word_len, link_type)
+    dev_data = feat2tensorSDP(doc_dic, TBD_DEV, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
+                              max_sent_len, max_seq_len, max_mention_len, max_word_len, link_type)
 
-    test_data = feat2tensorSDP(doc_dic, TBD_TEST, word_idx, char_idx, pos_idx, dep_idx, rel_idx,
-                                             max_seq_len, max_mention_len, max_word_len, link_type)
+    test_data = feat2tensorSDP(doc_dic, TBD_TEST, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
+                               max_sent_len, max_seq_len, max_mention_len, max_word_len, link_type)
     return train_data, dev_data, test_data
 
 
-def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, action_size,
-                   max_seq_len, max_mention_len, max_word_len,
+def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
+                   max_sent_len, max_seq_len, max_mention_len, max_word_len,
                    pre_embed, verbose=0, **params):
 
-    model = TempBranchRNN(wvocab_size, cvocab_size, pos_size, dep_size, action_size,
-                          max_seq_len, max_mention_len, max_word_len,
-                          pre_embed=pre_embed,
-                          verbose=verbose, **params).to(device=device)
+    model = sentSdpRNN(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
+                       max_sent_len, max_seq_len, max_mention_len, max_word_len,
+                       pre_embed=pre_embed,
+                       verbose=verbose, **params).to(device=device)
 
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=params['lr'],
                            weight_decay=params['weight_decay'])
@@ -161,43 +162,56 @@ def main():
     link_type = 'Event-DCT'
 
     params = {
+        'sent_win': 1,
+        'oper_label': True,
         'link_type': link_type,
-        'char_dim': 20,
-        'pos_dim': 20,
-        'dep_dim': 20,
-        'rnn_dim': 300,
+        'char_dim': 0,
+        'pos_dim': 0,
+        'dep_dim': 0,
+        'dist_dim': 20,
+        'seq_rnn_dim': 300,
+        'sent_rnn_dim': 300,
         'dropout_sour_rnn': 0.5,
         'dropout_targ_rnn': 0.5,
+        'dropout_sent_rnn': 0.5,
         'dropout_feat': 0.5,
         'mention_cat': 'sum',
         'fc_hidden_dim': 300,
+        'seq_rnn_pool': True,
+        'sent_rnn_pool': True,
         'dropout_fc': 0.5,
-        'batch_size': 100,
+        'batch_size': 64,
         'epoch_num': 20,
-        'rnn_pool': True,
         'lr': 0.001,
         'weight_decay': 0.0001,
         'max_norm': 5,
-         }
+        'reset': False
+    }
+    pretrained_file = "Resources/embed/deps.words.bin"
+    pickle_embedding = "data/embedding.pkl"
 
-    doc_dic, word_idx, char_idx, pos_idx, dep_idx, rel_idx, \
-    max_seq_len, max_mention_len, max_word_len = preprocessData(**params)
+    if params['reset']:
+        doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
+        max_sent_len, max_seq_len, max_mention_len, max_word_len = preprocessData(**params)
 
-    save_doc((doc_dic, word_idx, char_idx, pos_idx, dep_idx, rel_idx,
-              max_seq_len, max_mention_len, max_word_len), 'data/temp_model.pkl')
+        word_idx, embedding = slimEmbedding(pretrained_file, pickle_embedding, word_idx, lowercase=True)
 
-    doc_dic, word_idx, char_idx, pos_idx, dep_idx, rel_idx, \
-    max_seq_len, max_mention_len, max_word_len = load_doc('data/temp_model.pkl')
+        train_data, dev_data, test_data = splitData(doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
+                                                    max_sent_len, max_seq_len, max_mention_len, max_word_len, link_type)
 
-    pretrained_file = "Resources/embed/giga-aacw.d200.bin"
-    pre_lookup_table, word_idx = readPretrainedEmbedding(pretrained_file)
+        save_doc((train_data, dev_data, test_data,
+                  word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
+                  max_sent_len, max_seq_len, max_mention_len, max_word_len), 'data/temp_model.pkl')
 
-    train_data, dev_data, test_data = splitData(doc_dic, word_idx, char_idx, pos_idx, dep_idx, rel_idx,
-                                                max_seq_len, max_mention_len, max_word_len, link_type)
+    train_data, dev_data, test_data, \
+    word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
+    max_sent_len, max_seq_len, max_mention_len, max_word_len = load_doc('data/temp_model.pkl')
 
-    model, optimizer = model_instance(len(word_idx), len(char_idx), len(pos_idx), len(dep_idx), len(rel_idx),
-                                      max_seq_len, max_mention_len, max_word_len,
-                                      pre_embed=pre_lookup_table, verbose=0, **params)
+    word_idx, embedding = load_doc(pickle_embedding)
+
+    model, optimizer = model_instance(len(word_idx), len(char_idx), len(pos_idx), len(dep_idx), len(dist_idx), len(rel_idx),
+                                      max_sent_len, max_seq_len, max_mention_len, max_word_len,
+                                      pre_embed=embedding, verbose=0, **params)
     train_sdp_model(model, optimizer, train_data, dev_data, test_data, rel_idx, **params)
 
 

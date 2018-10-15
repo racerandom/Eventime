@@ -57,6 +57,16 @@ TA_TEST = [ 'APW19980227.0489',
             'PRI19980306.2000.1675']
 
 
+def common_keys(dict1, dict2, lowercase):
+    common_dict = {}
+    for key in dict1.keys():
+        if lowercase:
+            key = key.lower()
+        if key in dict2:
+            common_dict[key] = len(common_dict)
+    return common_dict
+
+
 def batch_to_device(inputs, device):
     """
     copy input list into device for GPU computation
@@ -91,31 +101,56 @@ class MultipleDatasets(Data.Dataset):
 
 def load_doc(pickle_file):
     with open(pickle_file, 'rb') as f:
-        doc_list = pickle.load(f)
-    return doc_list
+        data = pickle.load(f)
+    print("Successfully load data from pickle file '%s'..." % pickle_file)
+    return data
 
 
-def save_doc(doc_data, pickle_file='data/doc_list.pkl'):
+def save_doc(data, pickle_file='data/doc_list.pkl'):
 
     with open(pickle_file, 'wb') as f:  # Python 3: open(..., 'wb')
-        pickle.dump(doc_data, f)
+        pickle.dump(data, f)
     print("Successfully save '%s'..." % pickle_file)
 
 
-def prepare_dataset(doc_dic, dataset, word_idx, pos_idx, rel_idx, max_len, link_type):
-    words, pos, rels = [], [], []
+def prepare_artificial_classification():
+    VOCAB_SIZE = 100
+    POS_SIZE = 10
+    MAX_LEN = 10
+    ACTION_SIZE = 2
+    dct_inputs = torch.randint(0, VOCAB_SIZE, (500, 1, MAX_LEN), dtype=torch.long)
+    position_inputs = torch.randint(0, POS_SIZE, (500, MAX_LEN, 2), dtype=torch.long)
+    time_inputs = torch.randint(0, VOCAB_SIZE, (500, 1, 2, 3), dtype=torch.long)
 
-    for doc_id, doc in doc_dic.items():
-        if doc_id not in dataset:
-            continue
-        for link in doc.get_links_by_type(link_type):
-            words.append(link.interwords)
-            pos.append(link.interpos)
-            rels.append(link.rel)
-    train_w_in = torch.tensor(padding(prepare_sequence(words, word_idx), max_len))
-    train_p_in = torch.tensor(padding_pos(prepare_sequence_pos(pos, pos_idx), max_len))
-    train_r_in = torch.tensor(prepare_sequence_rel(rels, rel_idx))
-    return train_w_in, train_p_in, train_r_in
+    targets = torch.randint(0, ACTION_SIZE, (500, 1), dtype=torch.long)
+
+    return dct_inputs, position_inputs, time_inputs, targets
+
+
+def readPretrainedEmbedding(pretrained_file):
+    if pretrained_file and os.path.isfile(os.path.join(os.getenv("HOME"), pretrained_file)):
+        pre_model, word_idx = load_pre(os.path.join(os.getenv("HOME"), pretrained_file))
+    return pre_model, word_idx
+
+
+def slimEmbedding(embedding_file, pickle_file, word_idx, lowercase=False):
+    pre_lookup_table, pre_word_idx = readPretrainedEmbedding(embedding_file)
+    common_idx = common_keys(word_idx, pre_word_idx, lowercase)
+    if lowercase:
+        idx = [pre_word_idx[k.lower()] for k, v in sorted(common_idx.items(), key=lambda x: x[1])
+               if k.lower() in pre_word_idx]
+        uncover = len(word_idx) - len(idx)
+    else:
+        idx = [pre_word_idx[k] for k, v in sorted(common_idx.items(), key=lambda x: x[1])
+               if k in pre_word_idx]
+        uncover = len(word_idx) - len(idx)
+    lookup_table = pre_lookup_table[idx]
+    print("[Embedding] slim embedding from %i to %i, %i tokens are uncovered..." % (pre_lookup_table.shape[0],
+                                                                                    lookup_table.shape[0],
+                                                                                    uncover))
+    save_doc((common_idx, lookup_table), pickle_file)
+    assert len(common_idx) == lookup_table.shape[0]
+    return common_idx, lookup_table
 
 
 ## generate a list of feat tensor and target tensor of a given dataset
@@ -163,8 +198,8 @@ def prepare_feats_dataset(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_id
     return feats_list, target_tensor
 
 
-def feat2tensorSDP(doc_dic, dataset, word_idx, char_idx, pos_idx, dep_idx, rel_idx,
-                   max_seq_len, max_mention_len, max_word_len, link_type):
+def feat2tensorSDP(doc_dic, dataset, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
+                   max_sent_len, max_seq_len, max_mention_len, max_word_len, link_type):
 
     tensor_dict = {}
     target_list = []
@@ -197,6 +232,15 @@ def feat2tensorSDP(doc_dic, dataset, word_idx, char_idx, pos_idx, dep_idx, rel_i
             tensor_dict[feat_name] = torch.tensor(padding_2d(prepare_seq_2d(feats, pos_idx), max_mention_len))
         elif feat_name in ['sour_dep_tok', 'targ_dep_tok']:
             tensor_dict[feat_name] = torch.tensor(padding_2d(prepare_seq_2d(feats, dep_idx), max_mention_len))
+        elif feat_name in ['full_word_sent']:
+            tensor_dict[feat_name] = torch.tensor(padding_2d(prepare_seq_2d(feats, word_idx), max_sent_len))
+        elif feat_name in ['full_char_sent']:
+            tensor_dict[feat_name] = torch.tensor(padding_3d(prepare_seq_3d(feats, char_idx), max_sent_len, max_word_len))
+        elif feat_name in ['sour_dist_sent', 'targ_dist_sent']:
+            tensor_dict[feat_name] = torch.tensor(padding_2d(prepare_seq_2d(feats, dist_idx), max_sent_len))
+        elif feat_name in ['sour_index_seq', 'targ_index_seq']:
+            tensor_dict[feat_name] = torch.tensor(padding_2d(feats, max_seq_len))
+            # print(tensor_dict[feat_name])
         else:
             print("ERROR feat name: %s" % feat_name)
 
@@ -239,24 +283,7 @@ def feats2tensor_dict(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, m
     return tensor_dict, target_tensor
 
 
-def prepare_artificial_classification():
-    VOCAB_SIZE = 100
-    POS_SIZE = 10
-    MAX_LEN = 10
-    ACTION_SIZE = 2
-    dct_inputs = torch.randint(0, VOCAB_SIZE, (500, 1, MAX_LEN), dtype=torch.long)
-    position_inputs = torch.randint(0, POS_SIZE, (500, MAX_LEN, 2), dtype=torch.long)
-    time_inputs = torch.randint(0, VOCAB_SIZE, (500, 1, 2, 3), dtype=torch.long)
 
-    targets = torch.randint(0, ACTION_SIZE, (500, 1), dtype=torch.long)
-
-    return dct_inputs, position_inputs, time_inputs, targets
-
-
-def readPretrainedEmbedding(pretrained_file):
-    if pretrained_file and os.path.isfile(os.path.join(os.getenv("HOME"), pretrained_file)):
-        pre_model, word_idx = load_pre(os.path.join(os.getenv("HOME"), pretrained_file))
-    return pre_model, word_idx
 
 
 def prepareGlobalSDP(pkl_file, link_types=None):
@@ -283,8 +310,23 @@ def prepareGlobalSDP(pkl_file, link_types=None):
         for link_type in link_types:
             for link in doc.temp_links[link_type]:
 
-                sour_word_seq, sour_pos_seq, sour_dep_seq, \
-                sour_word_tok, sour_pos_tok, sour_dep_tok = doc.getSDPFromMentionToRoot(link.sour)
+                """
+                add interval tokens between mentions for 'Event-Timex', 'Event-Event' tlinks
+                """
+                if link.link_type in ['Event-Timex', 'Event-Event']:
+                    sent_tokens = doc.geneSentTokens(link.sour, link.targ)
+                elif link.link_type in ['Event-DCT']:
+                    sent_tokens = doc.geneSentOfMention(link.sour)
+                link.feat_inputs['full_word_sent'] = [tok.content for tok in sent_tokens]
+                link.feat_inputs['full_char_sent'] = [list(tok.content.lower()) for tok in sent_tokens]
+
+                """
+                add sour branch sdp 
+                """
+                sour_sdp_ids, sour_mention_ids, dep_graph = doc.getSdpFromMentionToRoot(link.sour)
+                sour_word_seq, sour_pos_seq, sour_dep_seq = doc.getSdpFeats(sour_sdp_ids, dep_graph)
+                sour_word_tok, sour_pos_tok, sour_dep_tok = doc.getSdpFeats(sour_mention_ids, dep_graph)
+                link.feat_inputs['sour_dist_sent'] = getMentionDist(sent_tokens, link.sour)
                 link.feat_inputs['sour_word_seq'] = sour_word_seq
                 link.feat_inputs['sour_char_seq'] = [list(tok.lower()) for tok in sour_word_seq]
                 link.feat_inputs['sour_pos_seq'] = sour_pos_seq
@@ -293,13 +335,16 @@ def prepareGlobalSDP(pkl_file, link_types=None):
                 link.feat_inputs['sour_char_tok'] = [list(tok.lower()) for tok in sour_word_tok]
                 link.feat_inputs['sour_pos_tok'] = sour_pos_tok
                 link.feat_inputs['sour_dep_tok'] = sour_dep_tok
+                link.feat_inputs['sour_index_seq'] = sour_sdp_ids
 
                 """
                 add targ branch sdp for 'Event-Timex', 'Event-Event' tlinks
                 """
                 if link.link_type in ['Event-Timex', 'Event-Event']:
-                    targ_word_seq, targ_pos_seq, targ_dep_seq, \
-                    targ_word_tok, targ_pos_tok, targ_dep_tok = doc.getSDPFromMentionToRoot(link.targ)
+                    targ_sdp_ids, targ_mention_ids, dep_graph = doc.getSdpFromMentionToRoot(link.targ)
+                    targ_word_seq, targ_pos_seq, targ_dep_seq = doc.getSdpFeats(targ_sdp_ids, dep_graph)
+                    targ_word_tok, targ_pos_tok, targ_dep_tok = doc.getSdpFeats(targ_mention_ids, dep_graph)
+                    link.feat_inputs['targ_dist_sent'] = getMentionDist(sent_tokens, link.targ)
                     link.feat_inputs['targ_word_seq'] = targ_word_seq
                     link.feat_inputs['targ_char_seq'] = [list(tok.lower()) for tok in targ_word_seq]
                     link.feat_inputs['targ_pos_seq'] = targ_pos_seq
@@ -308,27 +353,34 @@ def prepareGlobalSDP(pkl_file, link_types=None):
                     link.feat_inputs['targ_char_tok'] = [list(tok.lower()) for tok in targ_word_tok]
                     link.feat_inputs['targ_pos_tok'] = targ_pos_tok
                     link.feat_inputs['targ_dep_tok'] = targ_dep_tok
+                    link.feat_inputs['targ_index_seq'] = reviceSdpWithSentID(sent_tokens, targ_sdp_ids)
+                    # print(link.sour.content, sour_sdp_ids, link.targ.content, reviceSdpWithSentID(sent_tokens, targ_sdp_ids))
+                    # print([tok.content for tok in sent_tokens])
+                    # print()
 
     """
     step2: calculate vocab (set object)
     """
-    word_vocab = doc2fvocab(doc_dic, 'sour_word_seq', link_types)
+    # word_vocab = doc2fvocab(doc_dic, 'sour_word_seq', link_types)
     pos_vocab = doc2fvocab(doc_dic, 'sour_pos_seq', link_types)
     dep_vocab = doc2fvocab(doc_dic, 'sour_dep_seq', link_types)
+    dist_vocab = doc2fvocab(doc_dic, 'sour_dist_seq', link_types)
 
     """
     target branch
     """
-    word_vocab.union(doc2fvocab(doc_dic, 'targ_word_seq', link_types))
+    # word_vocab.union(doc2fvocab(doc_dic, 'targ_word_seq', link_types))
     pos_vocab.union(doc2fvocab(doc_dic, 'targ_pos_seq', link_types))
     dep_vocab.union(doc2fvocab(doc_dic, 'targ_dep_seq', link_types))
+    dist_vocab.union(doc2fvocab(doc_dic, 'targ_dist_seq', link_types))
+
+    """
+    full sentence
+    """
+    # word_vocab.union(doc2fvocab(doc_dic, 'full_word_seq', link_types))
+    word_vocab = doc2wvocab(doc_dic)
 
     char_vocab = wvocab2cvocab(word_vocab)
-
-    # if pretrained_file and os.path.isfile(os.path.join(os.getenv("HOME"), pretrained_file)):
-    #     pre_model, word_idx = load_pre(os.path.join(os.getenv("HOME"), pretrained_file))
-    # else:
-    #     pre_model = None
 
     """
     step3: create a dict from vocab to idx
@@ -338,35 +390,34 @@ def prepareGlobalSDP(pkl_file, link_types=None):
     char_idx = vocab2idx(char_vocab, feat_idx={'zeropadding': 0})
     pos_idx = vocab2idx(pos_vocab, feat_idx={'zeropadding': 0})
     dep_idx = vocab2idx(dep_vocab, feat_idx={'zeropadding': 0})
+    dist_idx = vocab2idx(dist_vocab, feat_idx={'zeropadding': 0})
     rel_idx = rel2idx(doc_dic, link_types)  # target index
 
     """
     step4: calculate max length for padding
     """
+    max_sent_len = max_length(doc_dic, 'full_word_sent', link_types)
     max_seq_len = max(max_length(doc_dic, 'sour_word_seq', link_types), max_length(doc_dic, 'targ_word_seq', link_types))
     max_word_len = max([len(word) for word in word_vocab])
     max_mention_len = max(max_length(doc_dic, 'sour_word_tok', link_types), max_length(doc_dic, 'targ_word_tok', link_types))
 
-    print('word vocab size: %i, char vocab size: %i, pos size: %i, dep size: %i, relation size: %i\n'
-          'max word len of seq: %i , max char len of word: %i, max word len of mention: %i' % (len(word_idx),
-                                                                                                 len(char_idx),
-                                                                                                 len(pos_idx),
-                                                                                                 len(dep_idx),
-                                                                                                 len(rel_idx),
-                                                                                                 max_seq_len,
-                                                                                                 max_word_len,
-                                                                                                 max_mention_len))
-    return doc_dic, word_idx, char_idx, pos_idx, dep_idx, rel_idx, \
-           max_seq_len, max_mention_len, max_word_len
+    print('word vocab size: %i, char vocab size: %i, '
+          'pos size: %i, dep size: %i, dist size: %i, relation size: %i, \n'
+          'max sent len: %i, max word len of seq: %i , max char len of word: %i, max word len of mention: %i' % (len(word_idx),
+                                                                                                                 len(char_idx),
+                                                                                                                 len(pos_idx),
+                                                                                                                 len(dep_idx),
+                                                                                                                 len(dist_idx),
+                                                                                                                 len(rel_idx),
+                                                                                                                 max_sent_len,
+                                                                                                                 max_seq_len,
+                                                                                                                 max_word_len,
+                                                                                                                 max_mention_len))
+    return doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
+           max_sent_len, max_seq_len, max_mention_len, max_word_len
 
 
-def prepare_DRL_data(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, max_seq_len, max_tok_len, max_char_len, feat_types=['word_seq',
-                                                                                                                                'sour_dist_seq',
-                                                                                                                                'targ_dist_seq',
-                                                                                                                                'sour_word_tok',
-                                                                                                                                'targ_word_tok',
-                                                                                                                                'sour_dist_tok',
-                                                                                                                                'targ_dist_tok']):
+def prepare_DRL_data(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, max_seq_len, max_tok_len, max_char_len, feat_types=None):
 
     event_link_data = []
 
@@ -443,8 +494,6 @@ def writeTimeML2txt(timeml_file, out_dir):
         fo.write(str_out)
 
 
-
-
 ## 1. load anchorml files and return a doc object
 ## 2. normalize the tanchors of all the timex entities
 ## 3. normalize the tanchors of all the events
@@ -509,7 +558,7 @@ def anchor_file2doc(timeml_dir, anchor_file, pkl_out, sent_win, oper=False):
 
             ## Induce temporal relation for E-D, E-T, E-E pairs
             doc.geneEventDCTPair(oper=oper)
-            doc.geneEventTimexPair(sent_win, order='fixed', oper=oper)
+            doc.geneEventTimexPair(sent_win, order='nonfixed', oper=oper)
             # doc.geneEventsPair(sent_win, oper=oper)
             doc_dic[doc.docid] = doc
         except Exception as ex:

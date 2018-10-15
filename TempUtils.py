@@ -41,6 +41,16 @@ def prepare_seq_1d(seq_1d, to_ix, unk_ix=0):
     ix_seq_1d = [tok2ix(tok, to_ix, unk_ix=unk_ix) for tok in seq_1d]
     return ix_seq_1d
 
+def startIndexOfLastSent(sent_seq):
+    lastSentId = sent_seq[-1].sent_id
+    for index, tok in enumerate(sent_seq):
+        if tok.sent_id == lastSentId:
+            return index
+
+def reviceSdpWithSentID(sent_seq, sdp_conll_ids):
+    startOfLastSent = startIndexOfLastSent(sent_seq)
+    return [ startOfLastSent + conll_id for conll_id in sdp_conll_ids]
+
 
 ## convert 2D token sequences to token_index sequences
 def prepare_seq_2d(seq_2d, to_ix, unk_ix=0):
@@ -138,6 +148,14 @@ def doc2fvocab(doc_dic, feat_name, link_types):
                     for feat in link.feat_inputs[feat_name]:
                         feat_vocab.add(feat)
     return feat_vocab
+
+
+def doc2wvocab(doc_dic):
+    wvocab = set()
+    for doc in doc_dic.values():
+        for tok in doc.tokens:
+            wvocab.add(tok.content)
+    return wvocab
 
 
 def doc2featList(doc_dic, dataset, feat_name, link_types):

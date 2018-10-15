@@ -586,8 +586,7 @@ class TimeMLDoc:
         toks = self.tokens[begin_id: end_id + 1]
         return toks
 
-
-    def getSDPFromMentionToRoot(self, mention, direct='mention2root', dep_ver='SD'):
+    def getSdpFromMentionToRoot(self, mention, direct='mention2root', dep_ver='SD'):
         sent_tokens = self.geneSentOfMention(mention)
         try:
             dep_graph = self.syntaxer.get_dep_graph(' '.join([ token.content.replace(' ', '-') for token in sent_tokens]), dep_ver=dep_ver)
@@ -599,18 +598,17 @@ class TimeMLDoc:
             else:
                 raise Exception("[Error] Unknown sdp direct arg!!!")
             sdp_conll_ids = reformSDPforMention(mention_conll_ids, sdp_conll_ids)
-            return ([ dep_graph.get_by_address(conll_id)['word'] for conll_id in sdp_conll_ids],
-                    [ dep_graph.get_by_address(conll_id)['tag'] for conll_id in sdp_conll_ids],
-                    [ dep_graph.get_by_address(conll_id)['rel'] for conll_id in sdp_conll_ids],
-                    [dep_graph.get_by_address(conll_id)['word'] for conll_id in mention_conll_ids],
-                    [dep_graph.get_by_address(conll_id)['tag'] for conll_id in mention_conll_ids],
-                    [dep_graph.get_by_address(conll_id)['rel'] for conll_id in mention_conll_ids])
+            return sdp_conll_ids, mention_conll_ids, dep_graph
         except Exception as ex:
             print(ex)
             print(mention.content)
             print(' '.join([ tok.content for tok in sent_tokens]))
             return None
 
+    def getSdpFeats(self, conll_ids, dep_graph):
+        return ([ dep_graph.get_by_address(conll_id)['word'] for conll_id in conll_ids],
+                [ dep_graph.get_by_address(conll_id)['tag'] for conll_id in conll_ids],
+                [ dep_graph.get_by_address(conll_id)['rel'] for conll_id in conll_ids])
 
     def getTlinkListByMention(self, mention_id, link_types=['Event-DCT', 'Event-Timex']):
         tlinks = []
@@ -639,13 +637,15 @@ class TimeMLDoc:
             for tid, timex in self.timexs.items():
                 if abs(timex.sent_id - event.sent_id) > sent_win:
                     continue
-                if order == 'tok_id':
+
+                if order == 'fixed':
+                    sour, targ = event, timex
+                else:
                     if event.tok_ids[0] <= timex.tok_ids[0]:  # specifying: a tlink is always from left to right
                         sour, targ = event, timex
                     else:
                         sour, targ = timex, event
-                elif order == 'fixed':
-                    sour, targ = event, timex
+
                 link = TempLink(lid='let%i' % lid ,
                                               sour=sour,
                                               targ=targ,

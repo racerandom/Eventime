@@ -111,10 +111,18 @@ def is_seq_feat(feat_type):
     return feat_type.split('_')[-1] == 'seq'
 
 
+def is_tok_feat(feat_type):
+    return feat_type.split('_')[-1] == 'tok'
+
+
+def is_sent_feat(feat_type):
+    return feat_type.split('_')[-1] == 'sent'
+
+
 def is_feat(feat_type):
     if isinstance(feat_type, str):
         feat_toks = feat_type.split('_')
-        if len(feat_toks) == 3 and feat_toks[0] in ['sour', 'targ'] and feat_toks[-1] in ['seq', 'tok'] and feat_toks[1] in ['word', 'char', 'pos', 'dep']:
+        if len(feat_toks) == 3 and feat_toks[0] in ['sour', 'targ', 'full'] and feat_toks[-1] in ['seq', 'tok', 'sent'] and feat_toks[1] in ['word', 'char', 'pos', 'dep', 'dist', 'index']:
             return True
         else:
             return False
@@ -131,15 +139,28 @@ def which_feat(feat_type):
 
 
 def seq_input_dim(params, word_dim):
-    input_dim = word_dim
-    input_dim += params['char_dim']
-    input_dim += params['pos_dim']
-    input_dim += params['dep_dim']
-    return input_dim
+    return word_dim + params['char_dim'] + params['pos_dim'] + params['dep_dim']
+
+
+def getPartOfTensor3D(tensor, index, pad_direct="right"):
+    """
+    Retrieve SDP seq from RNN output
+    :param tensor: RNN output seq (batch_size, max_sent_len, hidden_dim)
+    :param index:  SDP index (batch_size, max_SDP_len), element value is conll_id, padded with zeros
+    :param pad_direct: defaut 'right' to padding zero tensor
+    :return:       (batch_size, max_SDP_len, hidden_dim)
+    """
+    assert tensor.shape[0] == index.shape[0]
+    max_seq_len, dim = index.shape[1], tensor.shape[2]
+    T = [t[i[i.nonzero().squeeze(dim=1)]-1] for t, i in zip(tensor, index)]
+    if pad_direct == "right":
+        padded_T = [torch.cat((t, torch.zeros(max_seq_len - len(t), dim)), dim=0) for t in T if len(t) < max_seq_len]
+    else:
+        padded_T = [torch.cat((torch.zeros(max_seq_len - len(t), dim), t), dim=0) for t in T if len(t) < max_seq_len]
+    return torch.stack(padded_T)
 
 
 class TempCNN(nn.Module):
-
     def __init__(self, max_seq_len, max_tok_len, max_char_len, action_size, feat_types, verbose_level=0, **params):
         super(TempCNN, self).__init__()
         self.verbose_level = verbose_level
@@ -180,7 +201,6 @@ class TempCNN(nn.Module):
         elif not params['fc_layer']:
             self.fc2 = nn.Linear(fc1_input_dim, action_size)
 
-
     def forward(self, feat_types, *feat_inputs, **params):
 
         ## step 1: concat seq feats
@@ -199,7 +219,6 @@ class TempCNN(nn.Module):
         seq_inputs = torch.cat(seq_inputs, dim=2).transpose(1, 2)
         embed_inputs = self.embedding_dropout(seq_inputs)
 
-
         ## step 2: conv + maxpool
         c1_out = F.relu(self.c1(embed_inputs))
 
@@ -215,7 +234,7 @@ class TempCNN(nn.Module):
         ## step 3: concat tok feats
         cat_inputs = [self.conv_dropout(p1_out)]
         for feat, feat_type in zip(feat_inputs, feat_types):
-            if not is_seq_feat(feat_type):
+            if is_tok_feat(feat_type):
                 if (which_feat(feat_type) == 'word' and params['cat_word_tok']) or (which_feat(feat_type) == 'dist' and params['cat_dist_tok']):
                     if params['mention_cat'] == 'sum':
                         mention_feat = feat.sum(dim=1)
@@ -360,16 +379,23 @@ class TempAttnCNN(nn.Module):
         return fc2_out
 
 
-class TempBranchRNN(nn.Module):
+class sentSdpRNN(nn.Module):
 
-    def __init__(self, wvocab_size, cvocab_size, pos_size, dep_size, action_size,
-                 max_seq_len, max_mention_len, max_word_len,
+    def __init__(self, wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
+                 max_sent_len, max_seq_len, max_mention_len, max_word_len,
                  pre_embed=None,
                  verbose=0, **params):
 
-        super(TempBranchRNN, self).__init__()
+        super(sentSdpRNN, self).__init__()
+
+        """
+        initialize parameters
+        """
         self.params = params
-        self.hidden_dim = self.params['rnn_dim']
+        self.link_type = self.params['link_type']
+        self.hidden_dim = self.params['seq_rnn_dim']
+        self.sent_hidden_dim = self.params['sent_rnn_dim']
+        self.max_sent_len = max_sent_len
         self.max_seq_len = max_seq_len
         self.max_mention_len = max_mention_len
         self.max_word_len = max_word_len
@@ -396,6 +422,24 @@ class TempBranchRNN(nn.Module):
         if self.dep_dim:
             self.dep_embeddings = nn.Embedding(dep_size, self.dep_dim, padding_idx=0)
 
+        self.dist_dim = params['dist_dim']
+        if self.dist_dim:
+            self.dist_embeddings = nn.Embedding(dist_size, self.dist_dim, padding_idx=0)
+
+        self.sent_input_dim = self.word_dim + self.char_dim + self.dist_dim + \
+                              (self.dist_dim if self.link_type != 'Event-DCT' else 0)
+
+        # print(self.sent_input_dim)
+
+        self.sent_rnn = nn.LSTM(self.sent_input_dim,
+                                self.sent_hidden_dim // 2,
+                                num_layers=1,
+                                batch_first=True,
+                                bidirectional=True)
+
+        if self.params['sent_rnn_pool']:
+            self.sent_rnn_pool = nn.MaxPool1d(self.max_sent_len)
+
         self.seq_input_dim = seq_input_dim(self.params, self.word_dim)
 
         self.sour_rnn = nn.LSTM(self.seq_input_dim,
@@ -411,8 +455,8 @@ class TempBranchRNN(nn.Module):
                                     batch_first=True,
                                     bidirectional=True)
 
-        if self.params['rnn_pool']:
-            self.rnn_pool = nn.MaxPool1d(self.max_seq_len)
+        if self.params['seq_rnn_pool']:
+            self.seq_rnn_pool = nn.MaxPool1d(self.max_seq_len)
 
         self.sour_rnn_drop = nn.Dropout(p=self.params['dropout_sour_rnn'])
         if self.params['link_type'] not in ['Event-DCT']:
@@ -420,7 +464,8 @@ class TempBranchRNN(nn.Module):
 
         self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
 
-        self.fc1_input_dim = self.hidden_dim + self.word_dim + self.pos_dim + self.dep_dim
+        self.fc1_input_dim = self.hidden_dim + (self.hidden_dim if self.link_type != "Event-DCT" else 0)
+
         if self.params['link_type'] not in ['Event-DCT']:
             self.fc1_input_dim *= 2
 
@@ -436,9 +481,251 @@ class TempBranchRNN(nn.Module):
 
         batch_size = input_dict['sour_word_seq'].shape[0]
 
-        self.sour_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
-        self.targ_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
 
+        """
+        sour/targ seq rnn 
+        """
+        # sour_seq_input, targ_seq_input = [], []
+        #
+        # for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and is_seq_feat(k)}.items():
+        #
+        #     if self.word_dim and which_feat(feat_type) == 'word':
+        #         embed_feat = self.word_embeddings(feat)
+        #     elif self.pos_dim and which_feat(feat_type) == 'pos':
+        #         embed_feat = self.pos_embeddings(feat)
+        #     elif self.dep_dim and which_feat(feat_type) == 'dep':
+        #         embed_feat = self.dep_embeddings(feat)
+        #     elif self.char_dim and which_feat(feat_type) == 'char':
+        #         embed_char = self.char_embeddings(feat.view(batch_size * self.max_seq_len, self.max_word_len))
+        #         self.char_hidden = self.init_hidden(batch_size * self.max_seq_len, self.char_hidden_dim)
+        #         char_outs, self.char_hidden = self.char_rnn(embed_char, self.char_hidden)
+        #         embed_feat = char_outs[:, -1, :].view((batch_size, self.max_seq_len, -1))
+        #     else:
+        #         continue
+        #
+        #     if which_branch(feat_type) == 'sour':
+        #         sour_seq_input.append(embed_feat)
+        #     elif which_branch(feat_type) == 'targ':
+        #         targ_seq_input.append(embed_feat)
+        #
+
+        #
+        # sour_seq_tensor = torch.cat(sour_seq_input, dim=2)
+        # sour_rnn_out, self.sour_rnn_hidden = self.sour_rnn(sour_seq_tensor, self.sour_rnn_hidden)
+        #
+        # if targ_seq_input:
+        #     targ_seq_tensor = torch.cat(targ_seq_input, dim=2)
+        #     targ_rnn_out, self.targ_rnn_hidden = self.targ_rnn(targ_seq_tensor, self.targ_rnn_hidden)
+        #
+        # if self.params['seq_rnn_pool']:
+        #     sour_rnn_out = self.seq_rnn_pool(sour_rnn_out.transpose(1, 2)).squeeze()
+        #     if targ_seq_input:
+        #         targ_rnn_out = self.seq_rnn_pool(targ_rnn_out.transpose(1, 2)).squeeze()
+        # else:
+        #     sour_rnn_out = sour_rnn_out[:, -1, :]
+        #     if targ_seq_input:
+        #         targ_rnn_out = targ_rnn_out[:, -1, :]
+
+        """
+        full sent rnn 
+        """
+        sent_input = []
+        for feat_type, feat in {k: v for k, v in input_dict.items() if is_sent_feat(k)}.items():
+            if self.word_dim and which_feat(feat_type) == 'word':
+                embed_feat = self.word_embeddings(feat)
+                sent_input.append(embed_feat)
+            elif self.dist_dim and which_feat(feat_type) == 'dist':
+                embed_feat = self.dist_embeddings(feat)
+                sent_input.append(embed_feat)
+            elif self.char_dim !=0 and which_feat(feat_type) == 'char':
+                embed_char = self.char_embeddings(feat.view(batch_size * self.max_sent_len, self.max_word_len))
+                self.char_hidden = self.init_hidden(batch_size * self.max_sent_len, self.char_hidden_dim)
+                char_outs, self.char_hidden = self.char_rnn(embed_char, self.char_hidden)
+                embed_feat = char_outs[:, -1, :].view((batch_size, self.max_seq_len, -1))
+                sent_input.append(embed_feat)
+        sent_tensor = torch.cat(sent_input, dim=2)
+
+        self.sent_rnn_hidden = self.init_hidden(batch_size, self.sent_hidden_dim)
+        sent_rnn_out, self.sent_rnn_hidden = self.sent_rnn(sent_tensor, self.sent_rnn_hidden)
+
+        # print(sent_rnn_out.shape)
+
+        for feat_type, feat in {k: v for k, v in input_dict.items() if is_seq_feat(k)}.items():
+            if which_branch(feat_type) == 'sour' and which_feat(feat_type) == 'index':
+                sour_sdp_input = getPartOfTensor3D(sent_rnn_out, feat)
+            elif which_branch(feat_type) == 'targ' and which_feat(feat_type) == 'index':
+                targ_sdp_input = getPartOfTensor3D(sent_rnn_out, feat)
+
+
+
+
+
+        # print("input tensor of SDP rnn", sour_sdp_input.shape)
+
+        """
+        SDP layer
+        """
+        self.sour_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
+        sour_sdp_out, self.sour_rnn_hidden = self.sour_rnn(sour_sdp_input, self.sour_rnn_hidden)
+        if self.params['seq_rnn_pool']:
+            sour_sdp_out = self.seq_rnn_pool(sour_sdp_out.transpose(1, 2)).squeeze()
+        else:
+            sour_sdp_out = sour_sdp_out[:, -1, :]
+
+        if self.link_type in ['Event-Timex', 'Event-Event']:
+            self.targ_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
+            targ_sdp_out, self.targ_rnn_hidden = self.targ_rnn(targ_sdp_input, self.targ_rnn_hidden)
+            if self.params['seq_rnn_pool']:
+                targ_sdp_out = self.seq_rnn_pool(targ_sdp_out.transpose(1, 2)).squeeze()
+            else:
+                targ_sdp_out = targ_sdp_out[:, -1, :]
+
+        # print("output tensor of SDP rnn", sour_sdp_out.shape)
+
+        """
+        concatenate seq rnn + sent rnn + feat
+        """
+        cat_input = []
+
+        cat_input.append(self.sour_rnn_drop(sour_sdp_out))
+        if self.link_type in ['Event-Timex', 'Event-Event']:
+            cat_input.append(self.targ_rnn_drop(targ_sdp_out))
+
+        # feat_input = []
+        # for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and is_tok_feat(k)}.items():
+        #
+        #     if self.word_dim and which_feat(feat_type) == 'word':
+        #         embed_feat = self.word_embeddings(feat)
+        #     elif self.pos_dim and which_feat(feat_type) == 'pos':
+        #         embed_feat = self.pos_embeddings(feat)
+        #     elif self.dep_dim and which_feat(feat_type) == 'dep':
+        #         embed_feat = self.dep_embeddings(feat)
+        #     else:
+        #         continue
+        #
+        #     if self.params['mention_cat'] == 'sum':
+        #         embed_feat = embed_feat.sum(dim=1)
+        #     elif self.params['mention_cat'] == 'max':
+        #         embed_feat = embed_feat.max(dim=1)[0]
+        #     elif self.params['mention_cat'] == 'mean':
+        #         embed_feat = embed_feat.mean(dim=1)
+        #
+        #     if which_branch(feat_type) == 'sour':
+        #         feat_input.append(embed_feat)
+        #     elif which_branch(feat_type) == 'targ':
+        #         feat_input.append(embed_feat)
+        #
+        # cat_input.append(self.feat_drop(torch.cat(feat_input, dim=1)))
+
+        fc_input = torch.cat(cat_input, dim=1)
+        # print(fc_input.shape)
+
+        ## FC and softmax layer
+        fc1_out = F.relu(self.fc1(fc_input))
+        fc1_out = self.fc1_drop(fc1_out)
+        fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
+
+        return fc2_out
+
+
+class TempBranchRNN(nn.Module):
+
+    def __init__(self, wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
+                 max_sent_len, max_seq_len, max_mention_len, max_word_len,
+                 pre_embed=None,
+                 verbose=0, **params):
+
+        super(TempBranchRNN, self).__init__()
+        self.params = params
+        self.hidden_dim = self.params['seq_rnn_dim']
+        self.sent_hidden_dim = self.params['sent_rnn_dim']
+        self.max_sent_len = max_sent_len
+        self.max_seq_len = max_seq_len
+        self.max_mention_len = max_mention_len
+        self.max_word_len = max_word_len
+        self.verbose = verbose
+
+        if isinstance(pre_embed, np.ndarray):
+            self.word_dim = pre_embed.shape[1]
+            self.word_embeddings = TempUtils.pre2embed(pre_embed)
+
+        self.char_dim = params['char_dim']
+        if self.char_dim:
+            self.char_embeddings = nn.Embedding(cvocab_size, self.char_dim, padding_idx=0)
+            self.char_hidden_dim = params['char_dim']
+            self.char_rnn = nn.LSTM(self.char_dim, self.char_hidden_dim // 2,
+                                    num_layers=1,
+                                    batch_first=True,
+                                    bidirectional=True)
+
+        self.pos_dim = params['pos_dim']
+        if self.pos_dim:
+            self.pos_embeddings = nn.Embedding(pos_size, self.pos_dim, padding_idx=0)
+
+        self.dep_dim = params['dep_dim']
+        if self.dep_dim:
+            self.dep_embeddings = nn.Embedding(dep_size, self.dep_dim, padding_idx=0)
+
+        self.dist_dim = params['dist_dim']
+        if self.dist_dim:
+            self.dist_embeddings = nn.Embedding(dist_size, self.dist_dim, padding_idx=0)
+
+        self.sent_input_dim = self.word_dim + self.char_dim + 2 * self.dist_dim
+
+        self.sent_rnn = nn.LSTM(self.sent_input_dim,
+                                self.sent_hidden_dim // 2,
+                                num_layers=1,
+                                batch_first=True,
+                                bidirectional=True)
+
+        if self.params['sent_rnn_pool']:
+            self.sent_rnn_pool = nn.MaxPool1d(self.max_sent_len)
+
+        self.seq_input_dim = seq_input_dim(self.params, self.word_dim)
+
+        self.sour_rnn = nn.LSTM(self.seq_input_dim,
+                                self.hidden_dim // 2,
+                                num_layers=1,
+                                batch_first=True,
+                                bidirectional=True)
+
+        if self.params['link_type'] not in ['Event-DCT']:
+            self.targ_rnn = nn.LSTM(self.seq_input_dim,
+                                    self.hidden_dim // 2,
+                                    num_layers=1,
+                                    batch_first=True,
+                                    bidirectional=True)
+
+        if self.params['seq_rnn_pool']:
+            self.seq_rnn_pool = nn.MaxPool1d(self.max_seq_len)
+
+        self.sour_rnn_drop = nn.Dropout(p=self.params['dropout_sour_rnn'])
+        if self.params['link_type'] not in ['Event-DCT']:
+            self.targ_rnn_drop = nn.Dropout(p=self.params['dropout_targ_rnn'])
+
+        self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
+
+        self.fc1_input_dim = self.hidden_dim + self.sent_hidden_dim + self.word_dim + self.pos_dim + self.dep_dim
+
+        if self.params['link_type'] not in ['Event-DCT']:
+            self.fc1_input_dim *= 2
+
+        self.fc1 = nn.Linear(self.fc1_input_dim, self.params['fc_hidden_dim'])
+        self.fc1_drop = nn.Dropout(p=self.params['dropout_fc'])
+        self.fc2 = nn.Linear(self.params['fc_hidden_dim'], action_size)
+
+    def init_hidden(self, batch_size, hidden_dim):
+        return (torch.zeros(2, batch_size, hidden_dim // 2).to(device),
+                torch.zeros(2, batch_size, hidden_dim // 2).to(device))
+
+    def forward(self, **input_dict):
+
+        batch_size = input_dict['sour_word_seq'].shape[0]
+
+
+        """
+        sour/targ seq rnn 
+        """
         sour_seq_input, targ_seq_input = [], []
 
         for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and is_seq_feat(k)}.items():
@@ -461,8 +748,9 @@ class TempBranchRNN(nn.Module):
                 sour_seq_input.append(embed_feat)
             elif which_branch(feat_type) == 'targ':
                 targ_seq_input.append(embed_feat)
-            else:
-                raise Exception('[Error] Unknown branch name when cat seq input...', which_branch(feat_type))
+
+        self.sour_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
+        self.targ_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
 
         sour_seq_tensor = torch.cat(sour_seq_input, dim=2)
         sour_rnn_out, self.sour_rnn_hidden = self.sour_rnn(sour_seq_tensor, self.sour_rnn_hidden)
@@ -471,21 +759,56 @@ class TempBranchRNN(nn.Module):
             targ_seq_tensor = torch.cat(targ_seq_input, dim=2)
             targ_rnn_out, self.targ_rnn_hidden = self.targ_rnn(targ_seq_tensor, self.targ_rnn_hidden)
 
-        cat_input = []
-        if self.params['rnn_pool']:
-            sour_rnn_out = self.rnn_pool(sour_rnn_out.transpose(1, 2)).squeeze()
+        if self.params['seq_rnn_pool']:
+            sour_rnn_out = self.seq_rnn_pool(sour_rnn_out.transpose(1, 2)).squeeze()
             if targ_seq_input:
-                targ_rnn_out = self.rnn_pool(targ_rnn_out.transpose(1, 2)).squeeze()
+                targ_rnn_out = self.seq_rnn_pool(targ_rnn_out.transpose(1, 2)).squeeze()
         else:
-            sour_rnn_out = self.sour_rnn_drop(sour_rnn_out[:, -1, :])
+            sour_rnn_out = sour_rnn_out[:, -1, :]
             if targ_seq_input:
-                targ_rnn_out = self.targ_rnn_drop(targ_rnn_out[:, -1, :])
-        cat_input.append(sour_rnn_out)
+                targ_rnn_out = targ_rnn_out[:, -1, :]
+
+        """
+        full sent rnn 
+        """
+        sent_input = []
+        for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and is_sent_feat(k)}.items():
+            if self.word_dim and which_feat(feat_type) == 'word':
+                embed_feat = self.word_embeddings(feat)
+            elif self.dist_dim and which_feat(feat_type) == 'dist':
+                print(feat.shape)
+                embed_feat = self.dist_embeddings(feat)
+                # print(embed_feat.shape)
+            elif self.char_dim and which_feat(feat_type) == 'char':
+                embed_char = self.char_embeddings(feat.view(batch_size * self.max_sent_len, self.max_word_len))
+                self.char_hidden = self.init_hidden(batch_size * self.max_sent_len, self.char_hidden_dim)
+                char_outs, self.char_hidden = self.char_rnn(embed_char, self.char_hidden)
+                embed_feat = char_outs[:, -1, :].view((batch_size, self.max_seq_len, -1))
+            sent_input.append(embed_feat)
+
+        sent_tensor = torch.cat(sent_input, dim=2)
+        self.sent_rnn_hidden = self.init_hidden(batch_size, self.sent_hidden_dim)
+        sent_rnn_out, self.sent_rnn_hidden = self.sent_rnn(sent_tensor, self.sent_rnn_hidden)
+
+        if self.params['sent_rnn_pool']:
+            sent_rnn_out = self.sent_rnn_pool(sent_rnn_out.transpose(1, 2)).squeeze()
+        else:
+            sent_rnn_out = sent_rnn_out[:, -1, :]
+
+
+        """
+        concatenate seq rnn + sent rnn + feat
+        """
+        cat_input = []
+
+        cat_input.append(self.sour_rnn_drop(sour_rnn_out))
         if targ_seq_input:
-            cat_input.append(targ_rnn_out)
+            cat_input.append(self.targ_rnn_drop(targ_rnn_out))
+
+        cat_input.append(sent_rnn_out)
 
         feat_input = []
-        for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and not is_seq_feat(k)}.items():
+        for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and is_tok_feat(k)}.items():
 
             if self.word_dim and which_feat(feat_type) == 'word':
                 embed_feat = self.word_embeddings(feat)
@@ -493,11 +816,6 @@ class TempBranchRNN(nn.Module):
                 embed_feat = self.pos_embeddings(feat)
             elif self.dep_dim and which_feat(feat_type) == 'dep':
                 embed_feat = self.dep_embeddings(feat)
-            # elif self.char_dim and which_feat(feat_type) == 'char':
-            #     embed_char = self.char_embeddings(feat.view(batch_size * self.max_seq_len, self.max_word_len))
-            #     self.char_hidden = self.init_hidden(batch_size * self.max_seq_len, self.char_hidden_dim)
-            #     char_outs, self.char_hidden = self.char_rnn(embed_char, self.char_hidden)
-            #     embed_feat = char_outs[:, -1, :].view((batch_size, self.max_seq_len, -1))
             else:
                 continue
 
@@ -512,8 +830,6 @@ class TempBranchRNN(nn.Module):
                 feat_input.append(embed_feat)
             elif which_branch(feat_type) == 'targ':
                 feat_input.append(embed_feat)
-            else:
-                raise Exception('[Error]Unknown branch name when cat tok input...', which_branch(feat_type))
 
         cat_input.append(self.feat_drop(torch.cat(feat_input, dim=1)))
 
