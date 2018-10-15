@@ -445,7 +445,6 @@ class sentSdpRNN(nn.Module):
             self.sent_rnn_pool = nn.MaxPool1d(self.max_sent_len)
 
         self.seq_input_dim = self.sent_hidden_dim + \
-                             self.params['char_dim'] + \
                              self.params['pos_dim'] + \
                              self.params['dep_dim']
 
@@ -503,7 +502,7 @@ class sentSdpRNN(nn.Module):
                 embed_char = self.char_embeddings(feat.view(batch_size * self.max_sent_len, self.max_word_len))
                 self.char_hidden = self.init_hidden(batch_size * self.max_sent_len, self.char_hidden_dim)
                 char_outs, self.char_hidden = self.char_rnn(embed_char, self.char_hidden)
-                embed_feat = char_outs[:, -1, :].view((batch_size, self.max_seq_len, -1))
+                embed_feat = char_outs[:, -1, :].view((batch_size, self.max_sent_len, -1))
                 sent_input.append(embed_feat)
         sent_tensor = torch.cat(sent_input, dim=2)
 
