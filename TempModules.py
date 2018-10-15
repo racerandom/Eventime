@@ -402,6 +402,7 @@ class sentSdpRNN(nn.Module):
         self.max_mention_len = max_mention_len
         self.max_word_len = max_word_len
         self.verbose = verbose
+        self.batch_size = self.params['batch_size']
 
         if isinstance(pre_embed, np.ndarray):
             self.word_dim = pre_embed.shape[1]
@@ -478,10 +479,16 @@ class sentSdpRNN(nn.Module):
         self.fc1_drop = nn.Dropout(p=self.params['dropout_fc'])
         self.fc2 = nn.Linear(self.params['fc_hidden_dim'], action_size)
 
+        self.char_hidden = self.init_hidden(self.batch_size * self.max_sent_len, self.char_hidden_dim)
+        self.sent_rnn_hidden = self.init_hidden(self.batch_size, self.sent_hidden_dim)
+
+        self.sour_rnn_hidden = self.init_hidden(self.batch_size, self.hidden_dim)
+        self.targ_rnn_hidden = self.init_hidden(self.batch_size, self.hidden_dim)
+
 
     def init_hidden(self, batch_size, hidden_dim):
-        return (torch.zeros(2, batch_size, hidden_dim // 2).to(device),
-                torch.zeros(2, batch_size, hidden_dim // 2).to(device))
+        return (torch.randn(2, batch_size, hidden_dim // 2).to(device),
+                torch.randn(2, batch_size, hidden_dim // 2).to(device))
 
     def forward(self, **input_dict):
 
@@ -500,13 +507,12 @@ class sentSdpRNN(nn.Module):
                 sent_input.append(embed_feat)
             elif self.char_dim and which_feat(feat_type) == 'char':
                 embed_char = self.char_embeddings(feat.view(batch_size * self.max_sent_len, self.max_word_len))
-                self.char_hidden = self.init_hidden(batch_size * self.max_sent_len, self.char_hidden_dim)
                 char_outs, self.char_hidden = self.char_rnn(embed_char, self.char_hidden)
                 embed_feat = char_outs[:, -1, :].view((batch_size, self.max_sent_len, -1))
                 sent_input.append(embed_feat)
         sent_tensor = torch.cat(sent_input, dim=2)
 
-        self.sent_rnn_hidden = self.init_hidden(batch_size, self.sent_hidden_dim)
+
         sent_rnn_out, self.sent_rnn_hidden = self.sent_rnn(sent_tensor, self.sent_rnn_hidden)
 
         # print(sent_rnn_out.shape)
@@ -523,7 +529,7 @@ class sentSdpRNN(nn.Module):
         SDP layer
         """
         if self.params['sdp_rnn']:
-            self.sour_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
+
             sour_sdp_out, self.sour_rnn_hidden = self.sour_rnn(sour_sdp_input, self.sour_rnn_hidden)
             if self.params['seq_rnn_pool']:
                 sour_sdp_out = self.seq_rnn_pool(sour_sdp_out.transpose(1, 2)).squeeze()
@@ -531,7 +537,6 @@ class sentSdpRNN(nn.Module):
                 sour_sdp_out = sour_sdp_out[:, -1, :]
 
             if self.link_type in ['Event-Timex', 'Event-Event']:
-                self.targ_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
                 targ_sdp_out, self.targ_rnn_hidden = self.targ_rnn(targ_sdp_input, self.targ_rnn_hidden)
                 if self.params['seq_rnn_pool']:
                     targ_sdp_out = self.seq_rnn_pool(targ_sdp_out.transpose(1, 2)).squeeze()

@@ -187,9 +187,10 @@ def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, *
             }, local_is_best, "models/best.pth")
 
     local_checkpoint = torch.load("models/best.pth", map_location=lambda storage, loc: storage)
-    print(local_checkpoint['val_loss'], local_checkpoint['val_acc'])
+    print(local_checkpoint['val_loss'], local_checkpoint['val_acc'], local_checkpoint['test_loss'], local_checkpoint['test_acc'])
+    model.load_state_dict(local_checkpoint['state_dict'])
 
-    # eval_data(model, test_feat, test_target, labels)
+    eval_data(model, test_feat, test_target, labels)
     return local_best_score
 
 
