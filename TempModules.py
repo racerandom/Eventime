@@ -514,7 +514,7 @@ class sentSdpRNN(nn.Module):
             elif which_branch(feat_type) == 'targ' and which_feat(feat_type) == 'index':
                 targ_sdp_input = getPartOfTensor3D(sent_rnn_out, feat)
 
-        print("input tensor of SDP rnn", sour_sdp_input.shape)
+        # print("input tensor of SDP rnn", sour_sdp_input.shape)
 
         """
         SDP layer
@@ -539,11 +539,15 @@ class sentSdpRNN(nn.Module):
         """
         concatenate seq rnn + sent rnn + feat
         """
-        cat_input = [self.feat_drop(sent_rnn_out[:, -1, :])]
+        cat_input = []
 
-        cat_input.append(self.sour_rnn_drop(sour_sdp_out))
-        if self.link_type in ['Event-Timex', 'Event-Event']:
-            cat_input.append(self.targ_rnn_drop(targ_sdp_out))
+        if self.params['sent_rnn']:
+            cat_input.append(self.feat_drop(sent_rnn_out[:, -1, :]))
+
+        if self.params['sdp_rnn']:
+            cat_input.append(self.sour_rnn_drop(sour_sdp_out))
+            if self.link_type in ['Event-Timex', 'Event-Event']:
+                cat_input.append(self.targ_rnn_drop(targ_sdp_out))
 
         # feat_input = []
         # for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and is_tok_feat(k)}.items():
