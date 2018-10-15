@@ -188,10 +188,11 @@ def main():
         'weight_decay': 0.0001,
         'max_norm': 5,
         'doc_reset': False,
-        'data_reset': True
+        'data_reset': False
     }
     pretrained_file = "Resources/embed/deps.words.bin"
     pickle_embedding = "data/embedding.pkl"
+    pickle_data = 'data/data_%s.pkl' % params['link_type']
 
     if params['data_reset']:
         doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
@@ -204,15 +205,13 @@ def main():
 
         save_doc((train_data, dev_data, test_data,
                   word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
-                  max_sent_len, max_seq_len, max_mention_len, max_word_len), 'data/temp_model.pkl')
+                  max_sent_len, max_seq_len, max_mention_len, max_word_len), pickle_data)
 
     train_data, dev_data, test_data, \
     word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
-    max_sent_len, max_seq_len, max_mention_len, max_word_len = load_doc('data/temp_model.pkl')
+    max_sent_len, max_seq_len, max_mention_len, max_word_len = load_doc(pickle_data)
 
     word_idx, embedding = load_doc(pickle_embedding)
-
-    print(dist_idx)
 
     model, optimizer = model_instance(len(word_idx), len(char_idx), len(pos_idx), len(dep_idx), len(dist_idx), len(rel_idx),
                                       max_sent_len, max_seq_len, max_mention_len, max_word_len,

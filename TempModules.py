@@ -484,51 +484,6 @@ class sentSdpRNN(nn.Module):
 
         batch_size = input_dict['sour_word_seq'].shape[0]
 
-
-        """
-        sour/targ seq rnn 
-        """
-        # sour_seq_input, targ_seq_input = [], []
-        #
-        # for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and is_seq_feat(k)}.items():
-        #
-        #     if self.word_dim and which_feat(feat_type) == 'word':
-        #         embed_feat = self.word_embeddings(feat)
-        #     elif self.pos_dim and which_feat(feat_type) == 'pos':
-        #         embed_feat = self.pos_embeddings(feat)
-        #     elif self.dep_dim and which_feat(feat_type) == 'dep':
-        #         embed_feat = self.dep_embeddings(feat)
-        #     elif self.char_dim and which_feat(feat_type) == 'char':
-        #         embed_char = self.char_embeddings(feat.view(batch_size * self.max_seq_len, self.max_word_len))
-        #         self.char_hidden = self.init_hidden(batch_size * self.max_seq_len, self.char_hidden_dim)
-        #         char_outs, self.char_hidden = self.char_rnn(embed_char, self.char_hidden)
-        #         embed_feat = char_outs[:, -1, :].view((batch_size, self.max_seq_len, -1))
-        #     else:
-        #         continue
-        #
-        #     if which_branch(feat_type) == 'sour':
-        #         sour_seq_input.append(embed_feat)
-        #     elif which_branch(feat_type) == 'targ':
-        #         targ_seq_input.append(embed_feat)
-        #
-
-        #
-        # sour_seq_tensor = torch.cat(sour_seq_input, dim=2)
-        # sour_rnn_out, self.sour_rnn_hidden = self.sour_rnn(sour_seq_tensor, self.sour_rnn_hidden)
-        #
-        # if targ_seq_input:
-        #     targ_seq_tensor = torch.cat(targ_seq_input, dim=2)
-        #     targ_rnn_out, self.targ_rnn_hidden = self.targ_rnn(targ_seq_tensor, self.targ_rnn_hidden)
-        #
-        # if self.params['seq_rnn_pool']:
-        #     sour_rnn_out = self.seq_rnn_pool(sour_rnn_out.transpose(1, 2)).squeeze()
-        #     if targ_seq_input:
-        #         targ_rnn_out = self.seq_rnn_pool(targ_rnn_out.transpose(1, 2)).squeeze()
-        # else:
-        #     sour_rnn_out = sour_rnn_out[:, -1, :]
-        #     if targ_seq_input:
-        #         targ_rnn_out = targ_rnn_out[:, -1, :]
-
         """
         full sent rnn 
         """
@@ -559,11 +514,7 @@ class sentSdpRNN(nn.Module):
             elif which_branch(feat_type) == 'targ' and which_feat(feat_type) == 'index':
                 targ_sdp_input = getPartOfTensor3D(sent_rnn_out, feat)
 
-
-
-
-
-        # print("input tensor of SDP rnn", sour_sdp_input.shape)
+        print("input tensor of SDP rnn", sour_sdp_input.shape)
 
         """
         SDP layer
