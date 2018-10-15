@@ -357,6 +357,7 @@ def prepareGlobalSDP(pkl_file, link_types=None):
                     # print(link.sour.content, sour_sdp_ids, link.targ.content, reviceSdpWithSentID(sent_tokens, targ_sdp_ids))
                     # print([tok.content for tok in sent_tokens])
                     # print()
+                    # print(getMentionDist(sent_tokens, link.targ))
 
     """
     step2: calculate vocab (set object)
@@ -364,7 +365,9 @@ def prepareGlobalSDP(pkl_file, link_types=None):
     # word_vocab = doc2fvocab(doc_dic, 'sour_word_seq', link_types)
     pos_vocab = doc2fvocab(doc_dic, 'sour_pos_seq', link_types)
     dep_vocab = doc2fvocab(doc_dic, 'sour_dep_seq', link_types)
-    dist_vocab = doc2fvocab(doc_dic, 'sour_dist_seq', link_types)
+    dist_vocab = doc2fvocab(doc_dic, 'sour_dist_sent', link_types)
+
+    print(dist_vocab)
 
     """
     target branch
@@ -372,7 +375,9 @@ def prepareGlobalSDP(pkl_file, link_types=None):
     # word_vocab.union(doc2fvocab(doc_dic, 'targ_word_seq', link_types))
     pos_vocab.union(doc2fvocab(doc_dic, 'targ_pos_seq', link_types))
     dep_vocab.union(doc2fvocab(doc_dic, 'targ_dep_seq', link_types))
-    dist_vocab.union(doc2fvocab(doc_dic, 'targ_dist_seq', link_types))
+    dist_vocab.union(doc2fvocab(doc_dic, 'targ_dist_sent', link_types))
+
+    print(dist_vocab)
 
     """
     full sentence

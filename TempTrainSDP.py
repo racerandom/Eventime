@@ -34,7 +34,7 @@ def preprocessData(**params):
                                                                 sent_win,
                                                                 'oper' if oper else 'order'))
 
-    if params['reset']:
+    if params['doc_reset']:
         anchor_file2doc(timeml_dir, anchor_file, pkl_file, sent_win, oper=oper)
 
     doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
@@ -179,18 +179,21 @@ def main():
         'fc_hidden_dim': 300,
         'seq_rnn_pool': True,
         'sent_rnn_pool': True,
+        'sent_rnn': True,
+        'sdp_rnn': True,
         'dropout_fc': 0.5,
         'batch_size': 64,
         'epoch_num': 20,
         'lr': 0.001,
         'weight_decay': 0.0001,
         'max_norm': 5,
-        'reset': False
+        'doc_reset': False,
+        'data_reset': True
     }
     pretrained_file = "Resources/embed/deps.words.bin"
     pickle_embedding = "data/embedding.pkl"
 
-    if params['reset']:
+    if params['data_reset']:
         doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
         max_sent_len, max_seq_len, max_mention_len, max_word_len = preprocessData(**params)
 
@@ -209,9 +212,13 @@ def main():
 
     word_idx, embedding = load_doc(pickle_embedding)
 
+    print(dist_idx)
+
     model, optimizer = model_instance(len(word_idx), len(char_idx), len(pos_idx), len(dep_idx), len(dist_idx), len(rel_idx),
                                       max_sent_len, max_seq_len, max_mention_len, max_word_len,
                                       pre_embed=embedding, verbose=0, **params)
+
+    print(model)
     train_sdp_model(model, optimizer, train_data, dev_data, test_data, rel_idx, **params)
 
 

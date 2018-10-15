@@ -464,7 +464,9 @@ class sentSdpRNN(nn.Module):
 
         self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
 
-        self.fc1_input_dim = self.sent_hidden_dim + self.hidden_dim + (self.hidden_dim if self.link_type != "Event-DCT" else 0)
+        self.fc1_input_dim = (self.sent_hidden_dim if self.params['sent_rnn'] else 0) + \
+                             (self.hidden_dim if self.params['sdp_rnn'] else 0) + \
+                             (self.hidden_dim if self.params['sdp_rnn'] and self.link_type != "Event-DCT" else 0)
 
         if self.params['link_type'] not in ['Event-DCT']:
             self.fc1_input_dim *= 2
@@ -472,6 +474,7 @@ class sentSdpRNN(nn.Module):
         self.fc1 = nn.Linear(self.fc1_input_dim, self.params['fc_hidden_dim'])
         self.fc1_drop = nn.Dropout(p=self.params['dropout_fc'])
         self.fc2 = nn.Linear(self.params['fc_hidden_dim'], action_size)
+
 
     def init_hidden(self, batch_size, hidden_dim):
         return (torch.zeros(2, batch_size, hidden_dim // 2).to(device),
@@ -585,7 +588,7 @@ class sentSdpRNN(nn.Module):
         """
         concatenate seq rnn + sent rnn + feat
         """
-        cat_input = [sent_rnn_out[:, -1, :]]
+        cat_input = [self.feat_drop(sent_rnn_out[:, -1, :])]
 
         cat_input.append(self.sour_rnn_drop(sour_sdp_out))
         if self.link_type in ['Event-Timex', 'Event-Event']:
