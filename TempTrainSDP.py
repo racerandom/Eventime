@@ -188,9 +188,9 @@ def main():
         'weight_decay': 0.0001,
         'max_norm': 5,
         'doc_reset': False,
-        'data_reset': False
+        'data_reset': False,
     }
-    pretrained_file = "Resources/embed/deps.words.bin"
+    pretrained_file = "Resources/embed/giga-aacw.d200.bin"
     pickle_embedding = "data/embedding.pkl"
     pickle_data = 'data/data_%s.pkl' % params['link_type']
 
@@ -198,7 +198,7 @@ def main():
         doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
         max_sent_len, max_seq_len, max_mention_len, max_word_len = preprocessData(**params)
 
-        word_idx, embedding = slimEmbedding(pretrained_file, pickle_embedding, word_idx, lowercase=True)
+        word_idx, embedding = slimEmbedding(pretrained_file, pickle_embedding, word_idx, lowercase=False)
 
         train_data, dev_data, test_data = splitData(doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
                                                     max_sent_len, max_seq_len, max_mention_len, max_word_len, link_type)

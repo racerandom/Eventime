@@ -428,7 +428,9 @@ class sentSdpRNN(nn.Module):
         if self.dist_dim:
             self.dist_embeddings = nn.Embedding(dist_size, self.dist_dim, padding_idx=0)
 
-        self.sent_input_dim = self.word_dim + self.char_dim + self.dist_dim + \
+        self.sent_input_dim = self.word_dim + \
+                              self.char_dim + \
+                              self.dist_dim + \
                               (self.dist_dim if self.link_type != 'Event-DCT' else 0)
 
         # print(self.sent_input_dim)
@@ -442,7 +444,10 @@ class sentSdpRNN(nn.Module):
         if self.params['sent_rnn_pool']:
             self.sent_rnn_pool = nn.MaxPool1d(self.max_sent_len)
 
-        self.seq_input_dim = seq_input_dim(self.params, self.word_dim)
+        self.seq_input_dim = self.sent_hidden_dim + \
+                             self.params['char_dim'] + \
+                             self.params['pos_dim'] + \
+                             self.params['dep_dim']
 
         self.sour_rnn = nn.LSTM(self.seq_input_dim,
                                 self.hidden_dim // 2,
