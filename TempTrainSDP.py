@@ -15,6 +15,16 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 
 
+def is_best_score(score, best_score, monitor):
+    if not best_score:
+        is_best = True
+        best_score = score
+    else:
+        is_best = bool(score < best_score) if monitor == 'val_loss' else bool(score > best_score)
+        best_score = score if is_best else best_score
+    return is_best, best_score
+
+
 def copyData2device(data, device):
     feat_dict, target = data
     feat_types = list(feat_dict.keys())
@@ -125,13 +135,23 @@ def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, *
             dev_loss = F.nll_loss(dev_out, dev_target).item()
             dev_pred = torch.argmax(dev_out, dim=1)
             dev_acc = (dev_pred == dev_target).sum().item() / float(dev_pred.numel())
+
+            test_out = model(**test_feat)
+            test_loss = F.nll_loss(test_out, test_target).item()
+            test_pred = torch.argmax(test_out, dim=1)
+            test_acc = (test_pred == test_target).sum().item() / float(test_pred.numel())
+
             print('epoch: %i, time: %.4f, '
-                  'train loss: %.4f, train acc: %.4f | dev loss: %.4f, dev acc: %.4f' % (epoch,
-                                                                                         time.time() - start_time,
-                                                                                         sum(epoch_loss)/float(len(epoch_loss)),
-                                                                                         sum(epoch_acc)/float(len(epoch_acc)),
-                                                                                         dev_loss,
-                                                                                         dev_acc))
+                  'train loss: %.4f, train acc: %.4f | '
+                  'dev loss: %.4f, dev acc: %.4f | '
+                  'test loss: %.4f, test acc: %.4f' % (epoch,
+                                                       time.time() - start_time,
+                                                       sum(epoch_loss)/float(len(epoch_loss)),
+                                                       sum(epoch_acc)/float(len(epoch_acc)),
+                                                       dev_loss,
+                                                       dev_acc,
+                                                       test_loss,
+                                                       test_acc))
 
     eval_data(model, test_feat, test_target, labels)
 
