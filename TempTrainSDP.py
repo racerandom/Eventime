@@ -86,7 +86,17 @@ def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, acti
     return model, optimizer
 
 
+def optimize_model(param_space, max_evals):
+
+    for eval_i in range(1, max_evals + 1):
+        params = {}
+        for key, values in param_space.items():
+            params[key] = random.choice(values)
+
+    train_sdp_model(**params)
+
 def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, **params):
+
 
     train_feat_dict, train_target = train_data
     train_feat_types = list(train_feat_dict.keys())
@@ -135,6 +145,9 @@ def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, *
             dev_loss = F.nll_loss(dev_out, dev_target).item()
             dev_pred = torch.argmax(dev_out, dim=1)
             dev_acc = (dev_pred == dev_target).sum().item() / float(dev_pred.numel())
+            dev_score = dev_loss if params['monitor'] == 'val_loss' else dev_acc
+
+            local_is_best, local_best_score = is_best_score(dev_score, local_best_score, params['monitor'])
 
             test_out = model(**test_feat)
             test_loss = F.nll_loss(test_out, test_target).item()
@@ -152,8 +165,32 @@ def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, *
                                                        dev_acc,
                                                        test_loss,
                                                        test_acc))
+            if local_is_best:
+                local_best_state = {'best_score': local_best_score,
+                                    'val_loss': dev_loss,
+                                    'val_acc': dev_acc,
+                                    'test_loss': test_loss,
+                                    'test_acc':test_acc,
+                                    'params': params}
 
-    eval_data(model, test_feat, test_target, labels)
+            save_info = save_checkpoint({
+                'epoch': epoch,
+                'params': params,
+                'state_dict': model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'monitor': params['monitor'],
+                'best_score': local_best_score,
+                'val_loss': dev_loss,
+                'val_acc': dev_acc,
+                'test_loss': test_loss,
+                'test_acc': test_acc
+            }, local_is_best, "models/best.pth")
+
+    local_checkpoint = torch.load("models/best.pth", map_location=lambda storage, loc: storage)
+    print(local_checkpoint['val_loss'], local_checkpoint['val_acc'])
+
+    # eval_data(model, test_feat, test_target, labels)
+    return local_best_score
 
 
 def eval_data(model, feat_dict, target, rel_idx):
@@ -207,6 +244,7 @@ def main():
         'lr': 0.001,
         'weight_decay': 0.0001,
         'max_norm': 5,
+        'monitor': 'val_loss',
         'doc_reset': False,
         'data_reset': False,
     }
