@@ -154,9 +154,9 @@ def getPartOfTensor3D(tensor, index, pad_direct="right"):
     max_seq_len, dim = index.shape[1], tensor.shape[2]
     T = [t[i[i.nonzero().squeeze(dim=1)]-1] for t, i in zip(tensor, index)]
     if pad_direct == "right":
-        padded_T = [torch.cat((t, torch.zeros(max_seq_len - len(t), dim)), dim=0) for t in T if len(t) < max_seq_len]
+        padded_T = [torch.cat((t, torch.zeros(max_seq_len - len(t), dim).to(device)), dim=0) for t in T if len(t) < max_seq_len]
     else:
-        padded_T = [torch.cat((torch.zeros(max_seq_len - len(t), dim), t), dim=0) for t in T if len(t) < max_seq_len]
+        padded_T = [torch.cat((torch.zeros(max_seq_len - len(t), dim).to(device), t), dim=0) for t in T if len(t) < max_seq_len]
     return torch.stack(padded_T)
 
 
@@ -464,7 +464,7 @@ class sentSdpRNN(nn.Module):
 
         self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
 
-        self.fc1_input_dim = self.hidden_dim + (self.hidden_dim if self.link_type != "Event-DCT" else 0)
+        self.fc1_input_dim = self.sent_hidden_dim + self.hidden_dim + (self.hidden_dim if self.link_type != "Event-DCT" else 0)
 
         if self.params['link_type'] not in ['Event-DCT']:
             self.fc1_input_dim *= 2
@@ -537,7 +537,7 @@ class sentSdpRNN(nn.Module):
             elif self.dist_dim and which_feat(feat_type) == 'dist':
                 embed_feat = self.dist_embeddings(feat)
                 sent_input.append(embed_feat)
-            elif self.char_dim !=0 and which_feat(feat_type) == 'char':
+            elif self.char_dim and which_feat(feat_type) == 'char':
                 embed_char = self.char_embeddings(feat.view(batch_size * self.max_sent_len, self.max_word_len))
                 self.char_hidden = self.init_hidden(batch_size * self.max_sent_len, self.char_hidden_dim)
                 char_outs, self.char_hidden = self.char_rnn(embed_char, self.char_hidden)
@@ -585,7 +585,7 @@ class sentSdpRNN(nn.Module):
         """
         concatenate seq rnn + sent rnn + feat
         """
-        cat_input = []
+        cat_input = [sent_rnn_out[:, -1, :]]
 
         cat_input.append(self.sour_rnn_drop(sour_sdp_out))
         if self.link_type in ['Event-Timex', 'Event-Event']:
