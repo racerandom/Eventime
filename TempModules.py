@@ -416,6 +416,7 @@ class sentSdpRNN(nn.Module):
                                     num_layers=1,
                                     batch_first=True,
                                     bidirectional=True)
+            self.char_hidden = self.init_hidden(self.batch_size * self.max_sent_len, self.char_hidden_dim)
 
         self.pos_dim = params['pos_dim']
         if self.pos_dim:
@@ -479,7 +480,9 @@ class sentSdpRNN(nn.Module):
         self.fc1_drop = nn.Dropout(p=self.params['dropout_fc'])
         self.fc2 = nn.Linear(self.params['fc_hidden_dim'], action_size)
 
-        self.char_hidden = self.init_hidden(self.batch_size * self.max_sent_len, self.char_hidden_dim)
+
+        print(self.batch_size * self.max_sent_len)
+
         self.sent_rnn_hidden = self.init_hidden(self.batch_size, self.sent_hidden_dim)
 
         self.sour_rnn_hidden = self.init_hidden(self.batch_size, self.hidden_dim)

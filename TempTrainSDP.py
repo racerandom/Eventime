@@ -223,7 +223,7 @@ def main():
         'sent_win': 1,
         'oper_label': True,
         'link_type': link_type,
-        'char_dim': 20,
+        'char_dim': 0,
         'pos_dim': 0,
         'dep_dim': 0,
         'dist_dim': 20,
