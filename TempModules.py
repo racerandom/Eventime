@@ -483,15 +483,14 @@ class sentSdpRNN(nn.Module):
 
         print(self.batch_size * self.max_sent_len)
 
-        self.sent_rnn_hidden = self.init_hidden(self.batch_size, self.sent_hidden_dim)
 
-        self.sour_rnn_hidden = self.init_hidden(self.batch_size, self.hidden_dim)
-        self.targ_rnn_hidden = self.init_hidden(self.batch_size, self.hidden_dim)
+
+
 
 
     def init_hidden(self, batch_size, hidden_dim):
-        return (torch.randn(2, batch_size, hidden_dim // 2).to(device),
-                torch.randn(2, batch_size, hidden_dim // 2).to(device))
+        return (torch.zeros(2, batch_size, hidden_dim // 2).to(device),
+                torch.zeros(2, batch_size, hidden_dim // 2).to(device))
 
     def forward(self, **input_dict):
 
@@ -515,7 +514,7 @@ class sentSdpRNN(nn.Module):
                 sent_input.append(embed_feat)
         sent_tensor = torch.cat(sent_input, dim=2)
 
-
+        self.sent_rnn_hidden = self.init_hidden(self.batch_size, self.sent_hidden_dim)
         sent_rnn_out, self.sent_rnn_hidden = self.sent_rnn(sent_tensor, self.sent_rnn_hidden)
 
         # print(sent_rnn_out.shape)
@@ -532,7 +531,7 @@ class sentSdpRNN(nn.Module):
         SDP layer
         """
         if self.params['sdp_rnn']:
-
+            self.sour_rnn_hidden = self.init_hidden(self.batch_size, self.hidden_dim)
             sour_sdp_out, self.sour_rnn_hidden = self.sour_rnn(sour_sdp_input, self.sour_rnn_hidden)
             if self.params['seq_rnn_pool']:
                 sour_sdp_out = self.seq_rnn_pool(sour_sdp_out.transpose(1, 2)).squeeze()
@@ -540,6 +539,7 @@ class sentSdpRNN(nn.Module):
                 sour_sdp_out = sour_sdp_out[:, -1, :]
 
             if self.link_type in ['Event-Timex', 'Event-Event']:
+                self.targ_rnn_hidden = self.init_hidden(self.batch_size, self.hidden_dim)
                 targ_sdp_out, self.targ_rnn_hidden = self.targ_rnn(targ_sdp_input, self.targ_rnn_hidden)
                 if self.params['seq_rnn_pool']:
                     targ_sdp_out = self.seq_rnn_pool(targ_sdp_out.transpose(1, 2)).squeeze()
