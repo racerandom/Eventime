@@ -217,7 +217,7 @@ def eval_data(model, feat_dict, target, rel_idx):
 
 def main():
 
-    link_type = 'Event-Timex'
+    link_type = 'Event-DCT'
 
     params = {
         'sent_win': 1,
