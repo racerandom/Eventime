@@ -381,6 +381,189 @@ class TempAttnCNN(nn.Module):
         return fc2_out
 
 
+class sentSdpCNN(nn.Module):
+
+    def __init__(self, wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
+                 max_sent_len, max_seq_len, max_mention_len, max_word_len,
+                 pre_embed=None,
+                 verbose=0, **params):
+
+        super(sentSdpCNN, self).__init__()
+
+        """
+        initialize parameters
+        """
+        self.params = params
+        self.link_type = self.params['link_type']
+        self.hidden_dim = self.params['seq_rnn_dim']
+        self.sent_hidden_dim = self.params['sent_rnn_dim']
+        self.max_sent_len = max_sent_len
+        self.max_seq_len = max_seq_len
+        self.max_mention_len = max_mention_len
+        self.max_word_len = max_word_len
+        self.verbose = verbose
+        self.batch_size = self.params['batch_size']
+
+        if isinstance(pre_embed, np.ndarray):
+            self.word_dim = pre_embed.shape[1]
+            # self.word_embeddings = TempUtils.pre2embed(pre_embed)
+            self.word_embeddings = nn.Embedding(wvocab_size, self.word_dim, padding_idx=0)
+
+        self.char_dim = params['char_dim']
+        if self.char_dim:
+            self.char_embeddings = nn.Embedding(cvocab_size, self.char_dim, padding_idx=0)
+            self.char_hidden_dim = params['char_dim']
+            self.char_rnn = nn.LSTM(self.char_dim, self.char_hidden_dim // 2,
+                                    num_layers=1,
+                                    batch_first=True,
+                                    bidirectional=True)
+
+        self.pos_dim = params['pos_dim']
+        if self.pos_dim:
+            self.pos_embeddings = nn.Embedding(pos_size, self.pos_dim, padding_idx=0)
+
+        self.dep_dim = params['dep_dim']
+        if self.dep_dim:
+            self.dep_embeddings = nn.Embedding(dep_size, self.dep_dim, padding_idx=0)
+
+        self.dist_dim = params['dist_dim']
+        if self.dist_dim:
+            self.dist_embeddings = nn.Embedding(dist_size, self.dist_dim, padding_idx=0)
+
+        self.sent_input_dim = self.word_dim + self.char_dim + self.dist_dim
+
+
+        self.c1 = nn.Conv1d(self.sent_input_dim, self.hidden_dim, 3)
+        self.kernel_dim = self.max_sent_len - 3 + 1
+        self.p1 = nn.MaxPool1d(self.kernel_dim)
+        self.conv_dropout = nn.Dropout()
+
+        if self.params['sent_rnn_pool']:
+            self.sent_rnn_pool = nn.MaxPool1d(self.max_sent_len)
+
+        if self.params['sdp_rnn']:
+            self.seq_input_dim = self.sent_hidden_dim + \
+                                 self.params['pos_dim'] + \
+                                 self.params['dep_dim']
+
+            self.sour_rnn = nn.LSTM(self.seq_input_dim,
+                                    self.hidden_dim // 2,
+                                    num_layers=1,
+                                    batch_first=True,
+                                    bidirectional=True)
+
+            if self.params['link_type'] not in ['Event-DCT']:
+                self.targ_rnn = nn.LSTM(self.seq_input_dim,
+                                        self.hidden_dim // 2,
+                                        num_layers=1,
+                                        batch_first=True,
+                                        bidirectional=True)
+
+            if self.params['seq_rnn_pool']:
+                self.seq_rnn_pool = nn.MaxPool1d(self.max_seq_len)
+
+            self.sour_rnn_drop = nn.Dropout(p=self.params['dropout_sour_rnn'])
+            if self.params['link_type'] not in ['Event-DCT']:
+                self.targ_rnn_drop = nn.Dropout(p=self.params['dropout_targ_rnn'])
+
+        self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
+
+        self.fc1_input_dim = (self.sent_hidden_dim if self.params['sent_rnn'] else 0) + \
+                             (self.hidden_dim if self.params['sdp_rnn'] else 0) + \
+                             (self.hidden_dim if self.params['sdp_rnn'] and self.link_type != "Event-DCT" else 0)
+
+        self.fc1 = nn.Linear(self.hidden_dim, self.params['fc_hidden_dim'])
+        self.fc1_drop = nn.Dropout(p=self.params['dropout_fc'])
+        self.fc2 = nn.Linear(self.params['fc_hidden_dim'], action_size)
+
+
+
+        # print(self.batch_size * self.max_sent_len)
+    def init_hidden(self, batch_size, hidden_dim):
+        return (torch.zeros(2, batch_size, hidden_dim // 2).to(device),
+                torch.zeros(2, batch_size, hidden_dim // 2).to(device))
+
+    def forward(self, **input_dict):
+
+        batch_size = list(input_dict.values())[0].shape[0]
+
+        """
+        full sent rnn 
+        """
+        sent_input = []
+        for feat_type, feat in {k: v for k, v in input_dict.items() if is_sent_feat(k)}.items():
+            if self.word_dim and which_feat(feat_type) == 'word':
+                embed_feat = self.word_embeddings(feat)
+                sent_input.append(embed_feat)
+            elif self.dist_dim and which_feat(feat_type) == 'dist':
+                embed_feat = self.dist_embeddings(feat)
+                sent_input.append(embed_feat)
+            elif self.char_dim and which_feat(feat_type) == 'char':
+                embed_char = self.char_embeddings(feat.view(batch_size * self.max_sent_len, self.max_word_len))
+                self.char_hidden = self.init_hidden(batch_size * self.max_sent_len, self.char_hidden_dim)
+                char_outs, self.char_hidden = self.char_rnn(embed_char, self.char_hidden)
+                embed_feat = char_outs[:, -1, :].view((batch_size, self.max_sent_len, -1))
+                sent_input.append(embed_feat)
+        sent_tensor = torch.cat(sent_input, dim=2)
+
+        # input shape (batch_size, seq_len, input_dim) => (batch_size, input_dim, seq_len)
+        sent_tensor = sent_tensor.transpose(1, 2)
+
+        c1_out = F.relu(self.c1(sent_tensor))
+
+        p1_out = self.p1(c1_out).squeeze(-1)
+
+        # print("input tensor of SDP rnn", sour_sdp_input.shape)
+
+
+
+        """
+        concatenate seq rnn + sent rnn + feat
+        """
+        cat_input = []
+
+        if self.params['sent_rnn']:
+            cat_input.append(self.conv_dropout(p1_out))
+
+
+
+        # feat_input = []
+        # for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and is_tok_feat(k)}.items():
+        #
+        #     if self.word_dim and which_feat(feat_type) == 'word':
+        #         embed_feat = self.word_embeddings(feat)
+        #     elif self.pos_dim and which_feat(feat_type) == 'pos':
+        #         embed_feat = self.pos_embeddings(feat)
+        #     elif self.dep_dim and which_feat(feat_type) == 'dep':
+        #         embed_feat = self.dep_embeddings(feat)
+        #     else:
+        #         continue
+        #
+        #     if self.params['mention_cat'] == 'sum':
+        #         embed_feat = embed_feat.sum(dim=1)
+        #     elif self.params['mention_cat'] == 'max':
+        #         embed_feat = embed_feat.max(dim=1)[0]
+        #     elif self.params['mention_cat'] == 'mean':
+        #         embed_feat = embed_feat.mean(dim=1)
+        #
+        #     if which_branch(feat_type) == 'sour':
+        #         feat_input.append(embed_feat)
+        #     elif which_branch(feat_type) == 'targ':
+        #         feat_input.append(embed_feat)
+        #
+        # cat_input.append(self.feat_drop(torch.cat(feat_input, dim=1)))
+
+        fc_input = torch.cat(cat_input, dim=1)
+        # print(fc_input.shape)
+
+        ## FC and softmax layer
+        fc1_out = F.relu(self.fc1(fc_input))
+        fc1_out = self.fc1_drop(fc1_out)
+        fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
+
+        return fc2_out
+
+
 class sentSdpRNN(nn.Module):
 
     def __init__(self, wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
@@ -407,7 +590,7 @@ class sentSdpRNN(nn.Module):
         if isinstance(pre_embed, np.ndarray):
             self.word_dim = pre_embed.shape[1]
             self.word_embeddings = TempUtils.pre2embed(pre_embed)
-            self.word_embeddings = nn.Embedding(wvocab_size, self.word_dim, padding_idx=0)
+            # self.word_embeddings = nn.Embedding(wvocab_size, self.word_dim, padding_idx=0)
 
         self.char_dim = params['char_dim']
         if self.char_dim:
@@ -478,6 +661,8 @@ class sentSdpRNN(nn.Module):
         self.fc1_drop = nn.Dropout(p=self.params['dropout_fc'])
         self.fc2 = nn.Linear(self.params['fc_hidden_dim'], action_size)
 
+
+
         # print(self.batch_size * self.max_sent_len)
     def init_hidden(self, batch_size, hidden_dim):
         return (torch.zeros(2, batch_size, hidden_dim // 2).to(device),
@@ -505,11 +690,11 @@ class sentSdpRNN(nn.Module):
                 embed_feat = char_outs[:, -1, :].view((batch_size, self.max_sent_len, -1))
                 sent_input.append(embed_feat)
         sent_tensor = torch.cat(sent_input, dim=2)
-        # print(sent_tensor.shape)
-        self.sent_rnn_hidden = self.init_hidden(batch_size, self.sent_hidden_dim)
-        sent_rnn_out, self.sent_rnn_hidden = self.sent_rnn(sent_tensor, self.sent_rnn_hidden)
 
-        # print(sent_rnn_out.shape)
+        self.sent_rnn_hidden = self.init_hidden(batch_size, self.sent_hidden_dim)
+        sent_rnn_out, _ = self.sent_rnn(sent_tensor, self.sent_rnn_hidden)
+
+        print(sent_rnn_out.shape)
 
         for feat_type, feat in {k: v for k, v in input_dict.items() if is_seq_feat(k)}.items():
             if which_branch(feat_type) == 'sour' and which_feat(feat_type) == 'index':

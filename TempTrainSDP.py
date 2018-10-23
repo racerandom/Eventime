@@ -74,7 +74,7 @@ def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, acti
                    max_sent_len, max_seq_len, max_mention_len, max_word_len,
                    pre_embed, verbose=0, **params):
 
-    model = sentSdpRNN(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
+    model = sentSdpCNN(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
                        max_sent_len, max_seq_len, max_mention_len, max_word_len,
                        pre_embed=pre_embed,
                        verbose=verbose, **params).to(device=device)
@@ -173,11 +173,11 @@ def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, *
             train_feat_dict = dict(zip(train_feat_types, train_epoch_feats))
 
             model.train()
-
             model.zero_grad()
+
             pred_out = model(**train_feat_dict)
             loss = F.nll_loss(pred_out, train_epoch_target)
-            loss.backward()
+            loss.backward(retain_graph=True)
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=params['max_norm'])
             optimizer.step()
             epoch_loss.append(loss.data.item())
@@ -295,7 +295,7 @@ def main():
         'lr': [0.01, 0.001, 0.0001],
         'weight_decay': [0.0001, 0.00001],
         'max_norm': [1, 5, 10],
-        'monitor': ['val_loss'],
+        'monitor': ['val_acc'],
         'doc_reset': [False],
         'data_reset': [True]
     }
