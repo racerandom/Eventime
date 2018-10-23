@@ -57,6 +57,23 @@ TA_TEST = [ 'APW19980227.0489',
             'PRI19980306.2000.1675']
 
 
+task_feats = {'basic': ['full_word_sent',
+                        'full_char_sent',
+                        'sour_dist_sent',
+                        'targ_dist_sent'],
+              'Event-DCT': ['sour_word_seq',
+                            'sour_char_seq',
+                            'sour_pos_seq',
+                            'sour_dep_seq',
+                            'sour_index_seq',
+                            'sour_word_tok',
+                            'sour_char_tok',
+                            'sour_pos_tok',
+                            'sour_dep_tok',
+                            ],
+              'Event-Timex': [],
+              'Event-Event': []}
+
 def common_keys(dict1, dict2, lowercase):
     common_dict = {}
     for key in dict1.keys():
@@ -199,7 +216,7 @@ def prepare_feats_dataset(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_id
 
 
 def feat2tensorSDP(doc_dic, dataset, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
-                   max_sent_len, max_seq_len, max_mention_len, max_word_len, link_type):
+                   max_sent_len, max_seq_len, max_mention_len, max_word_len, task):
 
     tensor_dict = {}
     target_list = []
@@ -209,10 +226,18 @@ def feat2tensorSDP(doc_dic, dataset, word_idx, char_idx, pos_idx, dep_idx, dist_
     for doc_id, doc in doc_dic.items():
         if doc_id not in dataset:
             continue
-        for link in doc.get_links_by_type(link_type):
-            for feat_name, feats in link.feat_inputs.items():
-                feat_dict[feat_name].append(link.feat_inputs[feat_name])
-            target_list.append(link.rel)
+        if task == 'day_len':
+            for event in doc.events.values():
+                print('event:', event.content)
+                for feat_name, feats in event.feat_inputs.items():
+                    feat_dict[feat_name].append(feats)
+                    print(feats)
+                target_list.append(event.daylen)
+        elif task in ['Event-DCT', 'Event-Timex', 'Event-Event']:
+            for link in doc.get_links_by_type(task):
+                for feat_name, feats in link.feat_inputs.items():
+                    feat_dict[feat_name].append(feats)
+                target_list.append(link.rel)
 
     # initialize feats as tensors
     for feat_name, feats in feat_dict.items():
@@ -283,20 +308,14 @@ def feats2tensor_dict(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, m
     return tensor_dict, target_tensor
 
 
-
-
-
-def prepareGlobalSDP(pkl_file, link_types=None):
+def prepareGlobalSDP(pkl_file, task):
     """
         Store features into the feat_inputs of each tlink in doc_dic.
         return doc_dic, feat to index, max length for the following process of preparing tensor inputs.
     :param pkl_file:    the pickled file of doc_dic
-    :param link_types: default value ['Event-DCT', 'Event-Timex' or 'Event-Event']
+    :param task: default value ['Event-DCT', 'Event-Timex', 'Event-Event', 'day_len']
     :return: a tuple of doc_dic, feat to index, max length for padding
     """
-
-    if link_types is None:
-        link_types = ['Event-DCT', 'Event-Timex', 'Event-Event']
 
     doc_dic = load_doc(pkl_file)
 
@@ -307,8 +326,15 @@ def prepareGlobalSDP(pkl_file, link_types=None):
         # if doc_id != "APW19980227.0489":
         #     continue
         print("Preparing Global SDP feats for doc", doc_id)
-        for link_type in link_types:
-            for link in doc.temp_links[link_type]:
+        if task in ['day_len']:
+            for event in doc.events.values():
+                sent_tokens = doc.geneSentOfMention(event)
+                event.feat_inputs['full_word_sent'] = [tok.content for tok in sent_tokens]
+                # event.feat_inputs['full_char_sent'] = [list(tok.content.lower()) for tok in sent_tokens]
+                event.feat_inputs['sour_dist_sent'] = getMentionDist(sent_tokens, event)
+
+        elif task in ['Event-DCT', 'Event-Timex', 'Event-Event']:
+            for link in doc.temp_links[task]:
 
                 """
                 add interval tokens between mentions for 'Event-Timex', 'Event-Event' tlinks
@@ -354,30 +380,17 @@ def prepareGlobalSDP(pkl_file, link_types=None):
                     link.feat_inputs['targ_pos_tok'] = targ_pos_tok
                     link.feat_inputs['targ_dep_tok'] = targ_dep_tok
                     link.feat_inputs['targ_index_seq'] = reviceSdpWithSentID(sent_tokens, targ_sdp_ids)
-                    # print(link.sour.content, sour_sdp_ids, link.targ.content, reviceSdpWithSentID(sent_tokens, targ_sdp_ids))
-                    # print([tok.content for tok in sent_tokens])
-                    # print()
-                    # print(getMentionDist(sent_tokens, link.targ))
+
 
     """
     step2: calculate vocab (set object)
     """
     # word_vocab = doc2fvocab(doc_dic, 'sour_word_seq', link_types)
-    pos_vocab = doc2fvocab(doc_dic, 'sour_pos_seq', link_types)
-    dep_vocab = doc2fvocab(doc_dic, 'sour_dep_seq', link_types)
-    dist_vocab = doc2fvocab(doc_dic, 'sour_dist_sent', link_types)
 
-    print(dist_vocab)
+    pos_vocab = doc2fvocab2(doc_dic, task, ['sour_pos_seq', 'targ_pos_seq'])
+    dep_vocab = doc2fvocab2(doc_dic, task, ['sour_dep_seq', 'targ_dep_seq'])
+    dist_vocab = doc2fvocab2(doc_dic, task, ['sour_dist_sent', 'targ_dist_sent'])
 
-    """
-    target branch
-    """
-    # word_vocab.union(doc2fvocab(doc_dic, 'targ_word_seq', link_types))
-    pos_vocab.union(doc2fvocab(doc_dic, 'targ_pos_seq', link_types))
-    dep_vocab.union(doc2fvocab(doc_dic, 'targ_dep_seq', link_types))
-    dist_vocab.union(doc2fvocab(doc_dic, 'targ_dist_sent', link_types))
-
-    print(dist_vocab)
 
     """
     full sentence
@@ -396,28 +409,37 @@ def prepareGlobalSDP(pkl_file, link_types=None):
     pos_idx = vocab2idx(pos_vocab, feat_idx={'zeropadding': 0})
     dep_idx = vocab2idx(dep_vocab, feat_idx={'zeropadding': 0})
     dist_idx = vocab2idx(dist_vocab, feat_idx={'zeropadding': 0})
-    rel_idx = rel2idx(doc_dic, link_types)  # target index
+
+    rel_idx = rel2idx(doc_dic, task)  # target index
 
     """
     step4: calculate max length for padding
     """
-    max_sent_len = max_length(doc_dic, 'full_word_sent', link_types)
-    max_seq_len = max(max_length(doc_dic, 'sour_word_seq', link_types), max_length(doc_dic, 'targ_word_seq', link_types))
+    max_sent_len = max_length(doc_dic, task, ['full_word_sent'])
+    max_seq_len = max_length(doc_dic, task, ['sour_word_seq', 'targ_word_seq'])
     max_word_len = max([len(word) for word in word_vocab])
-    max_mention_len = max(max_length(doc_dic, 'sour_word_tok', link_types), max_length(doc_dic, 'targ_word_tok', link_types))
+    max_mention_len = max_length(doc_dic, task, ['sour_word_tok', 'targ_word_tok'])
 
-    print('word vocab size: %i, char vocab size: %i, '
-          'pos size: %i, dep size: %i, dist size: %i, relation size: %i, \n'
-          'max sent len: %i, max word len of seq: %i , max char len of word: %i, max word len of mention: %i' % (len(word_idx),
-                                                                                                                 len(char_idx),
-                                                                                                                 len(pos_idx),
-                                                                                                                 len(dep_idx),
-                                                                                                                 len(dist_idx),
-                                                                                                                 len(rel_idx),
-                                                                                                                 max_sent_len,
-                                                                                                                 max_seq_len,
-                                                                                                                 max_word_len,
-                                                                                                                 max_mention_len))
+    print('word vocab size: %i, '
+          'char vocab size: %i, '
+          'pos size: %i, '
+          'dep size: %i, '
+          'dist size: %i, '
+          'relation size: %i' % (len(word_idx) if word_idx else 0,
+                                 len(char_idx) if char_idx else 0,
+                                 len(pos_idx) if pos_idx else 0,
+                                 len(dep_idx) if dep_idx else 0,
+                                 len(dist_idx) if dist_idx else 0,
+                                 len(rel_idx) if rel_idx else 0))
+
+    print('max sent len: %i, '
+          'max word len of seq: %i , '
+          'max char len of word: %i, '
+          'max word len of mention: %i' % (max_sent_len,
+                                           max_seq_len,
+                                           max_word_len,
+                                           max_mention_len))
+
     return doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
            max_sent_len, max_seq_len, max_mention_len, max_word_len
 

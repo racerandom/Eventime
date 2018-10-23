@@ -234,6 +234,7 @@ class EventBase(Mention):
         self.eclass = args.setdefault('class', None)
         self.value = args.setdefault('tanchor', None)
         self.tanchor = None
+        self.daylen = 'Unknown'
 
     @property
     def eid(self):
@@ -258,6 +259,14 @@ class EventBase(Mention):
     @value.setter
     def value(self, value):
         self.__value = value
+
+    @property
+    def daylen(self):
+        return self.__daylen
+
+    @daylen.setter
+    def daylen(self, daylen):
+        self.__daylen = daylen
 
     def normalize_value(self):
         if self.__value:
@@ -284,6 +293,7 @@ class Event(EventBase):
         self.aspect = args.setdefault('aspect', None)
         self.polarity = args.setdefault('polarity', None)
         self.pos = args.setdefault('pos', None)
+        self.feat_inputs = {}  ## feat_inputs to be inputed into the model: {feat_name: feat_input}
 
     @property
     def id(self):
@@ -704,6 +714,7 @@ class TimeMLDoc:
                     event.tanchor = normalize_anchor(event.value)
                 elif anchor_type == 'anchor1':
                     event.tanchor = normalize_tanchor(event.value)
+                event.daylen = dayLengthOfMention(event.tanchor)
                 # print(event.value, normalize_anchor(event.value))
             except Exception as ex:
                 print("Normalize event error:", key, event.value)

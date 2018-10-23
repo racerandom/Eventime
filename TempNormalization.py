@@ -6,6 +6,16 @@ from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
 
+def dayLengthOfMention(tanchor):
+    if not tanchor:
+        return 'Unknown'
+    elif len(tanchor) == 2:
+        return 'SingleDay'
+    elif len(tanchor) == 4:
+        return 'MultiDay'
+    else:
+        return 'Unknown'
+
 def last_day_of_month(date):
     if date.month == 12:
         return date.replace(day=31)

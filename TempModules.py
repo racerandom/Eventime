@@ -407,6 +407,7 @@ class sentSdpRNN(nn.Module):
         if isinstance(pre_embed, np.ndarray):
             self.word_dim = pre_embed.shape[1]
             self.word_embeddings = TempUtils.pre2embed(pre_embed)
+            self.word_embeddings = nn.Embedding(wvocab_size, self.word_dim, padding_idx=0)
 
         self.char_dim = params['char_dim']
         if self.char_dim:
@@ -416,7 +417,6 @@ class sentSdpRNN(nn.Module):
                                     num_layers=1,
                                     batch_first=True,
                                     bidirectional=True)
-
 
         self.pos_dim = params['pos_dim']
         if self.pos_dim:
@@ -430,10 +430,7 @@ class sentSdpRNN(nn.Module):
         if self.dist_dim:
             self.dist_embeddings = nn.Embedding(dist_size, self.dist_dim, padding_idx=0)
 
-        self.sent_input_dim = self.word_dim + \
-                              self.char_dim + \
-                              self.dist_dim + \
-                              (self.dist_dim if self.link_type != 'Event-DCT' else 0)
+        self.sent_input_dim = self.word_dim + self.char_dim + self.dist_dim
 
         print(self.sent_input_dim)
 
@@ -446,29 +443,30 @@ class sentSdpRNN(nn.Module):
         if self.params['sent_rnn_pool']:
             self.sent_rnn_pool = nn.MaxPool1d(self.max_sent_len)
 
-        self.seq_input_dim = self.sent_hidden_dim + \
-                             self.params['pos_dim'] + \
-                             self.params['dep_dim']
+        if self.params['sdp_rnn']:
+            self.seq_input_dim = self.sent_hidden_dim + \
+                                 self.params['pos_dim'] + \
+                                 self.params['dep_dim']
 
-        self.sour_rnn = nn.LSTM(self.seq_input_dim,
-                                self.hidden_dim // 2,
-                                num_layers=1,
-                                batch_first=True,
-                                bidirectional=True)
-
-        if self.params['link_type'] not in ['Event-DCT']:
-            self.targ_rnn = nn.LSTM(self.seq_input_dim,
+            self.sour_rnn = nn.LSTM(self.seq_input_dim,
                                     self.hidden_dim // 2,
                                     num_layers=1,
                                     batch_first=True,
                                     bidirectional=True)
 
-        if self.params['seq_rnn_pool']:
-            self.seq_rnn_pool = nn.MaxPool1d(self.max_seq_len)
+            if self.params['link_type'] not in ['Event-DCT']:
+                self.targ_rnn = nn.LSTM(self.seq_input_dim,
+                                        self.hidden_dim // 2,
+                                        num_layers=1,
+                                        batch_first=True,
+                                        bidirectional=True)
 
-        self.sour_rnn_drop = nn.Dropout(p=self.params['dropout_sour_rnn'])
-        if self.params['link_type'] not in ['Event-DCT']:
-            self.targ_rnn_drop = nn.Dropout(p=self.params['dropout_targ_rnn'])
+            if self.params['seq_rnn_pool']:
+                self.seq_rnn_pool = nn.MaxPool1d(self.max_seq_len)
+
+            self.sour_rnn_drop = nn.Dropout(p=self.params['dropout_sour_rnn'])
+            if self.params['link_type'] not in ['Event-DCT']:
+                self.targ_rnn_drop = nn.Dropout(p=self.params['dropout_targ_rnn'])
 
         self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
 
@@ -480,21 +478,14 @@ class sentSdpRNN(nn.Module):
         self.fc1_drop = nn.Dropout(p=self.params['dropout_fc'])
         self.fc2 = nn.Linear(self.params['fc_hidden_dim'], action_size)
 
-
         # print(self.batch_size * self.max_sent_len)
-
-
-
-
-
-
     def init_hidden(self, batch_size, hidden_dim):
         return (torch.zeros(2, batch_size, hidden_dim // 2).to(device),
                 torch.zeros(2, batch_size, hidden_dim // 2).to(device))
 
     def forward(self, **input_dict):
 
-        batch_size = input_dict['sour_word_seq'].shape[0]
+        batch_size = list(input_dict.values())[0].shape[0]
 
         """
         full sent rnn 

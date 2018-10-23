@@ -149,6 +149,42 @@ def doc2fvocab(doc_dic, feat_name, link_types):
                         feat_vocab.add(feat)
     return feat_vocab
 
+def doc2fvocab2(doc_dic, task, feat_names):
+    feat_list = []
+    for feat_name in feat_names:
+        feats = doc2feat(doc_dic, feat_name, task)
+        if feats:
+            feat_list.extend(feats)
+    return feat2vocab(feat_list)
+
+def feat2vocab(feat_list):
+    if feat_list:
+        vocab = set()
+        for line in feat_list:
+            for tok in line:
+                vocab.add(tok)
+        return vocab
+    else:
+        return None
+
+
+def doc2feat(doc_dic, feat_name, task):
+    feat_list = []
+    for doc in doc_dic.values():
+        if task in ['day_len']:
+            for event in doc.events.values():
+                if feat_name in event.feat_inputs:
+                    feat_list.append(event.feat_inputs[feat_name])
+                else:
+                    return None
+        elif task in ['Event-Event', 'Event-Timex', 'Event-DCT']:
+            for tlink in doc.get_links_by_type(task):
+                if feat_name in tlink.feats_inputs:
+                    feat_list.append(event.feat_inputs[feat_name])
+                else:
+                    return None
+    return feat_list
+
 
 def doc2wvocab(doc_dic):
     wvocab = set()
@@ -171,9 +207,12 @@ def doc2featList(doc_dic, dataset, feat_name, link_types):
 
 
 def vocab2idx(vocab, feat_idx=None):
-    for feat in vocab:
-        feat_idx.setdefault(feat, len(feat_idx))
-    return feat_idx
+    if vocab:
+        for feat in vocab:
+            feat_idx.setdefault(feat, len(feat_idx))
+        return feat_idx
+    else:
+        return None
 
 
 def word2idx(doc_dic, link_types):
@@ -186,23 +225,35 @@ def word2idx(doc_dic, link_types):
     return tok_idx
 
 
-def rel2idx(doc_dic, link_types):
+def rel2idx(doc_dic, task):
     tok_idx = {}
     for doc in doc_dic.values():
-        for link_type in link_types:
-            for link in doc.get_links_by_type(link_type):
+        if task in ['day_len']:
+            for event in doc.events.values():
+                tok_idx.setdefault(event.daylen,len(tok_idx))
+        elif task in ['Event-Event', 'Event-Timex', 'Event-DCT']:
+            for link in doc.get_links_by_type(task):
                 tok_idx.setdefault(link.rel, len(tok_idx))
     return tok_idx
 
 
-def max_length(doc_dic, feat_name, link_types):
-    word_list = []
-    for doc in doc_dic.values():
-        for link_type in link_types:
-            for link in doc.get_links_by_type(link_type):
-                if feat_name in link.feat_inputs:
-                    word_list.append(len(link.feat_inputs[feat_name]))
-    return max(word_list) if word_list else 0
+def sizeOfVocab(vocab):
+    if vocab:
+        return len(vocab)
+    else:
+        return 0
+
+
+def max_length(doc_dic, task, feat_names):
+    feat_list = []
+    for feat_name in feat_names:
+        feats = doc2feat(doc_dic, feat_name, task)
+        if feats:
+            feat_list.extend(feats)
+    if feat_list:
+        return max([len(feat) for feat in feat_list])
+    else:
+        return 0
 
 
 def geneInterPostion(word_list):
