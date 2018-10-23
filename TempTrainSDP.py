@@ -33,9 +33,7 @@ def copyData2device(data, device):
     return dict(zip(feat_types, feat_list)), target
 
 
-def preprocessData(task, **params):
-    sent_win = params['sent_win']
-    oper = params['oper_label']
+def preprocessData(task, sent_win, oper, doc_reset):
     timeml_dir = os.path.join(os.path.dirname(__file__), "data/Timebank")
     anchor_file = os.path.join(os.path.dirname(__file__), "data/event-times_normalized.tab")
     pkl_file = os.path.join(os.path.dirname(__file__),
@@ -45,7 +43,7 @@ def preprocessData(task, **params):
                                                           sent_win,
                                                           'oper' if oper else 'order'))
 
-    if params['doc_reset']:
+    if doc_reset:
         anchor_file2doc(timeml_dir, anchor_file, pkl_file, sent_win, oper=oper)
 
     doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
@@ -92,15 +90,57 @@ def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, acti
     return model, optimizer
 
 
-def optimize_model(param_space, max_evals):
+def optimize_model(task, param_space, max_evals):
+
+    pretrained_file = "Resources/embed/giga-aacw.d200.bin"
+    pickle_embedding = "data/embedding.pkl"
+    pickle_data = 'data/data_%s.pkl' % param_space['link_type']
+
+    sent_win = param_space['sent_win'][0]
+    oper = param_space['oper_label'][0]
+    doc_reset = param_space['doc_reset'][0]
+    data_reset = param_space['data_reset'][0]
+
+    if data_reset:
+        doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
+        max_sent_len, max_seq_len, max_mention_len, max_word_len = preprocessData(task, sent_win, oper, doc_reset)
+
+        # word_idx, embedding = slimEmbedding(pretrained_file, pickle_embedding, word_idx, lowercase=False)
+        word_idx, embedding = load_doc(pickle_embedding)
+
+        train_data, dev_data, test_data = splitData(doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
+                                                    max_sent_len, max_seq_len, max_mention_len, max_word_len, task)
+
+        save_doc((train_data, dev_data, test_data,
+                  word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
+                  max_sent_len, max_seq_len, max_mention_len, max_word_len), pickle_data)
+
+    train_data, dev_data, test_data, \
+    word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
+    max_sent_len, max_seq_len, max_mention_len, max_word_len = load_doc(pickle_data)
 
     for eval_i in range(1, max_evals + 1):
         params = {}
         for key, values in param_space.items():
             params[key] = random.choice(values)
 
-    train_sdp_model(**params)
+        print('Selected Params:', params)
 
+        model, optimizer = model_instance(sizeOfVocab(word_idx),
+                                      sizeOfVocab(char_idx),
+                                      sizeOfVocab(pos_idx),
+                                      sizeOfVocab(dep_idx),
+                                      sizeOfVocab(dist_idx),
+                                      sizeOfVocab(rel_idx),
+                                      max_sent_len,
+                                      max_seq_len,
+                                      max_mention_len,
+                                      max_word_len,
+                                      pre_embed=embedding,
+                                      verbose=0,
+                                      **params)
+
+        train_sdp_model(model, optimizer, train_data, dev_data, test_data, rel_idx, **params)
 
 def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, **params):
 
@@ -137,7 +177,7 @@ def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, *
             model.zero_grad()
             pred_out = model(**train_feat_dict)
             loss = F.nll_loss(pred_out, train_epoch_target)
-            loss.backward(retain_graph=True)
+            loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=params['max_norm'])
             optimizer.step()
             epoch_loss.append(loss.data.item())
@@ -145,55 +185,57 @@ def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, *
             epoch_acc.append((pred == train_epoch_target).sum().item() / float(pred.numel()))
 
         model.eval()
+        # with torch.no_grad():
+        dev_out = model(**dev_feat)
+        dev_loss = F.nll_loss(dev_out, dev_target).item()
+        dev_pred = torch.argmax(dev_out, dim=1)
+        dev_acc = (dev_pred == dev_target).sum().item() / float(dev_pred.numel())
+        dev_score = dev_loss if params['monitor'] == 'val_loss' else dev_acc
 
-        with torch.no_grad():
-            dev_out = model(**dev_feat)
-            dev_loss = F.nll_loss(dev_out, dev_target).item()
-            dev_pred = torch.argmax(dev_out, dim=1)
-            dev_acc = (dev_pred == dev_target).sum().item() / float(dev_pred.numel())
-            dev_score = dev_loss if params['monitor'] == 'val_loss' else dev_acc
+        local_is_best, local_best_score = is_best_score(dev_score, local_best_score, params['monitor'])
 
-            local_is_best, local_best_score = is_best_score(dev_score, local_best_score, params['monitor'])
+        test_out = model(**test_feat)
+        test_loss = F.nll_loss(test_out, test_target).item()
+        test_pred = torch.argmax(test_out, dim=1)
+        test_acc = (test_pred == test_target).sum().item() / float(test_pred.numel())
 
-            test_out = model(**test_feat)
-            test_loss = F.nll_loss(test_out, test_target).item()
-            test_pred = torch.argmax(test_out, dim=1)
-            test_acc = (test_pred == test_target).sum().item() / float(test_pred.numel())
+        print('epoch: %i, time: %.4f, '
+              'train loss: %.4f, train acc: %.4f | '
+              'dev loss: %.4f, dev acc: %.4f | '
+              'test loss: %.4f, test acc: %.4f' % (epoch,
+                                                   time.time() - start_time,
+                                                   sum(epoch_loss)/float(len(epoch_loss)),
+                                                   sum(epoch_acc)/float(len(epoch_acc)),
+                                                   dev_loss,
+                                                   dev_acc,
+                                                   test_loss,
+                                                   test_acc))
+        if local_is_best:
+            local_best_state = {'best_score': local_best_score,
+                                'val_loss': dev_loss,
+                                'val_acc': dev_acc,
+                                'test_loss': test_loss,
+                                'test_acc': test_acc,
+                                'params': params}
 
-            print('epoch: %i, time: %.4f, '
-                  'train loss: %.4f, train acc: %.4f | '
-                  'dev loss: %.4f, dev acc: %.4f | '
-                  'test loss: %.4f, test acc: %.4f' % (epoch,
-                                                       time.time() - start_time,
-                                                       sum(epoch_loss)/float(len(epoch_loss)),
-                                                       sum(epoch_acc)/float(len(epoch_acc)),
-                                                       dev_loss,
-                                                       dev_acc,
-                                                       test_loss,
-                                                       test_acc))
-            if local_is_best:
-                local_best_state = {'best_score': local_best_score,
-                                    'val_loss': dev_loss,
-                                    'val_acc': dev_acc,
-                                    'test_loss': test_loss,
-                                    'test_acc':test_acc,
-                                    'params': params}
-
-            save_info = save_checkpoint({
-                'epoch': epoch,
-                'params': params,
-                'state_dict': model.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                'monitor': params['monitor'],
-                'best_score': local_best_score,
-                'val_loss': dev_loss,
-                'val_acc': dev_acc,
-                'test_loss': test_loss,
-                'test_acc': test_acc
-            }, local_is_best, "models/best.pth")
+        save_info = save_checkpoint({
+            'epoch': epoch,
+            'params': params,
+            'state_dict': model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            'monitor': params['monitor'],
+            'best_score': local_best_score,
+            'val_loss': dev_loss,
+            'val_acc': dev_acc,
+            'test_loss': test_loss,
+            'test_acc': test_acc
+        }, local_is_best, "models/best.pth")
 
     local_checkpoint = torch.load("models/best.pth", map_location=lambda storage, loc: storage)
-    print(local_checkpoint['val_loss'], local_checkpoint['val_acc'], local_checkpoint['test_loss'], local_checkpoint['test_acc'])
+    print('Local best: val_loss %.4f, val_acc %.4f | test_loss %.4f, test_acc %.4f' % (local_checkpoint['val_loss'],
+                                                                                       local_checkpoint['val_acc'],
+                                                                                       local_checkpoint['test_loss'],
+                                                                                       local_checkpoint['test_acc']))
     model.load_state_dict(local_checkpoint['state_dict'])
 
     eval_data(model, test_feat, test_target, labels)
@@ -221,84 +263,44 @@ def eval_data(model, feat_dict, target, rel_idx):
               )
         print(loss, acc)
 
+
 def main():
 
     task = 'day_len'
 
-    params = {
-        'sent_win': 1,
-        'oper_label': True,
-        'link_type': task,
-        'elmo': True,
-        'char_dim': 0,
-        'pos_dim': 0,
-        'dep_dim': 0,
-        'dist_dim': 20,
-        'seq_rnn_dim': 200,
-        'sent_rnn_dim': 200,
-        'dropout_sour_rnn': 0.5,
-        'dropout_targ_rnn': 0.5,
-        'dropout_sent_rnn': 0.5,
-        'dropout_feat': 0.5,
-        'mention_cat': 'sum',
-        'fc_hidden_dim': 200,
-        'seq_rnn_pool': True,
-        'sent_rnn_pool': False,
-        'sent_rnn': True,
-        'sdp_rnn': False,
-        'dropout_fc': 0.5,
-        'batch_size': 64,
-        'epoch_num': 20,
-        'lr': 0.001,
-        'weight_decay': 0.0001,
-        'max_norm': 5,
-        'monitor': 'val_loss',
-        'doc_reset': False,
-        'data_reset': True,
+    param_space = {
+        'sent_win': [1],
+        'oper_label': [True],
+        'link_type': [task],
+        'elmo': [True],
+        'char_dim': [0],
+        'pos_dim': [0],
+        'dep_dim': [0],
+        'dist_dim': range(5, 30+1, 5),
+        'seq_rnn_dim': range(100, 400+1, 10),
+        'sent_rnn_dim': [200],
+        'dropout_sour_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
+        'dropout_targ_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
+        'dropout_sent_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
+        'dropout_feat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
+        'mention_cat': ['sum', 'max'],
+        'fc_hidden_dim': range(100, 400+1, 10),
+        'seq_rnn_pool': [True],
+        'sent_rnn_pool': [False],
+        'sent_rnn': [True],
+        'sdp_rnn': [False],
+        'dropout_fc': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
+        'batch_size': [16, 32, 64, 128],
+        'epoch_num': [20],
+        'lr': [0.01, 0.001, 0.0001],
+        'weight_decay': [0.0001, 0.00001],
+        'max_norm': [1, 5, 10],
+        'monitor': ['val_loss'],
+        'doc_reset': [False],
+        'data_reset': [True]
     }
 
-    pretrained_file = "Resources/embed/giga-aacw.d200.bin"
-    pickle_embedding = "data/embedding.pkl"
-    pickle_data = 'data/data_%s.pkl' % params['link_type']
-
-    if params['data_reset']:
-        doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
-        max_sent_len, max_seq_len, max_mention_len, max_word_len = preprocessData(task, **params)
-
-        # word_idx, embedding = slimEmbedding(pretrained_file, pickle_embedding, word_idx, lowercase=False)
-        word_idx, embedding = load_doc(pickle_embedding)
-
-        train_data, dev_data, test_data = splitData(doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
-                                                    max_sent_len, max_seq_len, max_mention_len, max_word_len, task)
-
-        save_doc((train_data, dev_data, test_data,
-                  word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
-                  max_sent_len, max_seq_len, max_mention_len, max_word_len), pickle_data)
-
-    train_data, dev_data, test_data, \
-    word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
-    max_sent_len, max_seq_len, max_mention_len, max_word_len = load_doc(pickle_data)
-
-    print(train_data[0].keys())
-
-    word_idx, embedding = load_doc(pickle_embedding)
-
-    model, optimizer = model_instance(sizeOfVocab(word_idx),
-                                      sizeOfVocab(char_idx),
-                                      sizeOfVocab(pos_idx),
-                                      sizeOfVocab(dep_idx),
-                                      sizeOfVocab(dist_idx),
-                                      sizeOfVocab(rel_idx),
-                                      max_sent_len,
-                                      max_seq_len,
-                                      max_mention_len,
-                                      max_word_len,
-                                      pre_embed=embedding,
-                                      verbose=0,
-                                      **params)
-
-    print(model)
-    train_sdp_model(model, optimizer, train_data, dev_data, test_data, rel_idx, **params)
+    optimize_model(task, param_space, 10)
 
 
 if __name__ == '__main__':

@@ -228,10 +228,8 @@ def feat2tensorSDP(doc_dic, dataset, word_idx, char_idx, pos_idx, dep_idx, dist_
             continue
         if task == 'day_len':
             for event in doc.events.values():
-                print('event:', event.content)
                 for feat_name, feats in event.feat_inputs.items():
                     feat_dict[feat_name].append(feats)
-                    print(feats)
                 target_list.append(event.daylen)
         elif task in ['Event-DCT', 'Event-Timex', 'Event-Event']:
             for link in doc.get_links_by_type(task):

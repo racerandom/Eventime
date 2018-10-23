@@ -348,8 +348,6 @@ class TempOptimizer(nn.Module):
                 pred = torch.argmax(pred_out, dim=1)
                 total_acc.append((pred == train_target).sum().item() / float(pred.numel()))
 
-            model.eval()
-
             with torch.no_grad():
                 dev_out = model(self.feat_types, *self.dev_feats, **params)
                 dev_loss = F.nll_loss(dev_out, self.dev_target).item()
