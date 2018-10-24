@@ -7,6 +7,7 @@ import torch
 from TempData import *
 from TempModules import *
 from sklearn.metrics import classification_report
+from statistics import mean, median, variance, stdev
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device("cpu")
 print('device:', device)
@@ -102,6 +103,7 @@ def optimize_model(pretrained_file, task, param_space, max_evals):
     oper = param_space['oper_label'][0]
     doc_reset = param_space['doc_reset'][0]
     data_reset = param_space['data_reset'][0]
+    monitor = param_space['monitor'][0]
 
     if data_reset:
         doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
@@ -122,6 +124,8 @@ def optimize_model(pretrained_file, task, param_space, max_evals):
     train_data, dev_data, test_data, \
     word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
     max_sent_len, max_seq_len, max_mention_len, max_word_len = load_doc(pickle_data)
+
+    monitor_score, test_loss, test_acc = [], [], []
 
     for eval_i in range(1, max_evals + 1):
         params = {}
@@ -144,7 +148,12 @@ def optimize_model(pretrained_file, task, param_space, max_evals):
                                           verbose=0,
                                           **params)
 
-        train_sdp_model(model, optimizer, train_data, dev_data, test_data, rel_idx, **params)
+        local_test_loss, local_test_acc = train_sdp_model(model, optimizer, train_data, dev_data, test_data, rel_idx, **params)
+        test_loss.append(local_test_loss)
+        test_acc.append(local_test_acc)
+    print("test_acc, mean: %.4f, stdev: %.4f" % (mean(test_acc), stdev(test_acc)))
+    best_index = monitor_score.index(max(monitor_score) if monitor.endswith('acc') else min(monitor_score))
+    print("best test_acc: %.4f" % test_acc[best_index])
 
 
 def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, **params):
@@ -244,7 +253,7 @@ def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, *
     model.load_state_dict(local_checkpoint['state_dict'])
 
     eval_data(model, test_feat, test_target, labels)
-    return local_best_score
+    return local_best_score, local_checkpoint['test_loss'], local_checkpoint['test_acc']
 
 
 def eval_data(model, feat_dict, target, rel_idx):
