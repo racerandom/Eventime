@@ -125,14 +125,14 @@ def optimize_model(pretrained_file, task, param_space, max_evals):
     word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
     max_sent_len, max_seq_len, max_mention_len, max_word_len = load_doc(pickle_data)
 
-    monitor_score, test_loss, test_acc = [], [], []
+    monitor_score, test_loss, test_acc, test_param = [], [], [], []
 
     for eval_i in range(1, max_evals + 1):
         params = {}
         for key, values in param_space.items():
             params[key] = random.choice(values)
 
-        print('Selected Params:', params)
+        print('[Selected %i Params]:' % eval_i, params)
 
         model, optimizer = model_instance(sizeOfVocab(word_idx),
                                           sizeOfVocab(char_idx),
@@ -148,16 +148,19 @@ def optimize_model(pretrained_file, task, param_space, max_evals):
                                           verbose=0,
                                           **params)
 
-        local_monitor_score, local_test_loss, local_test_acc = train_sdp_model(model, optimizer, train_data, dev_data, test_data, rel_idx, **params)
+        local_monitor_score, local_test_loss, local_test_acc, local_param = train_sdp_model(model, optimizer, train_data, dev_data, test_data, rel_idx, **params)
         monitor_score.append(local_monitor_score)
         test_loss.append(local_test_loss)
         test_acc.append(local_test_acc)
+        test_param.append(local_param)
+
         best_index = monitor_score.index(max(monitor_score) if monitor.endswith('acc') else min(monitor_score))
         print("Current best test_acc: %.4f" % test_acc[best_index])
 
     print("test_acc, mean: %.4f, stdev: %.4f" % (mean(test_acc), stdev(test_acc)))
     best_index = monitor_score.index(max(monitor_score) if monitor.endswith('acc') else min(monitor_score))
     print("Final best test_acc: %.4f" % test_acc[best_index])
+    print("Final best params:", test_param[best_index])
 
 
 def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, **params):
@@ -257,7 +260,7 @@ def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, *
     model.load_state_dict(local_checkpoint['state_dict'])
 
     eval_data(model, test_feat, test_target, labels)
-    return local_best_score, local_checkpoint['test_loss'], local_checkpoint['test_acc']
+    return local_best_score, local_checkpoint['test_loss'], local_checkpoint['test_acc'], local_checkpoint['params']
 
 
 def eval_data(model, feat_dict, target, rel_idx):
