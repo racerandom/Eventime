@@ -94,7 +94,7 @@ def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, acti
 
 def optimize_model(pretrained_file, task, param_space, max_evals):
 
-    pickle_embedding = "data/%s.pkl" % pretrained_file.split('/')[-1].split('.')[0]
+    pickle_embedding = "data/embedding_%s.pkl" % pretrained_file.split('/')[-1].split('.')[0]
     pickle_data = 'data/data_%s.pkl' % param_space['link_type']
 
     sent_win = param_space['sent_win'][0]
@@ -106,7 +106,7 @@ def optimize_model(pretrained_file, task, param_space, max_evals):
         doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
         max_sent_len, max_seq_len, max_mention_len, max_word_len = preprocessData(task, sent_win, oper, doc_reset)
 
-        slimEmbedding(pretrained_file, pickle_embedding, word_idx, lowercase=True)
+        slimEmbedding(pretrained_file, pickle_embedding, word_idx, lowercase=False)
 
 
         train_data, dev_data, test_data = splitData(doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
@@ -303,7 +303,7 @@ def main():
         'doc_reset': [False],
         'data_reset': [True]
     }
-    pretrained_file = "Resources/embed/deps.words.bin"
+    pretrained_file = "Resources/embed/giga-aacw.d200.bin"
 
     optimize_model(pretrained_file, task, param_space, 10)
 
