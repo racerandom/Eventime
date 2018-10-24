@@ -39,6 +39,17 @@ ACTION_TO_IX = {'COL0':0, 'COL1':1, 'COL2':2, 'COL01':3, 'COL12':4, 'COL012':5, 
 IX_TO_ACTION = {v: k for k, v in ACTION_TO_IX.items()}
 
 
+def init_net(net, init_algo):
+    if init_algo:
+        for name, param in net.named_parameters():
+            if name.startswith('bias'):
+                continue
+            if init_algo == 'xavier':
+                torch.nn.init.xavier_uniform_(param)
+            elif init_algo == 'kaiming':
+                torch.nn.init.kaiming_uniform_(param)
+
+
 def select_action(out_score, IX_TO_ACTION):
     sample = random.random()
     if sample > EPS_THRES:
@@ -625,12 +636,7 @@ class sentSdpRNN(nn.Module):
                                 batch_first=True,
                                 bidirectional=True)
         
-        if self.params['init_weight']:
-            for w in self.sent_rnn.all_weights:
-                if self.params['init_weight'] == 'xavier':
-                    torch.nn.init.xavier_uniform_(w)
-                elif self.params['init_weight'] == 'kaiming':
-                    torch.nn.init.kaiming_uniform_(w)
+        init_net(self.sent_rnn, self.params['init_weight'])
 
         if self.params['sdp_rnn']:
             self.seq_input_dim = self.sent_hidden_dim + \
@@ -666,6 +672,8 @@ class sentSdpRNN(nn.Module):
         self.fc1_drop = nn.Dropout(p=self.params['dropout_fc'])
         self.fc2 = nn.Linear(self.params['fc_hidden_dim'], action_size)
 
+        init_net(self.fc1, self.params['init_weight'])
+        init_net(self.fc2, self.params['init_weight'])
 
 
         # print(self.batch_size * self.max_sent_len)
