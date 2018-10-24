@@ -167,7 +167,6 @@ def slimEmbedding(embedding_file, pickle_file, word_idx, lowercase=False):
                                                                                     uncover))
     save_doc((common_idx, lookup_table), pickle_file)
     assert len(common_idx) == lookup_table.shape[0]
-    return common_idx, lookup_table
 
 
 ## generate a list of feat tensor and target tensor of a given dataset
@@ -326,10 +325,18 @@ def prepareGlobalSDP(pkl_file, task):
         print("Preparing Global SDP feats for doc", doc_id)
         if task in ['day_len']:
             for event in doc.events.values():
+                ## sent feats
                 sent_tokens = doc.geneSentOfMention(event)
                 event.feat_inputs['full_word_sent'] = [tok.content for tok in sent_tokens]
                 # event.feat_inputs['full_char_sent'] = [list(tok.content.lower()) for tok in sent_tokens]
                 event.feat_inputs['sour_dist_sent'] = getMentionDist(sent_tokens, event)
+
+                ## lexical feats
+                sdp_conll_ids, event_conll_ids, dep_graph = doc.getSdpFromMentionToRoot(event)
+                event_word, event_pos, event_dep = doc.getSdpFeats(event_conll_ids, dep_graph)
+                event.feat_inputs['sour_word_tok'] = event_word
+                event.feat_inputs['sour_pos_tok'] = event_pos
+                event.feat_inputs['sour_dep_tok'] = event_dep
 
         elif task in ['Event-DCT', 'Event-Timex', 'Event-Event']:
             for link in doc.temp_links[task]:
@@ -385,8 +392,8 @@ def prepareGlobalSDP(pkl_file, task):
     """
     # word_vocab = doc2fvocab(doc_dic, 'sour_word_seq', link_types)
 
-    pos_vocab = doc2fvocab2(doc_dic, task, ['sour_pos_seq', 'targ_pos_seq'])
-    dep_vocab = doc2fvocab2(doc_dic, task, ['sour_dep_seq', 'targ_dep_seq'])
+    pos_vocab = doc2fvocab2(doc_dic, task, ['sour_pos_seq', 'targ_pos_seq', 'sour_pos_tok', 'targ_pos_tok'])
+    dep_vocab = doc2fvocab2(doc_dic, task, ['sour_dep_seq', 'targ_dep_seq', 'sour_dep_tok', 'targ_dep_tok'])
     dist_vocab = doc2fvocab2(doc_dic, task, ['sour_dist_sent', 'targ_dist_sent'])
 
 

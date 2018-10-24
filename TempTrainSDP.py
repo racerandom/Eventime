@@ -1,4 +1,6 @@
 # coding=utf-8
+import warnings
+warnings.simplefilter("ignore", UserWarning)
 
 import torch.utils.data as Data
 import torch
@@ -90,10 +92,9 @@ def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, acti
     return model, optimizer
 
 
-def optimize_model(task, param_space, max_evals):
+def optimize_model(pretrained_file, task, param_space, max_evals):
 
-    pretrained_file = "Resources/embed/giga-aacw.d200.bin"
-    pickle_embedding = "data/embedding.pkl"
+    pickle_embedding = "data/%s.pkl" % pretrained_file.split('/')[-1].split('.')[0]
     pickle_data = 'data/data_%s.pkl' % param_space['link_type']
 
     sent_win = param_space['sent_win'][0]
@@ -105,8 +106,8 @@ def optimize_model(task, param_space, max_evals):
         doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
         max_sent_len, max_seq_len, max_mention_len, max_word_len = preprocessData(task, sent_win, oper, doc_reset)
 
-        # word_idx, embedding = slimEmbedding(pretrained_file, pickle_embedding, word_idx, lowercase=False)
-        word_idx, embedding = load_doc(pickle_embedding)
+        slimEmbedding(pretrained_file, pickle_embedding, word_idx, lowercase=True)
+
 
         train_data, dev_data, test_data = splitData(doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
                                                     max_sent_len, max_seq_len, max_mention_len, max_word_len, task)
@@ -114,6 +115,8 @@ def optimize_model(task, param_space, max_evals):
         save_doc((train_data, dev_data, test_data,
                   word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
                   max_sent_len, max_seq_len, max_mention_len, max_word_len), pickle_data)
+
+    word_idx, embedding = load_doc(pickle_embedding)
 
     train_data, dev_data, test_data, \
     word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
@@ -127,18 +130,18 @@ def optimize_model(task, param_space, max_evals):
         print('Selected Params:', params)
 
         model, optimizer = model_instance(sizeOfVocab(word_idx),
-                                      sizeOfVocab(char_idx),
-                                      sizeOfVocab(pos_idx),
-                                      sizeOfVocab(dep_idx),
-                                      sizeOfVocab(dist_idx),
-                                      sizeOfVocab(rel_idx),
-                                      max_sent_len,
-                                      max_seq_len,
-                                      max_mention_len,
-                                      max_word_len,
-                                      pre_embed=embedding,
-                                      verbose=0,
-                                      **params)
+                                          sizeOfVocab(char_idx),
+                                          sizeOfVocab(pos_idx),
+                                          sizeOfVocab(dep_idx),
+                                          sizeOfVocab(dist_idx),
+                                          sizeOfVocab(rel_idx),
+                                          max_sent_len,
+                                          max_seq_len,
+                                          max_mention_len,
+                                          max_word_len,
+                                          pre_embed=embedding,
+                                          verbose=0,
+                                          **params)
 
         train_sdp_model(model, optimizer, train_data, dev_data, test_data, rel_idx, **params)
 
@@ -278,17 +281,18 @@ def main():
         'dep_dim': [0],
         'dist_dim': range(5, 30+1, 5),
         'seq_rnn_dim': range(100, 400+1, 10),
-        'sent_rnn_dim': [200],
+        'sent_rnn_dim': range(100, 400+1, 10),
         'dropout_sour_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'dropout_targ_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'dropout_sent_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'dropout_feat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
-        'mention_cat': ['sum', 'max'],
+        'mention_cat': ['sum', 'max', 'mean'],
         'fc_hidden_dim': range(100, 400+1, 10),
         'seq_rnn_pool': [True],
         'sent_rnn_pool': [False],
         'sent_rnn': [True],
         'sdp_rnn': [False],
+        'lexical_feat': [True],
         'dropout_fc': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'batch_size': [16, 32, 64, 128],
         'epoch_num': [20],
@@ -299,8 +303,9 @@ def main():
         'doc_reset': [False],
         'data_reset': [True]
     }
+    pretrained_file = "Resources/embed/deps.words.bin"
 
-    optimize_model(task, param_space, 10)
+    optimize_model(pretrained_file, task, param_space, 10)
 
 
 if __name__ == '__main__':
