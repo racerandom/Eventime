@@ -74,9 +74,9 @@ def splitData(doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
 
 def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
                    max_sent_len, max_seq_len, max_mention_len, max_word_len,
-                   pre_embed, verbose=0, **params):
+                   pre_embed, verbose=1, **params):
 
-    model = sentSdpCNN(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
+    model = sentSdpRNN(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
                        max_sent_len, max_seq_len, max_mention_len, max_word_len,
                        pre_embed=pre_embed,
                        verbose=verbose, **params).to(device=device)
@@ -84,10 +84,11 @@ def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, acti
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=params['lr'],
                            weight_decay=params['weight_decay'])
 
-    print(model)
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            print('*', name)
+    if verbose:
+        print(model)
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                print('*', name)
 
     return model, optimizer
 
@@ -302,7 +303,7 @@ def main():
         'max_norm': [1, 5, 10],
         'monitor': ['val_acc'],
         'doc_reset': [False],
-        'data_reset': [True]
+        'data_reset': [False]
     }
     pretrained_file = "Resources/embed/GoogleNews-vectors-negative300.bin"
 

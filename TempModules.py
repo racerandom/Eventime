@@ -486,7 +486,7 @@ class sentSdpCNN(nn.Module):
         batch_size = list(input_dict.values())[0].shape[0]
 
         """
-        full sent rnn 
+        full sent cnn 
         """
         sent_input = []
         for feat_type, feat in {k: v for k, v in input_dict.items() if is_sent_feat(k)}.items():
@@ -611,8 +611,6 @@ class sentSdpRNN(nn.Module):
 
         self.sent_input_dim = self.word_dim + self.char_dim + self.dist_dim
 
-        print(self.sent_input_dim)
-
         self.sent_rnn = nn.LSTM(self.sent_input_dim,
                                 self.sent_hidden_dim // 2,
                                 num_layers=1,
@@ -649,9 +647,8 @@ class sentSdpRNN(nn.Module):
 
         self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
 
-        self.fc1_input_dim = (self.sent_hidden_dim if self.params['sent_rnn'] else 0) + \
-                             (self.hidden_dim if self.params['sdp_rnn'] else 0) + \
-                             (self.hidden_dim if self.params['sdp_rnn'] and self.link_type != "Event-DCT" else 0)
+        self.fc1_input_dim = self.sent_hidden_dim + \
+                             (self.word_dim + self.pos_dim + self.dep_dim) if self.params['lexical_feat'] else 0
 
         self.fc1 = nn.Linear(self.fc1_input_dim, self.params['fc_hidden_dim'])
         self.fc1_drop = nn.Dropout(p=self.params['dropout_fc'])
@@ -690,7 +687,7 @@ class sentSdpRNN(nn.Module):
         self.sent_rnn_hidden = self.init_hidden(batch_size, self.sent_hidden_dim)
         sent_rnn_out, _ = self.sent_rnn(sent_tensor, self.sent_rnn_hidden)
 
-        print(sent_rnn_out.shape)
+        # print(sent_rnn_out.shape)
 
         for feat_type, feat in {k: v for k, v in input_dict.items() if is_seq_feat(k)}.items():
             if which_branch(feat_type) == 'sour' and which_feat(feat_type) == 'index':
@@ -734,31 +731,30 @@ class sentSdpRNN(nn.Module):
             if self.link_type in ['Event-Timex', 'Event-Event']:
                 cat_input.append(self.targ_rnn_drop(targ_sdp_out))
 
-        # feat_input = []
-        # for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and is_tok_feat(k)}.items():
-        #
-        #     if self.word_dim and which_feat(feat_type) == 'word':
-        #         embed_feat = self.word_embeddings(feat)
-        #     elif self.pos_dim and which_feat(feat_type) == 'pos':
-        #         embed_feat = self.pos_embeddings(feat)
-        #     elif self.dep_dim and which_feat(feat_type) == 'dep':
-        #         embed_feat = self.dep_embeddings(feat)
-        #     else:
-        #         continue
-        #
-        #     if self.params['mention_cat'] == 'sum':
-        #         embed_feat = embed_feat.sum(dim=1)
-        #     elif self.params['mention_cat'] == 'max':
-        #         embed_feat = embed_feat.max(dim=1)[0]
-        #     elif self.params['mention_cat'] == 'mean':
-        #         embed_feat = embed_feat.mean(dim=1)
-        #
-        #     if which_branch(feat_type) == 'sour':
-        #         feat_input.append(embed_feat)
-        #     elif which_branch(feat_type) == 'targ':
-        #         feat_input.append(embed_feat)
-        #
-        # cat_input.append(self.feat_drop(torch.cat(feat_input, dim=1)))
+        lexical_input = []
+        for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and is_tok_feat(k)}.items():
+            embed_feat = None
+            if self.word_dim and which_feat(feat_type) == 'word':
+                embed_feat = self.word_embeddings(feat)
+            elif self.pos_dim and which_feat(feat_type) == 'pos':
+                embed_feat = self.pos_embeddings(feat)
+            elif self.dep_dim and which_feat(feat_type) == 'dep':
+                embed_feat = self.dep_embeddings(feat)
+            else:
+                continue
+
+            if self.params['mention_cat'] == 'sum':
+                embed_feat = embed_feat.sum(dim=1)
+            elif self.params['mention_cat'] == 'max':
+                embed_feat = embed_feat.max(dim=1)[0]
+            elif self.params['mention_cat'] == 'mean':
+                embed_feat = embed_feat.mean(dim=1)
+
+            if which_branch(feat_type) == 'sour':
+                lexical_input.append(embed_feat)
+            elif which_branch(feat_type) == 'targ':
+                lexical_input.append(embed_feat)
+        cat_input.append(self.feat_drop(torch.cat(lexical_input, dim=1)))
 
         fc_input = torch.cat(cat_input, dim=1)
         # print(fc_input.shape)
