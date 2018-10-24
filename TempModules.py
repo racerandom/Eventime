@@ -9,6 +9,8 @@ import random
 import pdb
 import gensim
 
+from allennlp.modules.elmo import Elmo, batch_to_ids
+
 import TempUtils
 from TempData import MultipleDatasets
 
@@ -576,7 +578,6 @@ class sentSdpRNN(nn.Module):
         self.link_type = self.params['link_type']
         self.hidden_dim = self.params['seq_rnn_dim']
         self.sent_hidden_dim = self.params['sent_rnn_dim']
-        self.max_sent_len = max_sent_len
         self.max_seq_len = max_seq_len
         self.max_mention_len = max_mention_len
         self.max_word_len = max_word_len
@@ -597,6 +598,12 @@ class sentSdpRNN(nn.Module):
                                     batch_first=True,
                                     bidirectional=True)
 
+        if self.params['elmo']:
+            options_file = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_options.json"
+            weight_file = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5"
+
+            self.elmo = Elmo(options_file, weight_file, 2, dropout=0)
+
         self.pos_dim = params['pos_dim']
         if self.pos_dim:
             self.pos_embeddings = nn.Embedding(pos_size, self.pos_dim, padding_idx=0)
@@ -609,7 +616,7 @@ class sentSdpRNN(nn.Module):
         if self.dist_dim:
             self.dist_embeddings = nn.Embedding(dist_size, self.dist_dim, padding_idx=0)
 
-        self.sent_input_dim = self.word_dim + self.char_dim + self.dist_dim
+        self.sent_input_dim = self.word_dim + self.char_dim + self.dist_dim + (1024 if self.params['elmo'] else 0)
 
         self.sent_rnn = nn.LSTM(self.sent_input_dim,
                                 self.sent_hidden_dim // 2,
@@ -617,8 +624,7 @@ class sentSdpRNN(nn.Module):
                                 batch_first=True,
                                 bidirectional=True)
 
-        if self.params['sent_rnn_pool']:
-            self.sent_rnn_pool = nn.MaxPool1d(self.max_sent_len)
+
 
         if self.params['sdp_rnn']:
             self.seq_input_dim = self.sent_hidden_dim + \
@@ -676,11 +682,8 @@ class sentSdpRNN(nn.Module):
             elif self.dist_dim and which_feat(feat_type) == 'dist':
                 embed_feat = self.dist_embeddings(feat)
                 sent_input.append(embed_feat)
-            elif self.char_dim and which_feat(feat_type) == 'char':
-                embed_char = self.char_embeddings(feat.view(batch_size * self.max_sent_len, self.max_word_len))
-                self.char_hidden = self.init_hidden(batch_size * self.max_sent_len, self.char_hidden_dim)
-                char_outs, self.char_hidden = self.char_rnn(embed_char, self.char_hidden)
-                embed_feat = char_outs[:, -1, :].view((batch_size, self.max_sent_len, -1))
+            elif which_feat(feat_type) == 'elmo':
+                embed_feat = self.elmo(feat)['elmo_representations'][-1]
                 sent_input.append(embed_feat)
         sent_tensor = torch.cat(sent_input, dim=2)
 
@@ -688,6 +691,13 @@ class sentSdpRNN(nn.Module):
         sent_rnn_out, _ = self.sent_rnn(sent_tensor, self.sent_rnn_hidden)
 
         # print(sent_rnn_out.shape)
+
+        if not self.params['sent_out_cat']:
+            sent_rnn_out = sent_rnn_out[:, -1, :]
+        elif self.params['sent_out_cat'] == 'max':
+            sent_rnn_out = sent_rnn_out.max(dim=1)[0]
+        elif self.params['sent_out_cat'] == 'mean':
+            sent_rnn_out = sent_rnn_out.mean(dim=1)
 
         for feat_type, feat in {k: v for k, v in input_dict.items() if is_seq_feat(k)}.items():
             if which_branch(feat_type) == 'sour' and which_feat(feat_type) == 'index':
@@ -724,7 +734,7 @@ class sentSdpRNN(nn.Module):
         cat_input = []
 
         if self.params['sent_rnn']:
-            cat_input.append(self.feat_drop(sent_rnn_out[:, -1, :]))
+            cat_input.append(self.feat_drop(sent_rnn_out))
 
         if self.params['sdp_rnn']:
             cat_input.append(self.sour_rnn_drop(sour_sdp_out))

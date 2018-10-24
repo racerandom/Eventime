@@ -9,6 +9,8 @@ import pickle
 import torch
 import torch.utils.data as Data
 
+from allennlp.modules.elmo import Elmo, batch_to_ids
+
 
 TBD_TRAIN = ['ABC19980120.1830.0957', 'APW19980213.1380', 'APW19980219.0476', 'ea980120.1830.0456',
              'APW19980227.0476', 'PRI19980121.2000.2591', 'CNN19980222.1130.0084', 'NYT19980206.0460',
@@ -74,6 +76,7 @@ task_feats = {'basic': ['full_word_sent',
               'Event-Timex': [],
               'Event-Event': []}
 
+
 def common_keys(dict1, dict2, lowercase):
     common_dict = {}
     for key in dict1.keys():
@@ -84,16 +87,16 @@ def common_keys(dict1, dict2, lowercase):
     return common_dict
 
 
-def batch_to_device(inputs, device):
+def batch_to_device(data, device):
     """
     copy input list into device for GPU computation
-    :param inputs:
+    :param data:
     :param device:
     :return:
     """
     device_inputs = []
-    for input in inputs:
-        device_inputs.append(input.to(device=device))
+    for d in data:
+        device_inputs.append(d.to(device=device))
     return device_inputs
 
 
@@ -257,6 +260,8 @@ def feat2tensorSDP(doc_dic, dataset, word_idx, char_idx, pos_idx, dep_idx, dist_
             tensor_dict[feat_name] = torch.tensor(padding_2d(prepare_seq_2d(feats, dep_idx), max_mention_len))
         elif feat_name in ['full_word_sent']:
             tensor_dict[feat_name] = torch.tensor(padding_2d(prepare_seq_2d(feats, word_idx), max_sent_len))
+        elif feat_name in ['full_elmo_sent']:
+            tensor_dict[feat_name] = batch_to_ids(feats)
         elif feat_name in ['full_char_sent']:
             tensor_dict[feat_name] = torch.tensor(padding_3d(prepare_seq_3d(feats, char_idx), max_sent_len, max_word_len))
         elif feat_name in ['sour_dist_sent', 'targ_dist_sent']:
@@ -331,7 +336,7 @@ def prepareGlobalSDP(pkl_file, task):
                 event.feat_inputs['full_word_sent'] = [tok.content for tok in sent_tokens]
                 # event.feat_inputs['full_char_sent'] = [list(tok.content.lower()) for tok in sent_tokens]
                 event.feat_inputs['sour_dist_sent'] = getMentionDist(sent_tokens, event)
-
+                event.feat_inputs['full_elmo_sent'] = [tok.content for tok in sent_tokens]
                 ## lexical feats
                 sdp_conll_ids, event_conll_ids, dep_graph = doc.getSdpFromMentionToRoot(event)
                 event_word, event_pos, event_dep = doc.getSdpFeats(event_conll_ids, dep_graph)

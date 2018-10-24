@@ -84,11 +84,10 @@ def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, acti
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=params['lr'],
                            weight_decay=params['weight_decay'])
 
-    if verbose:
-        print(model)
-        for name, param in model.named_parameters():
-            if param.requires_grad:
-                print('*', name)
+    print(model)
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            print('*', name)
 
     return model, optimizer
 
@@ -146,6 +145,7 @@ def optimize_model(pretrained_file, task, param_space, max_evals):
                                           **params)
 
         train_sdp_model(model, optimizer, train_data, dev_data, test_data, rel_idx, **params)
+
 
 def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, **params):
 
@@ -284,6 +284,7 @@ def main():
         'dist_dim': range(5, 30+1, 5),
         'seq_rnn_dim': range(100, 400+1, 10),
         'sent_rnn_dim': range(100, 400+1, 10),
+        'sent_out_cat': [None, 'max'],
         'dropout_sour_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'dropout_targ_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'dropout_sent_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
