@@ -261,7 +261,15 @@ def feat2tensorSDP(doc_dic, dataset, word_idx, char_idx, pos_idx, dep_idx, dist_
         elif feat_name in ['full_word_sent']:
             tensor_dict[feat_name] = torch.tensor(padding_2d(prepare_seq_2d(feats, word_idx), max_sent_len))
         elif feat_name in ['full_elmo_sent']:
-            tensor_dict[feat_name] = batch_to_ids(feats)
+            character_ids = batch_to_ids(feats)
+            if character_ids.shape[1] < max_sent_len:
+                character_ids = torch.cat((character_ids,
+                                           torch.zeros(character_ids.shape[0],
+                                                       max_sent_len - character_ids.shape[1],
+                                                       character_ids.shape[-1]).long()
+                                           ),
+                                          dim=1)
+            tensor_dict[feat_name] = character_ids
         elif feat_name in ['full_char_sent']:
             tensor_dict[feat_name] = torch.tensor(padding_3d(prepare_seq_3d(feats, char_idx), max_sent_len, max_word_len))
         elif feat_name in ['sour_dist_sent', 'targ_dist_sent']:

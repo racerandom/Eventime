@@ -304,7 +304,7 @@ def main():
         'max_norm': [1, 5, 10],
         'monitor': ['val_acc'],
         'doc_reset': [False],
-        'data_reset': [False]
+        'data_reset': [True]
     }
     pretrained_file = "Resources/embed/GoogleNews-vectors-negative300.bin"
 
