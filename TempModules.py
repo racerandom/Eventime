@@ -599,8 +599,8 @@ class sentSdpRNN(nn.Module):
                                     bidirectional=True)
 
         if self.params['elmo']:
-            options_file = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_options.json"
-            weight_file = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5"
+            options_file = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x1024_128_2048cnn_1xhighway/elmo_2x1024_128_2048cnn_1xhighway_options.json"
+            weight_file = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x1024_128_2048cnn_1xhighway/elmo_2x1024_128_2048cnn_1xhighway_weights.hdf5"
 
             self.elmo = Elmo(options_file, weight_file, 2, dropout=0)
 
@@ -616,7 +616,7 @@ class sentSdpRNN(nn.Module):
         if self.dist_dim:
             self.dist_embeddings = nn.Embedding(dist_size, self.dist_dim, padding_idx=0)
 
-        self.sent_input_dim = self.word_dim + self.char_dim + self.dist_dim + (1024 if self.params['elmo'] else 0)
+        self.sent_input_dim = self.word_dim + self.char_dim + self.dist_dim + (256 if self.params['elmo'] else 0)
 
         self.sent_rnn = nn.LSTM(self.sent_input_dim,
                                 self.sent_hidden_dim // 2,
@@ -682,7 +682,7 @@ class sentSdpRNN(nn.Module):
             elif self.dist_dim and which_feat(feat_type) == 'dist':
                 embed_feat = self.dist_embeddings(feat)
                 sent_input.append(embed_feat)
-            elif which_feat(feat_type) == 'elmo':
+            elif self.params['elmo'] and which_feat(feat_type) == 'elmo':
                 embed_feat = self.elmo(feat)['elmo_representations'][-1]
                 sent_input.append(embed_feat)
         sent_tensor = torch.cat(sent_input, dim=2)

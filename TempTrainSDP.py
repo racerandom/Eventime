@@ -277,7 +277,7 @@ def main():
         'sent_win': [1],
         'oper_label': [True],
         'link_type': [task],
-        'elmo': [True],
+        'elmo': [False],
         'char_dim': [0],
         'pos_dim': [0],
         'dep_dim': [0],
@@ -304,7 +304,7 @@ def main():
         'max_norm': [1, 5, 10],
         'monitor': ['val_acc'],
         'doc_reset': [False],
-        'data_reset': [True]
+        'data_reset': [False]
     }
     pretrained_file = "Resources/embed/GoogleNews-vectors-negative300.bin"
 
