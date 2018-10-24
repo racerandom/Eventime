@@ -624,8 +624,13 @@ class sentSdpRNN(nn.Module):
                                 num_layers=1,
                                 batch_first=True,
                                 bidirectional=True)
-
-
+        
+        if self.params['init_weight']:
+            for w in self.sent_rnn.all_weights:
+                if self.params['init_weight'] == 'xavier':
+                    torch.nn.init.xavier_uniform_(w)
+                elif self.params['init_weight'] == 'kaiming':
+                    torch.nn.init.kaiming_uniform_(w)
 
         if self.params['sdp_rnn']:
             self.seq_input_dim = self.sent_hidden_dim + \
@@ -828,6 +833,7 @@ class TempBranchRNN(nn.Module):
                                 num_layers=1,
                                 batch_first=True,
                                 bidirectional=True)
+
 
         if self.params['sent_rnn_pool']:
             self.sent_rnn_pool = nn.MaxPool1d(self.max_sent_len)

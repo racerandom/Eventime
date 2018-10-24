@@ -277,6 +277,7 @@ def main():
         'sent_win': [1],
         'oper_label': [True],
         'link_type': [task],
+        'init_weight': ['xavier', 'kaiming'],
         'elmo': [False],
         'char_dim': [0],
         'pos_dim': [0],
