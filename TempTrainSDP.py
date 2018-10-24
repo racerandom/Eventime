@@ -295,7 +295,7 @@ def main():
         'sent_rnn_pool': [False],
         'sent_rnn': [True],
         'sdp_rnn': [False],
-        'lexical_feat': [True],
+        'lexical_feat': [False],
         'dropout_fc': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'batch_size': [16, 32, 64, 128],
         'epoch_num': [20],
