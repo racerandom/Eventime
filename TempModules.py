@@ -406,8 +406,8 @@ class sentSdpCNN(nn.Module):
 
         if isinstance(pre_embed, np.ndarray):
             self.word_dim = pre_embed.shape[1]
-            # self.word_embeddings = TempUtils.pre2embed(pre_embed)
-            self.word_embeddings = nn.Embedding(wvocab_size, self.word_dim, padding_idx=0)
+            self.word_embeddings = TempUtils.pre2embed(pre_embed)
+            # self.word_embeddings = nn.Embedding(wvocab_size, self.word_dim, padding_idx=0)
 
         self.char_dim = params['char_dim']
         if self.char_dim:

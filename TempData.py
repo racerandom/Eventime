@@ -167,6 +167,7 @@ def slimEmbedding(embedding_file, pickle_file, word_idx, lowercase=False):
                                                                                     uncover))
     save_doc((common_idx, lookup_table), pickle_file)
     assert len(common_idx) == lookup_table.shape[0]
+    return common_idx, lookup_table
 
 
 ## generate a list of feat tensor and target tensor of a given dataset
