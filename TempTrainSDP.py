@@ -148,12 +148,16 @@ def optimize_model(pretrained_file, task, param_space, max_evals):
                                           verbose=0,
                                           **params)
 
-        local_test_loss, local_test_acc = train_sdp_model(model, optimizer, train_data, dev_data, test_data, rel_idx, **params)
+        local_monitor_score, local_test_loss, local_test_acc = train_sdp_model(model, optimizer, train_data, dev_data, test_data, rel_idx, **params)
+        monitor_score.append(local_monitor_score)
         test_loss.append(local_test_loss)
         test_acc.append(local_test_acc)
+        best_index = monitor_score.index(max(monitor_score) if monitor.endswith('acc') else min(monitor_score))
+        print("Current best test_acc: %.4f" % test_acc[best_index])
+
     print("test_acc, mean: %.4f, stdev: %.4f" % (mean(test_acc), stdev(test_acc)))
     best_index = monitor_score.index(max(monitor_score) if monitor.endswith('acc') else min(monitor_score))
-    print("best test_acc: %.4f" % test_acc[best_index])
+    print("Final best test_acc: %.4f" % test_acc[best_index])
 
 
 def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, **params):
@@ -286,7 +290,7 @@ def main():
         'sent_win': [1],
         'oper_label': [True],
         'link_type': [task],
-        'init_weight': ['xavier', 'kaiming'],
+        'init_weight': [None, 'xavier', 'kaiming'],
         'elmo': [False],
         'dropout_elmo': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'char_dim': [0],
@@ -295,7 +299,7 @@ def main():
         'dist_dim': range(5, 30+1, 5),
         'seq_rnn_dim': range(100, 400+1, 10),
         'sent_rnn_dim': range(100, 400+1, 10),
-        'sent_out_cat': [None, 'max'],
+        'sent_out_cat': ['max'],
         'dropout_sour_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'dropout_targ_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'dropout_sent_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
@@ -310,7 +314,7 @@ def main():
         'dropout_fc': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'batch_size': [16, 32, 64, 128],
         'epoch_num': [20],
-        'lr': [0.01, 0.001, 0.0001],
+        'lr': [0.01, 0.001],
         'weight_decay': [0.0001, 0.00001],
         'max_norm': [1, 5, 10],
         'monitor': ['val_acc'],
