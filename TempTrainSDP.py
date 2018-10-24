@@ -279,6 +279,7 @@ def main():
         'link_type': [task],
         'init_weight': ['xavier', 'kaiming'],
         'elmo': [False],
+        'dropout_elmo': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'char_dim': [0],
         'pos_dim': [0],
         'dep_dim': [0],
