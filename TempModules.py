@@ -532,7 +532,7 @@ class sentRNN(nn.Module):
         """
         self.params = params
         self.link_type = self.params['link_type']
-        self.hidden_dim = self.params['seq_rnn_dim']
+        self.sdp_hidden_dim = self.params['seq_rnn_dim']
         self.sent_hidden_dim = self.params['sent_rnn_dim']
         self.max_seq_len = max_seq_len
         self.max_mention_len = max_mention_len
@@ -579,8 +579,6 @@ class sentRNN(nn.Module):
                                 num_layers=1,
                                 batch_first=True,
                                 bidirectional=True)
-        
-        init_net(self.sent_rnn, self.params['init_weight'])
 
         if self.params['sdp_rnn']:
             self.seq_input_dim = self.sent_hidden_dim + \
@@ -588,34 +586,34 @@ class sentRNN(nn.Module):
                                  self.params['dep_dim']
 
             self.sour_rnn = nn.LSTM(self.seq_input_dim,
-                                    self.hidden_dim // 2,
+                                    self.sdp_hidden_dim // 2,
                                     num_layers=1,
                                     batch_first=True,
                                     bidirectional=True)
 
-            if self.params['link_type'] not in ['Event-DCT']:
+            if self.params['link_type'] not in ['Event-DCT', 'day_len']:
                 self.targ_rnn = nn.LSTM(self.seq_input_dim,
-                                        self.hidden_dim // 2,
+                                        self.sdp_hidden_dim // 2,
                                         num_layers=1,
                                         batch_first=True,
                                         bidirectional=True)
 
-            if self.params['seq_rnn_pool']:
-                self.seq_rnn_pool = nn.MaxPool1d(self.max_seq_len)
-
             self.sour_rnn_drop = nn.Dropout(p=self.params['dropout_sour_rnn'])
-            if self.params['link_type'] not in ['Event-DCT']:
+
+            if self.params['link_type'] not in ['Event-DCT', 'day_len']:
                 self.targ_rnn_drop = nn.Dropout(p=self.params['dropout_targ_rnn'])
 
         self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
 
-        self.fc1_input_dim = self.sent_hidden_dim + \
+        self.fc1_input_dim = self.sdp_hidden_dim + \
                              (self.word_dim + self.pos_dim + self.dep_dim if self.params['lexical_feat'] else 0)
 
         self.fc1 = nn.Linear(self.fc1_input_dim, self.params['fc_hidden_dim'])
         self.fc1_drop = nn.Dropout(p=self.params['dropout_fc'])
         self.fc2 = nn.Linear(self.params['fc_hidden_dim'], action_size)
 
+        # initialize weights
+        init_net(self.sent_rnn, self.params['init_weight'])
         init_net(self.fc1, self.params['init_weight'])
         init_net(self.fc2, self.params['init_weight'])
 
@@ -656,12 +654,12 @@ class sentRNN(nn.Module):
         SDP layer
         """
         if self.params['sdp_rnn']:
-            self.sour_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
+            self.sour_rnn_hidden = self.init_hidden(batch_size, self.sdp_hidden_dim)
             sour_sdp_out, self.sour_rnn_hidden = self.sour_rnn(sour_sdp_input, self.sour_rnn_hidden)
             sour_sdp_out = catOverTime(sour_sdp_out, self.params['sdp_out_cat'])
 
             if self.link_type in ['Event-Timex', 'Event-Event']:
-                self.targ_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
+                self.targ_rnn_hidden = self.init_hidden(batch_size, self.sdp_hidden_dim)
                 targ_sdp_out, self.targ_rnn_hidden = self.targ_rnn(targ_sdp_input, self.targ_rnn_hidden)
                 targ_sdp_out = catOverTime(targ_sdp_out, self.params['sdp_out_cat'])
 
