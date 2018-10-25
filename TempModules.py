@@ -658,18 +658,12 @@ class sentRNN(nn.Module):
         if self.params['sdp_rnn']:
             self.sour_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
             sour_sdp_out, self.sour_rnn_hidden = self.sour_rnn(sour_sdp_input, self.sour_rnn_hidden)
-            if self.params['seq_rnn_pool']:
-                sour_sdp_out = self.seq_rnn_pool(sour_sdp_out.transpose(1, 2)).squeeze()
-            else:
-                sour_sdp_out = sour_sdp_out[:, -1, :]
+            sour_sdp_out = catOverTime(sour_sdp_out, self.params['sdp_out_cat'])
 
             if self.link_type in ['Event-Timex', 'Event-Event']:
                 self.targ_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
                 targ_sdp_out, self.targ_rnn_hidden = self.targ_rnn(targ_sdp_input, self.targ_rnn_hidden)
-                if self.params['seq_rnn_pool']:
-                    targ_sdp_out = self.seq_rnn_pool(targ_sdp_out.transpose(1, 2)).squeeze()
-                else:
-                    targ_sdp_out = targ_sdp_out[:, -1, :]
+                targ_sdp_out = catOverTime(targ_sdp_out, self.params['sdp_out_cat'])
 
             # print("output tensor of SDP rnn", sour_sdp_out.shape)
 
@@ -680,16 +674,15 @@ class sentRNN(nn.Module):
 
         if self.params['sent_rnn']:
             if self.params['sent_sdp']:
-                sour_sdp_out = catOverTime(sour_sdp_input, self.params['sent_out_cat'])
-                cat_input.append(self.feat_drop(sour_sdp_out))
+                if self.params['sdp_rnn']:
+                    cat_input.append(self.sour_rnn_drop(sour_sdp_out))
+                else:
+                    sour_sdp_out = catOverTime(sour_sdp_input, self.params['sent_out_cat'])
+                    cat_input.append(self.feat_drop(sour_sdp_out))
             else:
                 sent_rnn_out = catOverTime(sent_rnn_out, self.params['sent_out_cat'])
                 cat_input.append(self.feat_drop(sent_rnn_out))
 
-        if self.params['sdp_rnn']:
-            cat_input.append(self.sour_rnn_drop(sour_sdp_out))
-            if self.link_type in ['Event-Timex', 'Event-Event']:
-                cat_input.append(self.targ_rnn_drop(targ_sdp_out))
 
         if self.params['lexical_feat']:
             lexical_input = []
