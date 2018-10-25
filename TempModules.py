@@ -50,74 +50,18 @@ def init_net(net, init_algo):
                 torch.nn.init.kaiming_uniform_(param)
 
 
-def select_action(out_score, IX_TO_ACTION):
-    sample = random.random()
-    if sample > EPS_THRES:
-        index = get_index_of_max(out_score)
-        return IX_TO_ACTION[index]
+def catOverTime(net_out, cat_method):
+    if not cat_method:
+        net_out = net_out[:, -1, :]
+    elif cat_method == 'max':
+        net_out = net_out.max(dim=1)[0]
+    elif cat_method == 'mean':
+        net_out = net_out.mean(dim=1)
+    elif cat_method == 'sum':
+        net_out = net_out.sum(dim=1)
     else:
-        return IX_TO_ACTION[random.randrange(7)]
-
-
-def action2out(action, curr_out, curr_time, IX_TO_ACTION):
-
-    def update_col0(curr_out, curr_time):
-        curr_out[0] = curr_time
-        return curr_out
-
-    def update_col1(curr_out, curr_time):
-        curr_out[1] = curr_time
-        return curr_out
-
-    def update_col2(curr_out, curr_time):
-        curr_out[2] = curr_time
-        return curr_out
-
-    def update_col01(curr_out, curr_time):
-        curr_out[0] = curr_time
-        curr_out[1] = curr_time
-        return curr_out
-
-    def update_col12(curr_out, curr_time):
-        curr_out[1] = curr_time
-        curr_out[2] = curr_time
-        return curr_out
-
-    def update_col012(curr_out, curr_time):
-        curr_out[0] = curr_time
-        curr_out[1] = curr_time
-        curr_out[2] = curr_time
-        return curr_out
-
-    def update_none(curr_out, curr_time):
-        return curr_out
-
-    if action == 'COL0':
-        return update_col0(curr_out, curr_time)
-    elif action == 'COL1':
-        return update_col1(curr_out, curr_time)
-    elif action == 'COL2':
-        return update_col2(curr_out, curr_time)
-    elif action == 'COL01':
-        return update_col01(curr_out, curr_time)
-    elif action == 'COL12':
-        return update_col12(curr_out, curr_time)
-    elif action == 'COL012':
-        return update_col012(curr_out, curr_time)
-    elif action == 'NONE':
-        return update_none(curr_out, curr_time)
-    else:
-        raise Exception("[ERROR]Wrong action!!!")
-
-
-def batch_action2out(out_scores, norm_times, IX_TO_ACTION, BATCH_SIZE):
-    preds_out = torch.ones(BATCH_SIZE, 3) * -1 ## initial prediction
-    for i in range(out_scores.size()[0]):
-        for j in range(out_scores.size()[1]):
-            action = select_action(out_scores[i][j], IX_TO_ACTION)
-#             print(action)
-            action2out(action, preds_out[i], 0 if i == 0 else 1, IX_TO_ACTION)
-    return preds_out
+        raise Exception("[Error] Unknown cat method")
+    return net_out
 
 
 def is_seq_feat(feat_type):
@@ -394,14 +338,14 @@ class TempAttnCNN(nn.Module):
         return fc2_out
 
 
-class sentSdpCNN(nn.Module):
+class sentCNN(nn.Module):
 
     def __init__(self, wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
                  max_sent_len, max_seq_len, max_mention_len, max_word_len,
                  pre_embed=None,
                  verbose=0, **params):
 
-        super(sentSdpCNN, self).__init__()
+        super(sentCNN, self).__init__()
 
         """
         initialize parameters
@@ -574,14 +518,14 @@ class sentSdpCNN(nn.Module):
         return fc2_out
 
 
-class sentSdpRNN(nn.Module):
+class sentRNN(nn.Module):
 
     def __init__(self, wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
                  max_sent_len, max_seq_len, max_mention_len, max_word_len,
                  pre_embed=None,
                  verbose=0, **params):
 
-        super(sentSdpRNN, self).__init__()
+        super(sentRNN, self).__init__()
 
         """
         initialize parameters
@@ -675,8 +619,6 @@ class sentSdpRNN(nn.Module):
         init_net(self.fc1, self.params['init_weight'])
         init_net(self.fc2, self.params['init_weight'])
 
-
-        # print(self.batch_size * self.max_sent_len)
     def init_hidden(self, batch_size, hidden_dim):
         return (torch.zeros(2, batch_size, hidden_dim // 2).to(device),
                 torch.zeros(2, batch_size, hidden_dim // 2).to(device))
@@ -704,22 +646,11 @@ class sentSdpRNN(nn.Module):
         self.sent_rnn_hidden = self.init_hidden(batch_size, self.sent_hidden_dim)
         sent_rnn_out, _ = self.sent_rnn(sent_tensor, self.sent_rnn_hidden)
 
-        # print(sent_rnn_out.shape)
-
-        if not self.params['sent_out_cat']:
-            sent_rnn_out = sent_rnn_out[:, -1, :]
-        elif self.params['sent_out_cat'] == 'max':
-            sent_rnn_out = sent_rnn_out.max(dim=1)[0]
-        elif self.params['sent_out_cat'] == 'mean':
-            sent_rnn_out = sent_rnn_out.mean(dim=1)
-
         for feat_type, feat in {k: v for k, v in input_dict.items() if is_seq_feat(k)}.items():
             if which_branch(feat_type) == 'sour' and which_feat(feat_type) == 'index':
                 sour_sdp_input = getPartOfTensor3D(sent_rnn_out, feat)
             elif which_branch(feat_type) == 'targ' and which_feat(feat_type) == 'index':
                 targ_sdp_input = getPartOfTensor3D(sent_rnn_out, feat)
-
-        # print("input tensor of SDP rnn", sour_sdp_input.shape)
 
         """
         SDP layer
@@ -748,7 +679,12 @@ class sentSdpRNN(nn.Module):
         cat_input = []
 
         if self.params['sent_rnn']:
-            cat_input.append(self.feat_drop(sent_rnn_out))
+            if self.params['sent_sdp']:
+                sour_sdp_out = catOverTime(sour_sdp_input, self.params['sent_out_cat'])
+                cat_input.append(self.feat_drop(sour_sdp_out))
+            else:
+                sent_rnn_out = catOverTime(sent_rnn_out, self.params['sent_out_cat'])
+                cat_input.append(self.feat_drop(sent_rnn_out))
 
         if self.params['sdp_rnn']:
             cat_input.append(self.sour_rnn_drop(sour_sdp_out))

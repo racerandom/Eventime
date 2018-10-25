@@ -347,10 +347,15 @@ def prepareGlobalSDP(pkl_file, task):
                 event.feat_inputs['full_elmo_sent'] = [tok.content for tok in sent_tokens]
                 ## lexical feats
                 sdp_conll_ids, event_conll_ids, dep_graph = doc.getSdpFromMentionToRoot(event)
+                event_word_seq, event_pos_seq, event_dep_seq = doc.getSdpFeats(sdp_conll_ids, dep_graph)
                 event_word, event_pos, event_dep = doc.getSdpFeats(event_conll_ids, dep_graph)
+                event.feat_inputs['sour_word_seq'] = event_word_seq
+                event.feat_inputs['sour_pos_seq'] = event_pos_seq
+                event.feat_inputs['sour_dep_seq'] = event_dep_seq
                 event.feat_inputs['sour_word_tok'] = event_word
                 event.feat_inputs['sour_pos_tok'] = event_pos
                 event.feat_inputs['sour_dep_tok'] = event_dep
+                event.feat_inputs['sour_index_seq'] = sdp_conll_ids
 
         elif task in ['Event-DCT', 'Event-Timex', 'Event-Event']:
             for link in doc.temp_links[task]:

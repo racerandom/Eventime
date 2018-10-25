@@ -77,7 +77,7 @@ def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, acti
                    max_sent_len, max_seq_len, max_mention_len, max_word_len,
                    pre_embed, verbose=1, **params):
 
-    model = sentSdpRNN(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
+    model = sentRNN(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
                        max_sent_len, max_seq_len, max_mention_len, max_word_len,
                        pre_embed=pre_embed,
                        verbose=verbose, **params).to(device=device)
@@ -309,6 +309,7 @@ def main():
         'dropout_feat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'mention_cat': ['sum', 'max', 'mean'],
         'fc_hidden_dim': range(100, 400+1, 10),
+        'sent_sdp': [True],
         'seq_rnn_pool': [True],
         'sent_rnn_pool': [False],
         'sent_rnn': [True],
