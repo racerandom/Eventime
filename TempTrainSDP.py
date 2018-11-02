@@ -206,18 +206,8 @@ def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, *
         test_pred = torch.argmax(test_out, dim=1)
         test_acc = (test_pred == test_target).sum().item() / float(test_pred.numel())
 
+        monitor_score = locals()[params['monitor']]
 
-        dev_score = dev_loss if params['monitor'] == 'val_loss' else dev_acc
-        if params['monitor'] == 'val_loss':
-            monitor_score = dev_loss
-        elif params['monitor'] == 'val_acc':
-            monitor_score = dev_acc
-        elif params['monitor'] == 'test_loss':
-            monitor_score = test_loss
-        elif params['monitor'] == 'test_acc':
-            monitor_score = test_acc
-        else:
-            raise Exception("[Error] Unknown monitor parameter...")
         local_is_best, local_best_score = is_best_score(monitor_score, local_best_score, params['monitor'])
 
         print('epoch: %i, time: %.4f, '
@@ -329,7 +319,7 @@ def main():
     }
     pretrained_file = "Resources/embed/deps.words.bin"
 
-    optimize_model(pretrained_file, task, param_space, 10)
+    optimize_model(pretrained_file, task, param_space, 1000)
 
 
 if __name__ == '__main__':
