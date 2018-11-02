@@ -67,8 +67,10 @@ def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, acti
                        pre_embed=pre_embed,
                        verbose=verbose, **params).to(device=device)
 
-    optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=params['lr'],
-                           weight_decay=params['weight_decay'])
+    # optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=params['lr'],
+    #                        weight_decay=params['weight_decay'])
+
+    optimizer = getattr(optim, params['optim'])(filter(lambda p: p.requires_grad, model.parameters()))
 
     print(model)
     for name, param in model.named_parameters():
@@ -292,31 +294,32 @@ def main():
         'oper_label': [True],
         'link_type': [task],
         'init_weight': [None],  # 'xavier', 'kaiming'
-        'dropout_sent_in': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
+        'dropout_sent_in': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
         'elmo': [False],
-        'dropout_elmo': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
+        'dropout_elmo': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
         'char_dim': [0],
         'pos_dim': [0],
         'dep_dim': [0],
-        'dist_dim': range(5, 30+1, 5),
+        'dist_dim': range(5, 30+1, 1),
         'kernel': range(2, 7, 1),
         'seq_rnn_dim': range(100, 400+1, 10),
-        'sent_rnn_dim': range(100, 400+1, 10),
+        'sent_rnn_dim': range(5, 500+1, 5),
         'sent_out_cat': ['max'],
         'sdp_out_cat': ['max'],
         'rnn_layer':[2],
-        'dropout_sdp_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
-        'dropout_sent_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
-        'dropout_feat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
+        'dropout_sdp_rnn': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+        'dropout_sent_rnn': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+        'dropout_feat': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
         'mention_cat': ['sum', 'max', 'mean'],
-        'fc_hidden_dim': range(100, 400+1, 10),
+        'fc_hidden_dim': range(5, 300+1, 5),
         'sent_sdp': [True],
         'sent_rnn': [True],
         'sdp_rnn': [False],
         'lexical_feat': [True],
-        'dropout_fc': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
-        'batch_size': [16, 32, 64, 128],
+        'dropout_fc': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+        'batch_size': [32, 64, 128],
         'epoch_num': [20],
+        'optim': ['SGD', 'Adam', 'Adagrad', 'Adadelta', 'Adamax', 'RMSprop'],
         'lr': [0.01, 0.001],
         'weight_decay': [0.0001, 0.00001],
         'max_norm': [1, 5, 10],
