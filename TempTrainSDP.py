@@ -309,15 +309,15 @@ def main():
         'dropout_fc': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
         'batch_size': [32, 64, 128],
         'epoch_num': [20],
-        'optim': ['SGD', 'Adam', 'Adagrad', 'Adadelta', 'Adamax', 'RMSprop'],
+        'optim': ['Adam', 'Adagrad', 'Adadelta', 'Adamax', 'RMSprop'],
         'lr': [0.01, 0.001],
         'weight_decay': [0.0001, 0.00001],
         'max_norm': [1, 5, 10],
         'monitor': ['test_acc'],
         'doc_reset': [False],
-        'data_reset': [False]
+        'data_reset': [True]
     }
-    pretrained_file = "Resources/embed/deps.words.bin"
+    pretrained_file = "Resources/embed/giga-aacw.d200.bin"
 
     optimize_model(pretrained_file, task, param_space, 1000)
 
