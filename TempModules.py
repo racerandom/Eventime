@@ -13,22 +13,25 @@ from allennlp.modules.elmo import Elmo, batch_to_ids
 
 import TempUtils
 from TempData import MultipleDatasets
+import logging
+logger = logging.getLogger("TempTrainSDP.py")
 
-torch.manual_seed(23214)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 import random
-EPS_THRES = 0
 
-update_strategies = torch.tensor([[0, 0, 0],
-                                 [1, 0, 0],
-                                 [0, 1, 0],
-                                 [0, 0, 1],
-                                 [1, 1, 0],
-                                 [0, 1, 1],
-                                 [1, 0, 1],
-                                 [1, 1, 1]], dtype=torch.long, device=device)
+
+def is_sdp_feat(feat_type):
+    return feat_type.split('_')[-1] == 'sdp'
+
+
+def is_tok_feat(feat_type):
+    return feat_type.split('_')[-1] == 'tok'
+
+
+def is_sent_feat(feat_type):
+    return feat_type.split('_')[-1] == 'sent'
 
 
 def get_index_of_max(scores):
@@ -64,22 +67,13 @@ def catOverTime(net_out, cat_method):
     return net_out
 
 
-def is_seq_feat(feat_type):
-    return feat_type.split('_')[-1] == 'seq'
-
-
-def is_tok_feat(feat_type):
-    return feat_type.split('_')[-1] == 'tok'
-
-
-def is_sent_feat(feat_type):
-    return feat_type.split('_')[-1] == 'sent'
-
-
 def is_feat(feat_type):
     if isinstance(feat_type, str):
         feat_toks = feat_type.split('_')
-        if len(feat_toks) == 3 and feat_toks[0] in ['sour', 'targ', 'full'] and feat_toks[-1] in ['seq', 'tok', 'sent'] and feat_toks[1] in ['word', 'char', 'pos', 'dep', 'dist', 'index']:
+        if (len(feat_toks) == 3 and
+                feat_toks[0] in ['sour', 'targ', 'full'] and
+                feat_toks[-1] in ['sdp', 'tok', 'sent'] and
+                feat_toks[1] in ['word', 'char', 'pos', 'dep', 'dist', 'index']):
             return True
         else:
             return False
@@ -108,29 +102,96 @@ def getPartOfTensor3D(tensor, index, pad_direct="right"):
     :return:       (batch_size, max_SDP_len, hidden_dim)
     """
     assert tensor.shape[0] == index.shape[0]
-    max_seq_len, dim = index.shape[1], tensor.shape[2]
+    max_sdp_len, dim = index.shape[1], tensor.shape[2]
     T = [t[i[i.nonzero().squeeze(dim=1)]-1] for t, i in zip(tensor, index)]
     if pad_direct == "right":
-        padded_T = [torch.cat((t, torch.zeros(max_seq_len - len(t), dim).to(device)), dim=0) for t in T if len(t) <= max_seq_len]
+        padded_T = [torch.cat((t, torch.zeros(max_sdp_len - len(t), dim).to(device)), dim=0)
+                    for t in T if len(t) <= max_sdp_len]
     else:
-        padded_T = [torch.cat((torch.zeros(max_seq_len - len(t), dim).to(device), t), dim=0) for t in T if len(t) <= max_seq_len]
+        padded_T = [torch.cat((torch.zeros(max_sdp_len - len(t), dim).to(device), t), dim=0)
+                    for t in T if len(t) <= max_sdp_len]
     sdp_tensor = torch.stack(padded_T)
     assert tensor.shape[0] == sdp_tensor.shape[0]
     return sdp_tensor
 
 
+class baseNN(nn.Module):
+
+    def __init__(self, wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
+                 max_sent_len, max_sdp_len, max_mention_len, max_word_len,
+                 pre_embed=None,
+                 verbose=0, **params):
+
+        super(baseNN, self).__init__()
+
+        """
+        initialize parameters
+        """
+        self.params = params
+        self.link_type = self.params['link_type']
+        self.sdp_hidden_dim = self.params['seq_rnn_dim']
+        self.sent_hidden_dim = self.params['sent_rnn_dim']
+        self.max_sent_len = max_sent_len
+        self.max_sdp_len = max_sdp_len
+        self.max_mention_len = max_mention_len
+        self.max_word_len = max_word_len
+        self.verbose = verbose
+        self.batch_size = self.params['batch_size']
+
+        """
+        initialize feature embeddings
+        """
+        if isinstance(pre_embed, np.ndarray):
+            self.word_dim = pre_embed.shape[1]
+            self.word_embeddings = TempUtils.pre2embed(pre_embed)
+
+        self.char_dim = self.params['char_dim']
+        if self.params['char_dim']:
+            self.char_embeddings = nn.Embedding(cvocab_size, self.char_dim, padding_idx=0)
+            self.char_hidden_dim = params['char_dim']
+            self.char_rnn = nn.LSTM(self.char_dim, self.char_hidden_dim // 2,
+                                    num_layers=1,
+                                    batch_first=True,
+                                    bidirectional=True)
+
+        if self.params['elmo']:
+            options_file = ("https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/"
+                            "2x1024_128_2048cnn_1xhighway/elmo_2x1024_128_2048cnn_1xhighway_options.json")
+            weight_file = ("https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/"
+                           "2x1024_128_2048cnn_1xhighway/elmo_2x1024_128_2048cnn_1xhighway_weights.hdf5")
+
+            self.elmo = Elmo(options_file, weight_file, 2, dropout=self.params['dropout_elmo'])
+
+        self.pos_dim = self.params['pos_dim']
+        if self.params['pos_dim']:
+            self.pos_embeddings = nn.Embedding(pos_size, self.pos_dim, padding_idx=0)
+
+        self.dep_dim = self.params['dep_dim']
+        if self.params['dep_dim']:
+            self.dep_embeddings = nn.Embedding(dep_size, self.dep_dim, padding_idx=0)
+
+        self.dist_dim = self.params['dist_dim']
+        if self.params['dist_dim']:
+            self.dist_embeddings = nn.Embedding(dist_size, self.dist_dim, padding_idx=0)
+
+    def init_rnn_hidden(self, batch_size, hidden_dim, num_layer=1, bidirectional=True):
+        bi_num = 2 if bidirectional else 1
+        return (torch.zeros(num_layer * bi_num, batch_size, hidden_dim // bi_num).to(device),
+                torch.zeros(num_layer * bi_num, batch_size, hidden_dim // bi_num).to(device))
+
+
 class TempCNN(nn.Module):
-    def __init__(self, max_seq_len, max_tok_len, max_char_len, action_size, feat_types, verbose_level=0, **params):
+    def __init__(self, max_sdp_len, max_tok_len, max_char_len, action_size, feat_types, verbose_level=0, **params):
         super(TempCNN, self).__init__()
         self.verbose_level = verbose_level
         self.embedding_dropout = nn.Dropout(p=params['dropout_emb'])
-        self.max_seq_len = max_seq_len
+        self.max_sdp_len = max_sdp_len
         self.max_tok_len = max_tok_len
         self.max_char_len = max_char_len
 
         c1_input_dim = 0
         for feat_type in feat_types:
-            if is_seq_feat(feat_type):
+            if is_sdp_feat(feat_type):
                 if which_feat(feat_type) == 'word':
                     c1_input_dim += params['word_dim']
                 elif which_feat(feat_type) == 'dist':
@@ -138,7 +199,7 @@ class TempCNN(nn.Module):
                 elif params['char_emb'] and which_feat(feat_type) in ['char']:
                     c1_input_dim += params['char_dim']
         self.c1 = nn.Conv1d(c1_input_dim, params['filter_nb'], params['kernel_len'])
-        self.kernel_dim = self.max_seq_len - params['kernel_len'] + 1
+        self.kernel_dim = self.max_sdp_len - params['kernel_len'] + 1
         self.p1 = nn.MaxPool1d(self.kernel_dim)
         self.conv_dropout = nn.Dropout(p=params['dropout_conv'])
 
@@ -146,7 +207,7 @@ class TempCNN(nn.Module):
         self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
         fc1_input_dim = params['filter_nb']
         for feat_type in feat_types:
-            if not is_seq_feat(feat_type):
+            if not is_sdp_feat(feat_type):
                 if which_feat(feat_type) == 'word':
                     if params['cat_word_tok']:
                         fc1_input_dim += params['word_dim']
@@ -162,11 +223,11 @@ class TempCNN(nn.Module):
 
     def forward(self, feat_types, *feat_inputs, **params):
 
-        ## step 1: concat seq feats
+        # step 1: concat seq feats
         seq_inputs = []
         
         for feat, feat_type in zip(feat_inputs, feat_types):
-            if is_seq_feat(feat_type):
+            if is_sdp_feat(feat_type):
                 if self.verbose_level == 2:
                     print(feat_type, feat.shape)
                 if which_feat(feat_type) in ['word', 'dist']:
@@ -178,7 +239,7 @@ class TempCNN(nn.Module):
         seq_inputs = torch.cat(seq_inputs, dim=2).transpose(1, 2)
         embed_inputs = self.embedding_dropout(seq_inputs)
 
-        ## step 2: conv + maxpool
+        # step 2: conv + maxpool
         c1_out = F.relu(self.c1(embed_inputs))
 
         if self.verbose_level == 2:
@@ -189,28 +250,30 @@ class TempCNN(nn.Module):
         if self.verbose_level == 2:
             print("p1_output size:", p1_out.shape)
 
-
-        ## step 3: concat tok feats
+        # step 3: concat tok feats
         cat_inputs = [self.conv_dropout(p1_out)]
         for feat, feat_type in zip(feat_inputs, feat_types):
             if is_tok_feat(feat_type):
-                if (which_feat(feat_type) == 'word' and params['cat_word_tok']) or (which_feat(feat_type) == 'dist' and params['cat_dist_tok']):
+                if ((which_feat(feat_type) == 'word' and params['cat_word_tok']) or
+                        (which_feat(feat_type) == 'dist' and params['cat_dist_tok'])):
                     if params['mention_cat'] == 'sum':
                         mention_feat = feat.sum(dim=1)
                     elif params['mention_cat'] == 'max':
                         mention_feat = feat.max(dim=1)[0]
                     elif params['mention_cat'] == 'mean':
                         mention_feat = feat.mean(dim=1)
-                        # mention_feat = self.tok_p1(feat.transpose(1, 2)).squeeze(-1)
-                    cat_inputs.append(self.cat_dropout(mention_feat))
+                    else:
+                        mention_feat = None
+
+                    if mention_feat: cat_inputs.append(self.cat_dropout(mention_feat))
+
                     if self.verbose_level == 2:
                         print(feat_type, feat.shape, mention_feat.shape)
         cat_out = torch.cat(cat_inputs, dim=-1)
         if self.verbose_level == 2:
             print("cat_output size:", cat_out.shape)
 
-
-        ## step4: fc layers
+        # step4: fc layers
         if params['fc_layer']:
             fc1_out = F.relu(self.fc1(cat_out))
             fc1_out = self.fc1_drop(fc1_out)
@@ -226,18 +289,18 @@ class TempCNN(nn.Module):
 
 class TempAttnCNN(nn.Module):
 
-    def __init__(self, max_seq_len, max_tok_len, max_char_len, action_size, feat_types, verbose_level=0, **params):
+    def __init__(self, max_sdp_len, max_tok_len, max_char_len, action_size, feat_types, verbose_level=0, **params):
         super(TempAttnCNN, self).__init__()
         self.verbose_level = verbose_level
         self.embedding_dropout = nn.Dropout(p=params['dropout_emb'])
 
-        self.max_seq_len = max_seq_len
+        self.max_sdp_len = max_sdp_len
         self.max_tok_len = max_tok_len
         self.max_char_len = max_char_len
 
         c1_input_dim = 0
         for feat_type in feat_types:
-            if is_seq_feat(feat_type):
+            if is_sdp_feat(feat_type):
                 if which_feat(feat_type) == 'word':
                     c1_input_dim += params['word_dim']
                 elif which_feat(feat_type) == 'dist':
@@ -246,16 +309,16 @@ class TempAttnCNN(nn.Module):
                     c1_input_dim += params['char_dim']
 
         self.c1 = nn.Conv1d(c1_input_dim, params['filter_nb'], params['kernel_len'])
-        self.kernel_dim = self.max_seq_len - params['kernel_len'] + 1
+        self.kernel_dim = self.max_sdp_len - params['kernel_len'] + 1
         attn_dim = params['filter_nb'] if params['attn_targ'] == 'filter_nb' else self.kernel_dim
         self.attn_W = torch.nn.Parameter(torch.randn(attn_dim, requires_grad=True))
         self.conv_dropout = nn.Dropout(p=params['dropout_conv'])
 
-        #self.tok_p1 = nn.MaxPool1d(max_tok_len)
+        # self.tok_p1 = nn.MaxPool1d(max_tok_len)
         self.cat_dropout = nn.Dropout(p=params['dropout_cat'])
         fc1_input_dim = attn_dim
         for feat_type in feat_types:
-            if not is_seq_feat(feat_type):
+            if not is_sdp_feat(feat_type):
                 if which_feat(feat_type) == 'word':
                     if params['cat_word_tok']:
                         fc1_input_dim += params['word_dim']
@@ -274,7 +337,7 @@ class TempAttnCNN(nn.Module):
         ## step 1: concat seq feats
         seq_inputs = []
         for feat, feat_type in zip(feat_inputs, feat_types):
-            if is_seq_feat(feat_type):
+            if is_sdp_feat(feat_type):
                 if self.verbose_level == 2:
                     print(feat_type, feat.shape)
                 if which_feat(feat_type) in ['word', 'dist']:
@@ -307,7 +370,7 @@ class TempAttnCNN(nn.Module):
         ## step 3: concat tok feats
         cat_inputs = [self.conv_dropout(attn_out.squeeze(-1))]
         for feat, feat_type in zip(feat_inputs, feat_types):
-            if not is_seq_feat(feat_type):
+            if not is_sdp_feat(feat_type):
                 if (which_feat(feat_type) == 'word' and params['cat_word_tok']) or (which_feat(feat_type) == 'dist' and params['cat_dist_tok']):
                     if params['mention_cat'] == 'sum':
                         mention_feat = feat.sum(dim=1)
@@ -338,54 +401,17 @@ class TempAttnCNN(nn.Module):
         return fc2_out
 
 
-class sentCNN(nn.Module):
+class sentCNN(baseNN):
 
     def __init__(self, wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
-                 max_sent_len, max_seq_len, max_mention_len, max_word_len,
-                 pre_embed=None,
-                 verbose=0, **params):
+                 max_sent_len, max_sdp_len, max_mention_len, max_word_len,
+                 pre_embed, verbose, **params):
 
-        super(sentCNN, self).__init__()
-
-        """
-        initialize parameters
-        """
-        self.params = params
-        self.link_type = self.params['link_type']
-        self.hidden_dim = self.params['seq_rnn_dim']
-        self.sent_hidden_dim = self.params['sent_rnn_dim']
-        self.max_sent_len = max_sent_len
-        self.max_seq_len = max_seq_len
-        self.max_mention_len = max_mention_len
-        self.max_word_len = max_word_len
-        self.verbose = verbose
-        self.batch_size = self.params['batch_size']
-
-        if isinstance(pre_embed, np.ndarray):
-            self.word_dim = pre_embed.shape[1]
-            self.word_embeddings = TempUtils.pre2embed(pre_embed)
-            # self.word_embeddings = nn.Embedding(wvocab_size, self.word_dim, padding_idx=0)
-
-        self.char_dim = params['char_dim']
-        if self.char_dim:
-            self.char_embeddings = nn.Embedding(cvocab_size, self.char_dim, padding_idx=0)
-            self.char_hidden_dim = params['char_dim']
-            self.char_rnn = nn.LSTM(self.char_dim, self.char_hidden_dim // 2,
-                                    num_layers=1,
-                                    batch_first=True,
-                                    bidirectional=True)
-
-        self.pos_dim = params['pos_dim']
-        if self.pos_dim:
-            self.pos_embeddings = nn.Embedding(pos_size, self.pos_dim, padding_idx=0)
-
-        self.dep_dim = params['dep_dim']
-        if self.dep_dim:
-            self.dep_embeddings = nn.Embedding(dep_size, self.dep_dim, padding_idx=0)
-
-        self.dist_dim = params['dist_dim']
-        if self.dist_dim:
-            self.dist_embeddings = nn.Embedding(dist_size, self.dist_dim, padding_idx=0)
+        super(sentCNN, self).__init__(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
+                                      max_sent_len, max_sdp_len, max_mention_len, max_word_len,
+                                      pre_embed=pre_embed,
+                                      verbose=verbose,
+                                      **params)
 
         self.sent_input_dim = self.word_dim + self.char_dim + self.dist_dim
 
@@ -394,49 +420,36 @@ class sentCNN(nn.Module):
         self.p1 = nn.MaxPool1d(self.kernel_dim)
         self.conv_dropout = nn.Dropout()
 
-        if self.params['sent_rnn_pool']:
-            self.sent_rnn_pool = nn.MaxPool1d(self.max_sent_len)
-
         if self.params['sdp_rnn']:
-            self.seq_input_dim = self.sent_hidden_dim + \
+            self.sdp_input_dim = self.sent_hidden_dim + \
                                  self.params['pos_dim'] + \
                                  self.params['dep_dim']
 
-            self.sour_rnn = nn.LSTM(self.seq_input_dim,
-                                    self.hidden_dim // 2,
+            self.sour_rnn = nn.LSTM(self.sdp_input_dim,
+                                    self.sdp_hidden_dim // 2,
                                     num_layers=1,
                                     batch_first=True,
                                     bidirectional=True)
 
             if self.params['link_type'] not in ['Event-DCT']:
-                self.targ_rnn = nn.LSTM(self.seq_input_dim,
-                                        self.hidden_dim // 2,
+                self.targ_rnn = nn.LSTM(self.sdp_input_dim,
+                                        self.sdp_hidden_dim // 2,
                                         num_layers=1,
                                         batch_first=True,
                                         bidirectional=True)
 
-            if self.params['seq_rnn_pool']:
-                self.seq_rnn_pool = nn.MaxPool1d(self.max_seq_len)
-
-            self.sour_rnn_drop = nn.Dropout(p=self.params['dropout_sour_rnn'])
-            if self.params['link_type'] not in ['Event-DCT']:
-                self.targ_rnn_drop = nn.Dropout(p=self.params['dropout_targ_rnn'])
+            self.sdp_rnn_drop = nn.Dropout(p=self.params['dropout_sdp_rnn'])
 
         self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
 
-        self.fc1_input_dim = self.sent_hidden_dim + \
-                             (self.word_dim + self.pos_dim + self.dep_dim if self.params['lexical_feat'] else 0)
+        self.fc1_input_dim = self.sent_hidden_dim \
+                             + (self.word_dim + self.pos_dim + self.dep_dim
+                                if self.params['lexical_feat']
+                                else 0)
 
         self.fc1 = nn.Linear(self.fc1_input_dim, self.params['fc_hidden_dim'])
         self.fc1_drop = nn.Dropout(p=self.params['dropout_fc'])
         self.fc2 = nn.Linear(self.params['fc_hidden_dim'], action_size)
-
-
-
-        # print(self.batch_size * self.max_sent_len)
-    def init_hidden(self, batch_size, hidden_dim):
-        return (torch.zeros(2, batch_size, hidden_dim // 2).to(device),
-                torch.zeros(2, batch_size, hidden_dim // 2).to(device))
 
     def forward(self, **input_dict):
 
@@ -468,10 +481,6 @@ class sentCNN(nn.Module):
 
         p1_out = self.p1(c1_out).squeeze(-1)
 
-        # print("input tensor of SDP rnn", sour_sdp_input.shape)
-
-
-
         """
         concatenate seq rnn + sent rnn + feat
         """
@@ -482,8 +491,7 @@ class sentCNN(nn.Module):
 
         if self.params['lexical_feat']:
             lexical_input = []
-            for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and is_tok_feat(k)}.items():
-                embed_feat = None
+            for feat_type, feat in {k: v for k, v in input_dict.items() if is_tok_feat(k)}.items():
                 if self.word_dim and which_feat(feat_type) == 'word':
                     embed_feat = self.word_embeddings(feat)
                 elif self.pos_dim and which_feat(feat_type) == 'pos':
@@ -491,24 +499,15 @@ class sentCNN(nn.Module):
                 elif self.dep_dim and which_feat(feat_type) == 'dep':
                     embed_feat = self.dep_embeddings(feat)
                 else:
-                    continue
+                    embed_feat = None
 
-                if self.params['mention_cat'] == 'sum':
-                    embed_feat = embed_feat.sum(dim=1)
-                elif self.params['mention_cat'] == 'max':
-                    embed_feat = embed_feat.max(dim=1)[0]
-                elif self.params['mention_cat'] == 'mean':
-                    embed_feat = embed_feat.mean(dim=1)
-
-                if which_branch(feat_type) == 'sour':
-                    lexical_input.append(embed_feat)
-                elif which_branch(feat_type) == 'targ':
+                if embed_feat is not None:
+                    embed_feat = catOverTime(embed_feat, self.params['mention_cat'])
                     lexical_input.append(embed_feat)
 
             cat_input.append(self.feat_drop(torch.cat(lexical_input, dim=1)))
 
         fc_input = torch.cat(cat_input, dim=1)
-        # print(fc_input.shape)
 
         ## FC and softmax layer
         fc1_out = F.relu(self.fc1(fc_input))
@@ -518,65 +517,23 @@ class sentCNN(nn.Module):
         return fc2_out
 
 
-class sentRNN(nn.Module):
+class sentRNN(baseNN):
 
     def __init__(self, wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
-                 max_sent_len, max_seq_len, max_mention_len, max_word_len,
-                 pre_embed=None,
-                 verbose=0, **params):
+                 max_sent_len, max_sdp_len, max_mention_len, max_word_len,
+                 pre_embed, verbose, **params):
 
-        super(sentRNN, self).__init__()
-
-        """
-        initialize parameters
-        """
-        self.params = params
-        self.link_type = self.params['link_type']
-        self.sdp_hidden_dim = self.params['seq_rnn_dim']
-        self.sent_hidden_dim = self.params['sent_rnn_dim']
-        self.max_seq_len = max_seq_len
-        self.max_mention_len = max_mention_len
-        self.max_word_len = max_word_len
-        self.verbose = verbose
-        self.batch_size = self.params['batch_size']
-
-        if isinstance(pre_embed, np.ndarray):
-            self.word_dim = pre_embed.shape[1]
-            self.word_embeddings = TempUtils.pre2embed(pre_embed)
-            # self.word_embeddings = nn.Embedding(wvocab_size, self.word_dim, padding_idx=0)
-
-        self.char_dim = params['char_dim']
-        if self.char_dim:
-            self.char_embeddings = nn.Embedding(cvocab_size, self.char_dim, padding_idx=0)
-            self.char_hidden_dim = params['char_dim']
-            self.char_rnn = nn.LSTM(self.char_dim, self.char_hidden_dim // 2,
-                                    num_layers=1,
-                                    batch_first=True,
-                                    bidirectional=True)
-
-        if self.params['elmo']:
-            options_file = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x1024_128_2048cnn_1xhighway/elmo_2x1024_128_2048cnn_1xhighway_options.json"
-            weight_file = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x1024_128_2048cnn_1xhighway/elmo_2x1024_128_2048cnn_1xhighway_weights.hdf5"
-
-            self.elmo = Elmo(options_file, weight_file, 2, dropout=self.params['dropout_elmo'])
-
-        self.pos_dim = params['pos_dim']
-        if self.pos_dim:
-            self.pos_embeddings = nn.Embedding(pos_size, self.pos_dim, padding_idx=0)
-
-        self.dep_dim = params['dep_dim']
-        if self.dep_dim:
-            self.dep_embeddings = nn.Embedding(dep_size, self.dep_dim, padding_idx=0)
-
-        self.dist_dim = params['dist_dim']
-        if self.dist_dim:
-            self.dist_embeddings = nn.Embedding(dist_size, self.dist_dim, padding_idx=0)
+        super(sentRNN, self).__init__(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
+                                      max_sent_len, max_sdp_len, max_mention_len, max_word_len,
+                                      pre_embed=pre_embed,
+                                      verbose=verbose,
+                                      **params)
 
         self.sent_input_dim = self.word_dim + self.char_dim + self.dist_dim + (256 if self.params['elmo'] else 0)
 
         self.sent_rnn = nn.LSTM(self.sent_input_dim,
                                 self.sent_hidden_dim // 2,
-                                num_layers=1,
+                                num_layers=self.params['rnn_layer'],
                                 batch_first=True,
                                 bidirectional=True)
 
@@ -598,14 +555,11 @@ class sentRNN(nn.Module):
                                         batch_first=True,
                                         bidirectional=True)
 
-            self.sour_rnn_drop = nn.Dropout(p=self.params['dropout_sour_rnn'])
-
-            if self.params['link_type'] not in ['Event-DCT', 'day_len']:
-                self.targ_rnn_drop = nn.Dropout(p=self.params['dropout_targ_rnn'])
+            self.sdp_rnn_drop = nn.Dropout(p=self.params['dropout_sdp_rnn'])
 
         self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
 
-        self.fc1_input_dim = self.sdp_hidden_dim + \
+        self.fc1_input_dim = self.sent_hidden_dim + \
                              (self.word_dim + self.pos_dim + self.dep_dim if self.params['lexical_feat'] else 0)
 
         self.fc1 = nn.Linear(self.fc1_input_dim, self.params['fc_hidden_dim'])
@@ -616,10 +570,6 @@ class sentRNN(nn.Module):
         init_net(self.sent_rnn, self.params['init_weight'])
         init_net(self.fc1, self.params['init_weight'])
         init_net(self.fc2, self.params['init_weight'])
-
-    def init_hidden(self, batch_size, hidden_dim):
-        return (torch.zeros(2, batch_size, hidden_dim // 2).to(device),
-                torch.zeros(2, batch_size, hidden_dim // 2).to(device))
 
     def forward(self, **input_dict):
 
@@ -632,19 +582,21 @@ class sentRNN(nn.Module):
         for feat_type, feat in {k: v for k, v in input_dict.items() if is_sent_feat(k)}.items():
             if self.word_dim and which_feat(feat_type) == 'word':
                 embed_feat = self.word_embeddings(feat)
-                sent_input.append(embed_feat)
             elif self.dist_dim and which_feat(feat_type) == 'dist':
                 embed_feat = self.dist_embeddings(feat)
-                sent_input.append(embed_feat)
             elif self.params['elmo'] and which_feat(feat_type) == 'elmo':
                 embed_feat = self.elmo(feat)['elmo_representations'][-1]
-                sent_input.append(embed_feat)
+            else:
+                embed_feat = None
+            if embed_feat is not None: sent_input.append(embed_feat)
         sent_tensor = torch.cat(sent_input, dim=2)
 
-        self.sent_rnn_hidden = self.init_hidden(batch_size, self.sent_hidden_dim)
+        self.sent_rnn_hidden = self.init_rnn_hidden(batch_size,
+                                                    self.sent_hidden_dim,
+                                                    num_layer=self.params['rnn_layer'])
         sent_rnn_out, _ = self.sent_rnn(sent_tensor, self.sent_rnn_hidden)
 
-        for feat_type, feat in {k: v for k, v in input_dict.items() if is_seq_feat(k)}.items():
+        for feat_type, feat in {k: v for k, v in input_dict.items() if is_sdp_feat(k)}.items():
             if which_branch(feat_type) == 'sour' and which_feat(feat_type) == 'index':
                 sour_sdp_input = getPartOfTensor3D(sent_rnn_out, feat)
             elif which_branch(feat_type) == 'targ' and which_feat(feat_type) == 'index':
@@ -654,12 +606,12 @@ class sentRNN(nn.Module):
         SDP layer
         """
         if self.params['sdp_rnn']:
-            self.sour_rnn_hidden = self.init_hidden(batch_size, self.sdp_hidden_dim)
+            self.sour_rnn_hidden = self.init_rnn_hidden(batch_size, self.sdp_hidden_dim)
             sour_sdp_out, self.sour_rnn_hidden = self.sour_rnn(sour_sdp_input, self.sour_rnn_hidden)
             sour_sdp_out = catOverTime(sour_sdp_out, self.params['sdp_out_cat'])
 
             if self.link_type in ['Event-Timex', 'Event-Event']:
-                self.targ_rnn_hidden = self.init_hidden(batch_size, self.sdp_hidden_dim)
+                self.targ_rnn_hidden = self.init_rnn_hidden(batch_size, self.sdp_hidden_dim)
                 targ_sdp_out, self.targ_rnn_hidden = self.targ_rnn(targ_sdp_input, self.targ_rnn_hidden)
                 targ_sdp_out = catOverTime(targ_sdp_out, self.params['sdp_out_cat'])
 
@@ -673,7 +625,7 @@ class sentRNN(nn.Module):
         if self.params['sent_rnn']:
             if self.params['sent_sdp']:
                 if self.params['sdp_rnn']:
-                    cat_input.append(self.sour_rnn_drop(sour_sdp_out))
+                    cat_input.append(self.sdp_rnn_drop(sour_sdp_out))
                 else:
                     sour_sdp_out = catOverTime(sour_sdp_input, self.params['sent_out_cat'])
                     cat_input.append(self.feat_drop(sour_sdp_out))
@@ -684,8 +636,8 @@ class sentRNN(nn.Module):
 
         if self.params['lexical_feat']:
             lexical_input = []
-            for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and is_tok_feat(k)}.items():
-                embed_feat = None
+            for feat_type, feat in {k: v for k, v in input_dict.items() if is_tok_feat(k)}.items():
+
                 if self.word_dim and which_feat(feat_type) == 'word':
                     embed_feat = self.word_embeddings(feat)
                 elif self.pos_dim and which_feat(feat_type) == 'pos':
@@ -693,23 +645,15 @@ class sentRNN(nn.Module):
                 elif self.dep_dim and which_feat(feat_type) == 'dep':
                     embed_feat = self.dep_embeddings(feat)
                 else:
-                    continue
+                    embed_feat = None
 
-                if self.params['mention_cat'] == 'sum':
-                    embed_feat = embed_feat.sum(dim=1)
-                elif self.params['mention_cat'] == 'max':
-                    embed_feat = embed_feat.max(dim=1)[0]
-                elif self.params['mention_cat'] == 'mean':
-                    embed_feat = embed_feat.mean(dim=1)
+                if embed_feat is not None:
+                    embed_feat = catOverTime(embed_feat, self.params['mention_cat'])
+                    lexical_input.append(embed_feat)
 
-                if which_branch(feat_type) == 'sour':
-                    lexical_input.append(embed_feat)
-                elif which_branch(feat_type) == 'targ':
-                    lexical_input.append(embed_feat)
             cat_input.append(self.feat_drop(torch.cat(lexical_input, dim=1)))
 
         fc_input = torch.cat(cat_input, dim=1)
-        # print(fc_input.shape)
 
         ## FC and softmax layer
         fc1_out = F.relu(self.fc1(fc_input))
@@ -722,7 +666,7 @@ class sentRNN(nn.Module):
 class TempBranchRNN(nn.Module):
 
     def __init__(self, wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
-                 max_sent_len, max_seq_len, max_mention_len, max_word_len,
+                 max_sent_len, max_sdp_len, max_mention_len, max_word_len,
                  pre_embed=None,
                  verbose=0, **params):
 
@@ -731,7 +675,7 @@ class TempBranchRNN(nn.Module):
         self.hidden_dim = self.params['seq_rnn_dim']
         self.sent_hidden_dim = self.params['sent_rnn_dim']
         self.max_sent_len = max_sent_len
-        self.max_seq_len = max_seq_len
+        self.max_sdp_len = max_sdp_len
         self.max_mention_len = max_mention_len
         self.max_word_len = max_word_len
         self.verbose = verbose
@@ -770,9 +714,6 @@ class TempBranchRNN(nn.Module):
                                 bidirectional=True)
 
 
-        if self.params['sent_rnn_pool']:
-            self.sent_rnn_pool = nn.MaxPool1d(self.max_sent_len)
-
         self.seq_input_dim = seq_input_dim(self.params, self.word_dim)
 
         self.sour_rnn = nn.LSTM(self.seq_input_dim,
@@ -787,9 +728,6 @@ class TempBranchRNN(nn.Module):
                                     num_layers=1,
                                     batch_first=True,
                                     bidirectional=True)
-
-        if self.params['seq_rnn_pool']:
-            self.seq_rnn_pool = nn.MaxPool1d(self.max_seq_len)
 
         self.sour_rnn_drop = nn.Dropout(p=self.params['dropout_sour_rnn'])
         if self.params['link_type'] not in ['Event-DCT']:
@@ -812,15 +750,14 @@ class TempBranchRNN(nn.Module):
 
     def forward(self, **input_dict):
 
-        batch_size = input_dict['sour_word_seq'].shape[0]
-
+        batch_size = input_dict['sour_word_sdp'].shape[0]
 
         """
         sour/targ seq rnn 
         """
-        sour_seq_input, targ_seq_input = [], []
+        sour_sdp_input, targ_sdp_input = [], []
 
-        for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and is_seq_feat(k)}.items():
+        for feat_type, feat in {k: v for k, v in input_dict.items() if is_feat(k) and is_sdp_feat(k)}.items():
 
             if self.word_dim and which_feat(feat_type) == 'word':
                 embed_feat = self.word_embeddings(feat)
@@ -829,35 +766,35 @@ class TempBranchRNN(nn.Module):
             elif self.dep_dim and which_feat(feat_type) == 'dep':
                 embed_feat = self.dep_embeddings(feat)
             elif self.char_dim and which_feat(feat_type) == 'char':
-                embed_char = self.char_embeddings(feat.view(batch_size * self.max_seq_len, self.max_word_len))
-                self.char_hidden = self.init_hidden(batch_size * self.max_seq_len, self.char_hidden_dim)
+                embed_char = self.char_embeddings(feat.view(batch_size * self.max_sdp_len, self.max_word_len))
+                self.char_hidden = self.init_hidden(batch_size * self.max_sdp_len, self.char_hidden_dim)
                 char_outs, self.char_hidden = self.char_rnn(embed_char, self.char_hidden)
-                embed_feat = char_outs[:, -1, :].view((batch_size, self.max_seq_len, -1))
+                embed_feat = char_outs[:, -1, :].view((batch_size, self.max_sdp_len, -1))
             else:
                 continue
 
             if which_branch(feat_type) == 'sour':
-                sour_seq_input.append(embed_feat)
+                sour_sdp_input.append(embed_feat)
             elif which_branch(feat_type) == 'targ':
-                targ_seq_input.append(embed_feat)
+                targ_sdp_input.append(embed_feat)
 
         self.sour_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
         self.targ_rnn_hidden = self.init_hidden(batch_size, self.hidden_dim)
 
-        sour_seq_tensor = torch.cat(sour_seq_input, dim=2)
-        sour_rnn_out, self.sour_rnn_hidden = self.sour_rnn(sour_seq_tensor, self.sour_rnn_hidden)
+        sour_sdp_tensor = torch.cat(sour_sdp_input, dim=2)
+        sour_rnn_out, self.sour_rnn_hidden = self.sour_rnn(sour_sdp_tensor, self.sour_rnn_hidden)
 
-        if targ_seq_input:
-            targ_seq_tensor = torch.cat(targ_seq_input, dim=2)
-            targ_rnn_out, self.targ_rnn_hidden = self.targ_rnn(targ_seq_tensor, self.targ_rnn_hidden)
+        if targ_sdp_input:
+            targ_sdp_tensor = torch.cat(targ_sdp_input, dim=2)
+            targ_rnn_out, self.targ_rnn_hidden = self.targ_rnn(targ_sdp_tensor, self.targ_rnn_hidden)
 
         if self.params['seq_rnn_pool']:
             sour_rnn_out = self.seq_rnn_pool(sour_rnn_out.transpose(1, 2)).squeeze()
-            if targ_seq_input:
+            if targ_sdp_input:
                 targ_rnn_out = self.seq_rnn_pool(targ_rnn_out.transpose(1, 2)).squeeze()
         else:
             sour_rnn_out = sour_rnn_out[:, -1, :]
-            if targ_seq_input:
+            if targ_sdp_input:
                 targ_rnn_out = targ_rnn_out[:, -1, :]
 
         """
@@ -875,7 +812,7 @@ class TempBranchRNN(nn.Module):
                 embed_char = self.char_embeddings(feat.view(batch_size * self.max_sent_len, self.max_word_len))
                 self.char_hidden = self.init_hidden(batch_size * self.max_sent_len, self.char_hidden_dim)
                 char_outs, self.char_hidden = self.char_rnn(embed_char, self.char_hidden)
-                embed_feat = char_outs[:, -1, :].view((batch_size, self.max_seq_len, -1))
+                embed_feat = char_outs[:, -1, :].view((batch_size, self.max_sdp_len, -1))
             sent_input.append(embed_feat)
 
         sent_tensor = torch.cat(sent_input, dim=2)
@@ -887,14 +824,13 @@ class TempBranchRNN(nn.Module):
         else:
             sent_rnn_out = sent_rnn_out[:, -1, :]
 
-
         """
         concatenate seq rnn + sent rnn + feat
         """
         cat_input = []
 
         cat_input.append(self.sour_rnn_drop(sour_rnn_out))
-        if targ_seq_input:
+        if targ_sdp_input:
             cat_input.append(self.targ_rnn_drop(targ_rnn_out))
 
         cat_input.append(sent_rnn_out)
@@ -1061,14 +997,14 @@ class TempAttnRNN(nn.Module):
 class TempClassifier(nn.Module):
 
     def __init__(self, wvocab_size, cvocab_size, pos_size, action_size,
-                 max_seq_len, max_token_len, max_char_len,
+                 max_sdp_len, max_token_len, max_char_len,
                  feat_types,
                  pre_model=None,
                  verbose_level=1,
                  **params):
         super(TempClassifier, self).__init__()
         self.classifier = params['classifier']
-        self.max_seq_len = max_seq_len
+        self.max_sdp_len = max_sdp_len
         self.max_token_len = max_token_len
         self.max_char_len = max_char_len
         self.verbose_level = verbose_level
@@ -1090,13 +1026,13 @@ class TempClassifier(nn.Module):
         self.position_embeddings = nn.Embedding(pos_size, params['pos_dim'], padding_idx=0)
 
         if self.classifier == 'CNN':
-            self.temp_detector = TempCNN(max_seq_len, max_token_len, max_char_len, action_size, feat_types, verbose_level=self.verbose_level, **params)
+            self.temp_detector = TempCNN(max_sdp_len, max_token_len, max_char_len, action_size, feat_types, verbose_level=self.verbose_level, **params)
         elif self.classifier == 'AttnCNN':
-            self.temp_detector = TempAttnCNN(max_seq_len, max_token_len, max_char_len, action_size, feat_types, verbose_level=self.verbose_level, **params)
+            self.temp_detector = TempAttnCNN(max_sdp_len, max_token_len, max_char_len, action_size, feat_types, verbose_level=self.verbose_level, **params)
         elif self.classifier == 'RNN':
-            self.temp_detector = TempRNN(max_seq_len, max_token_len, max_char_len, action_size, feat_types, verbose_level=self.verbose_level, **params)
+            self.temp_detector = TempRNN(max_sdp_len, max_token_len, max_char_len, action_size, feat_types, verbose_level=self.verbose_level, **params)
         elif self.classifier == 'AttnRNN':
-            self.temp_detector = TempAttnRNN(max_seq_len, max_token_len, max_char_len, action_size, feat_types, **params)
+            self.temp_detector = TempAttnRNN(max_sdp_len, max_token_len, max_char_len, action_size, feat_types, **params)
         else:
             raise Exception("[ERROR]Wrong classifier param [%s] selected...." % (self.classifier) )
 
@@ -1113,20 +1049,20 @@ class TempClassifier(nn.Module):
         batch_size, max_len = feat_inputs[0].size()
 
         for feat, feat_type in zip(feat_inputs, feat_types):
-            if feat_type in ['word_seq']:
+            if feat_type in ['word_sdp']:
                 # print(feat[0])
                 # print(self.word_embeddings(feat)[0])
                 embedded_inputs.append(self.word_embeddings(feat))
-            if feat_type in ['char_seq']:
+            if feat_type in ['char_sdp']:
                 if params['char_emb']:
-                    embedded_feat = self.char_embeddings(feat.view(batch_size * self.max_seq_len, self.max_char_len))
-                    self.char_hidden = self.init_char_hidden(batch_size * self.max_seq_len)
+                    embedded_feat = self.char_embeddings(feat.view(batch_size * self.max_sdp_len, self.max_char_len))
+                    self.char_hidden = self.init_char_hidden(batch_size * self.max_sdp_len)
                     char_outs, self.char_hidden = self.char_rnn(embedded_feat, self.char_hidden)
-                    char_out = char_outs[:, -1, :].view((batch_size, self.max_seq_len, -1))
+                    char_out = char_outs[:, -1, :].view((batch_size, self.max_sdp_len, -1))
                     embedded_inputs.append(char_out)
                 else:
                     embedded_inputs.append(None)
-            elif feat_type in ['sour_dist_seq', 'targ_dist_seq']:
+            elif feat_type in ['sour_dist_sdp', 'targ_dist_sdp']:
                 embedded_inputs.append(self.position_embeddings(feat))
             elif feat_type in ['sour_word_tok', 'targ_word_tok']:
                 embedded_inputs.append(self.word_embeddings(feat))
@@ -1172,7 +1108,11 @@ class DCTDetector(nn.Module):
         self.batch_size = batch_size
 
         ## initialize neural layers
-        self.dct_tagger = nn.LSTM(embedding_dim, dct_hidden_dim // 2, num_layers=1, batch_first=True, bidirectional=True)
+        self.dct_tagger = nn.LSTM(embedding_dim,
+                                  dct_hidden_dim // 2,
+                                  num_layers=1,
+                                  batch_first=True,
+                                  bidirectional=True)
         self.tagger_dropout = nn.Dropout(p=0.5)
         self.dct_hidden2action = nn.Linear(dct_hidden_dim, action_size)
         self.dct_hidden = self.init_dct_hidden()
@@ -1200,9 +1140,17 @@ class TimeDetector(nn.Module):
         self.batch_size = batch_size
 
         ## initialize neural layers
-        self.left_tagger = nn.LSTM(embedding_dim, time_hidden_dim // 2, num_layers=1, batch_first=True, bidirectional=True)
+        self.left_tagger = nn.LSTM(embedding_dim,
+                                   time_hidden_dim // 2,
+                                   num_layers=1,
+                                   batch_first=True,
+                                   bidirectional=True)
         self.left_tagger_dropout = nn.Dropout(p=0.5)
-        self.right_tagger = nn.LSTM(embedding_dim, time_hidden_dim // 2, num_layers=1, batch_first=True, bidirectional=True)
+        self.right_tagger = nn.LSTM(embedding_dim,
+                                    time_hidden_dim // 2,
+                                    num_layers=1,
+                                    batch_first=True,
+                                    bidirectional=True)
         self.right_tagger_dropout = nn.Dropout(p=0.5)
         self.time_hidden2action = nn.Linear(time_hidden_dim * 2, action_size)
         self.left_hidden = self.init_left_time_hidden()

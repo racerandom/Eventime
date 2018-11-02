@@ -63,11 +63,11 @@ task_feats = {'basic': ['full_word_sent',
                         'full_char_sent',
                         'sour_dist_sent',
                         'targ_dist_sent'],
-              'Event-DCT': ['sour_word_seq',
-                            'sour_char_seq',
-                            'sour_pos_seq',
-                            'sour_dep_seq',
-                            'sour_index_seq',
+              'Event-DCT': ['sour_word_sdp',
+                            'sour_char_sdp',
+                            'sour_pos_sdp',
+                            'sour_dep_sdp',
+                            'sour_index_sdp',
                             'sour_word_tok',
                             'sour_char_tok',
                             'sour_pos_tok',
@@ -174,9 +174,9 @@ def slimEmbedding(embedding_file, pickle_file, word_idx, lowercase=False):
 
 
 ## generate a list of feat tensor and target tensor of a given dataset
-def prepare_feats_dataset(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, max_seq_len, max_tok_len, max_char_len, link_type, feat_types=['word_seq',
-                                                                                                                                'sour_dist_seq',
-                                                                                                                                'targ_dist_seq',
+def prepare_feats_dataset(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, max_sdp_len, max_tok_len, max_char_len, link_type, feat_types=['word_sdp',
+                                                                                                                                'sour_dist_sdp',
+                                                                                                                                'targ_dist_sdp',
                                                                                                                                 'sour_word_tok',
                                                                                                                                 'targ_word_tok',
                                                                                                                                 'sour_dist_tok',
@@ -195,12 +195,12 @@ def prepare_feats_dataset(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_id
                 feat.append(link.feat_inputs[feat_type])
 
         ## initialize feats as tensors
-        if feat_type in ['word_seq']:
-            feats_list.append(torch.tensor(padding_2d(prepare_seq_2d(feat, word_idx), max_seq_len)))
-        elif feat_type in ['char_seq']:
-            feats_list.append(torch.tensor(padding_3d(prepare_seq_3d(feat, char_idx), max_seq_len, max_char_len)))
-        elif feat_type in ['sour_dist_seq', 'targ_dist_seq']:
-            feats_list.append(torch.tensor(padding_2d(prepare_seq_2d(feat, dist_idx), max_seq_len)))
+        if feat_type in ['word_sdp']:
+            feats_list.append(torch.tensor(padding_2d(prepare_seq_2d(feat, word_idx), max_sdp_len)))
+        elif feat_type in ['char_sdp']:
+            feats_list.append(torch.tensor(padding_3d(prepare_seq_3d(feat, char_idx), max_sdp_len, max_char_len)))
+        elif feat_type in ['sour_dist_sdp', 'targ_dist_sdp']:
+            feats_list.append(torch.tensor(padding_2d(prepare_seq_2d(feat, dist_idx), max_sdp_len)))
         elif feat_type in ['sour_word_tok', 'targ_word_tok']:
             feats_list.append(torch.tensor(padding_2d(prepare_seq_2d(feat, word_idx), max_tok_len)))
         elif feat_type in ['sour_dist_tok', 'targ_dist_tok']:
@@ -219,7 +219,7 @@ def prepare_feats_dataset(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_id
 
 
 def feat2tensorSDP(doc_dic, dataset, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
-                   max_sent_len, max_seq_len, max_mention_len, max_word_len, task):
+                   max_sent_len, max_sdp_len, max_mention_len, max_word_len, task):
 
     tensor_dict = {}
     target_list = []
@@ -242,14 +242,14 @@ def feat2tensorSDP(doc_dic, dataset, word_idx, char_idx, pos_idx, dep_idx, dist_
 
     # initialize feats as tensors
     for feat_name, feats in feat_dict.items():
-        if feat_name in ['sour_word_seq', 'targ_word_seq']:
-            tensor_dict[feat_name] = torch.tensor(padding_2d(prepare_seq_2d(feats, word_idx), max_seq_len))
-        elif feat_name in ['sour_char_seq', 'targ_char_seq']:
-            tensor_dict[feat_name] = torch.tensor(padding_3d(prepare_seq_3d(feats, char_idx), max_seq_len, max_word_len))
-        elif feat_name in ['sour_pos_seq', 'targ_pos_seq']:
-            tensor_dict[feat_name] = torch.tensor(padding_2d(prepare_seq_2d(feats, pos_idx), max_seq_len))
-        elif feat_name in ['sour_dep_seq', 'targ_dep_seq']:
-            tensor_dict[feat_name] = torch.tensor(padding_2d(prepare_seq_2d(feats, dep_idx), max_seq_len))
+        if feat_name in ['sour_word_sdp', 'targ_word_sdp']:
+            tensor_dict[feat_name] = torch.tensor(padding_2d(prepare_seq_2d(feats, word_idx), max_sdp_len))
+        elif feat_name in ['sour_char_sdp', 'targ_char_sdp']:
+            tensor_dict[feat_name] = torch.tensor(padding_3d(prepare_seq_3d(feats, char_idx), max_sdp_len, max_word_len))
+        elif feat_name in ['sour_pos_sdp', 'targ_pos_sdp']:
+            tensor_dict[feat_name] = torch.tensor(padding_2d(prepare_seq_2d(feats, pos_idx), max_sdp_len))
+        elif feat_name in ['sour_dep_sdp', 'targ_dep_sdp']:
+            tensor_dict[feat_name] = torch.tensor(padding_2d(prepare_seq_2d(feats, dep_idx), max_sdp_len))
         elif feat_name in ['sour_word_tok', 'targ_word_tok']:
             tensor_dict[feat_name] = torch.tensor(padding_2d(prepare_seq_2d(feats, word_idx), max_mention_len))
         elif feat_name in ['sour_char_tok', 'targ_char_tok']:
@@ -274,8 +274,8 @@ def feat2tensorSDP(doc_dic, dataset, word_idx, char_idx, pos_idx, dep_idx, dist_
             tensor_dict[feat_name] = torch.tensor(padding_3d(prepare_seq_3d(feats, char_idx), max_sent_len, max_word_len))
         elif feat_name in ['sour_dist_sent', 'targ_dist_sent']:
             tensor_dict[feat_name] = torch.tensor(padding_2d(prepare_seq_2d(feats, dist_idx), max_sent_len))
-        elif feat_name in ['sour_index_seq', 'targ_index_seq']:
-            tensor_dict[feat_name] = torch.tensor(padding_2d(feats, max_seq_len))
+        elif feat_name in ['sour_index_sdp', 'targ_index_sdp']:
+            tensor_dict[feat_name] = torch.tensor(padding_2d(feats, max_sdp_len))
             # print(tensor_dict[feat_name])
         else:
             print("ERROR feat name: %s" % feat_name)
@@ -284,7 +284,7 @@ def feat2tensorSDP(doc_dic, dataset, word_idx, char_idx, pos_idx, dep_idx, dist_
     return tensor_dict, target_tensor
 
 
-def feats2tensor_dict(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, max_seq_len, max_tok_len, max_char_len, link_type):
+def feats2tensor_dict(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, max_sdp_len, max_tok_len, max_char_len, link_type):
 
     tensor_dict = {}
 
@@ -296,12 +296,12 @@ def feats2tensor_dict(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, m
         feat = doc2featList(doc_dic, feat_type, link_type)
 
         ## initialize feats as tensors
-        if feat_type in ['word_seq']:
-            tensor_dict[feat_type] = torch.tensor(padding_2d(prepare_seq_2d(feat, word_idx), max_seq_len))
-        elif feat_type in ['char_seq']:
-            tensor_dict[feat_type] = torch.tensor(padding_3d(prepare_seq_3d(feat, char_idx), max_seq_len, max_char_len))
-        elif feat_type in ['sour_dist_seq', 'targ_dist_seq']:
-            tensor_dict[feat_type] = torch.tensor(padding_2d(prepare_seq_2d(feat, dist_idx), max_seq_len))
+        if feat_type in ['word_sdp']:
+            tensor_dict[feat_type] = torch.tensor(padding_2d(prepare_seq_2d(feat, word_idx), max_sdp_len))
+        elif feat_type in ['char_sdp']:
+            tensor_dict[feat_type] = torch.tensor(padding_3d(prepare_seq_3d(feat, char_idx), max_sdp_len, max_char_len))
+        elif feat_type in ['sour_dist_sdp', 'targ_dist_sdp']:
+            tensor_dict[feat_type] = torch.tensor(padding_2d(prepare_seq_2d(feat, dist_idx), max_sdp_len))
         elif feat_type in ['sour_word_tok', 'targ_word_tok']:
             tensor_dict[feat_type] = torch.tensor(padding_2d(prepare_seq_2d(feat, word_idx), max_tok_len))
         elif feat_type in ['sour_dist_tok', 'targ_dist_tok']:
@@ -319,7 +319,7 @@ def feats2tensor_dict(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, m
     return tensor_dict, target_tensor
 
 
-def prepareGlobalSDP(pkl_file, task):
+def prepareGlobalSDP(doc_pkl_file, task):
     """
         Store features into the feat_inputs of each tlink in doc_dic.
         return doc_dic, feat to index, max length for the following process of preparing tensor inputs.
@@ -328,7 +328,7 @@ def prepareGlobalSDP(pkl_file, task):
     :return: a tuple of doc_dic, feat to index, max length for padding
     """
 
-    doc_dic = load_doc(pkl_file)
+    doc_dic = load_doc(doc_pkl_file)
 
     """
     step1: add feats into link.feat_inputs
@@ -347,15 +347,15 @@ def prepareGlobalSDP(pkl_file, task):
                 event.feat_inputs['full_elmo_sent'] = [tok.content for tok in sent_tokens]
                 ## lexical feats
                 sdp_conll_ids, event_conll_ids, dep_graph = doc.getSdpFromMentionToRoot(event)
-                event_word_seq, event_pos_seq, event_dep_seq = doc.getSdpFeats(sdp_conll_ids, dep_graph)
+                event_word_sdp, event_pos_sdp, event_dep_sdp = doc.getSdpFeats(sdp_conll_ids, dep_graph)
                 event_word, event_pos, event_dep = doc.getSdpFeats(event_conll_ids, dep_graph)
-                event.feat_inputs['sour_word_seq'] = event_word_seq
-                event.feat_inputs['sour_pos_seq'] = event_pos_seq
-                event.feat_inputs['sour_dep_seq'] = event_dep_seq
+                event.feat_inputs['sour_word_sdp'] = event_word_sdp
+                event.feat_inputs['sour_pos_sdp'] = event_pos_sdp
+                event.feat_inputs['sour_dep_sdp'] = event_dep_sdp
                 event.feat_inputs['sour_word_tok'] = event_word
                 event.feat_inputs['sour_pos_tok'] = event_pos
                 event.feat_inputs['sour_dep_tok'] = event_dep
-                event.feat_inputs['sour_index_seq'] = sdp_conll_ids
+                event.feat_inputs['sour_index_sdp'] = sdp_conll_ids
 
         elif task in ['Event-DCT', 'Event-Timex', 'Event-Event']:
             for link in doc.temp_links[task]:
@@ -374,52 +374,52 @@ def prepareGlobalSDP(pkl_file, task):
                 add sour branch sdp 
                 """
                 sour_sdp_ids, sour_mention_ids, dep_graph = doc.getSdpFromMentionToRoot(link.sour)
-                sour_word_seq, sour_pos_seq, sour_dep_seq = doc.getSdpFeats(sour_sdp_ids, dep_graph)
+                sour_word_sdp, sour_pos_sdp, sour_dep_sdp = doc.getSdpFeats(sour_sdp_ids, dep_graph)
                 sour_word_tok, sour_pos_tok, sour_dep_tok = doc.getSdpFeats(sour_mention_ids, dep_graph)
                 link.feat_inputs['sour_dist_sent'] = getMentionDist(sent_tokens, link.sour)
-                link.feat_inputs['sour_word_seq'] = sour_word_seq
-                link.feat_inputs['sour_char_seq'] = [list(tok.lower()) for tok in sour_word_seq]
-                link.feat_inputs['sour_pos_seq'] = sour_pos_seq
-                link.feat_inputs['sour_dep_seq'] = sour_dep_seq
+                link.feat_inputs['sour_word_sdp'] = sour_word_sdp
+                link.feat_inputs['sour_char_sdp'] = [list(tok.lower()) for tok in sour_word_sdp]
+                link.feat_inputs['sour_pos_sdp'] = sour_pos_sdp
+                link.feat_inputs['sour_dep_sdp'] = sour_dep_sdp
                 link.feat_inputs['sour_word_tok'] = sour_word_tok
                 link.feat_inputs['sour_char_tok'] = [list(tok.lower()) for tok in sour_word_tok]
                 link.feat_inputs['sour_pos_tok'] = sour_pos_tok
                 link.feat_inputs['sour_dep_tok'] = sour_dep_tok
-                link.feat_inputs['sour_index_seq'] = sour_sdp_ids
+                link.feat_inputs['sour_index_sdp'] = sour_sdp_ids
 
                 """
                 add targ branch sdp for 'Event-Timex', 'Event-Event' tlinks
                 """
                 if link.link_type in ['Event-Timex', 'Event-Event']:
                     targ_sdp_ids, targ_mention_ids, dep_graph = doc.getSdpFromMentionToRoot(link.targ)
-                    targ_word_seq, targ_pos_seq, targ_dep_seq = doc.getSdpFeats(targ_sdp_ids, dep_graph)
+                    targ_word_sdp, targ_pos_sdp, targ_dep_sdp = doc.getSdpFeats(targ_sdp_ids, dep_graph)
                     targ_word_tok, targ_pos_tok, targ_dep_tok = doc.getSdpFeats(targ_mention_ids, dep_graph)
                     link.feat_inputs['targ_dist_sent'] = getMentionDist(sent_tokens, link.targ)
-                    link.feat_inputs['targ_word_seq'] = targ_word_seq
-                    link.feat_inputs['targ_char_seq'] = [list(tok.lower()) for tok in targ_word_seq]
-                    link.feat_inputs['targ_pos_seq'] = targ_pos_seq
-                    link.feat_inputs['targ_dep_seq'] = targ_dep_seq
+                    link.feat_inputs['targ_word_sdp'] = targ_word_sdp
+                    link.feat_inputs['targ_char_sdp'] = [list(tok.lower()) for tok in targ_word_sdp]
+                    link.feat_inputs['targ_pos_sdp'] = targ_pos_sdp
+                    link.feat_inputs['targ_dep_sdp'] = targ_dep_sdp
                     link.feat_inputs['targ_word_tok'] = targ_word_tok
                     link.feat_inputs['targ_char_tok'] = [list(tok.lower()) for tok in targ_word_tok]
                     link.feat_inputs['targ_pos_tok'] = targ_pos_tok
                     link.feat_inputs['targ_dep_tok'] = targ_dep_tok
-                    link.feat_inputs['targ_index_seq'] = reviceSdpWithSentID(sent_tokens, targ_sdp_ids)
+                    link.feat_inputs['targ_index_sdp'] = reviceSdpWithSentID(sent_tokens, targ_sdp_ids)
 
 
     """
     step2: calculate vocab (set object)
     """
-    # word_vocab = doc2fvocab(doc_dic, 'sour_word_seq', link_types)
+    # word_vocab = doc2fvocab(doc_dic, 'sour_word_sdp', link_types)
 
-    pos_vocab = doc2fvocab2(doc_dic, task, ['sour_pos_seq', 'targ_pos_seq', 'sour_pos_tok', 'targ_pos_tok'])
-    dep_vocab = doc2fvocab2(doc_dic, task, ['sour_dep_seq', 'targ_dep_seq', 'sour_dep_tok', 'targ_dep_tok'])
+    pos_vocab = doc2fvocab2(doc_dic, task, ['sour_pos_sdp', 'targ_pos_sdp', 'sour_pos_tok', 'targ_pos_tok'])
+    dep_vocab = doc2fvocab2(doc_dic, task, ['sour_dep_sdp', 'targ_dep_sdp', 'sour_dep_tok', 'targ_dep_tok'])
     dist_vocab = doc2fvocab2(doc_dic, task, ['sour_dist_sent', 'targ_dist_sent'])
 
 
     """
     full sentence
     """
-    # word_vocab.union(doc2fvocab(doc_dic, 'full_word_seq', link_types))
+    # word_vocab.union(doc2fvocab(doc_dic, 'full_word_sdp', link_types))
     word_vocab = doc2wvocab(doc_dic)
 
     char_vocab = wvocab2cvocab(word_vocab)
@@ -440,7 +440,7 @@ def prepareGlobalSDP(pkl_file, task):
     step4: calculate max length for padding
     """
     max_sent_len = max_length(doc_dic, task, ['full_word_sent'])
-    max_seq_len = max_length(doc_dic, task, ['sour_word_seq', 'targ_word_seq'])
+    max_sdp_len = max_length(doc_dic, task, ['sour_word_sdp', 'targ_word_sdp'])
     max_word_len = max([len(word) for word in word_vocab])
     max_mention_len = max_length(doc_dic, task, ['sour_word_tok', 'targ_word_tok'])
 
@@ -460,15 +460,15 @@ def prepareGlobalSDP(pkl_file, task):
           'max word len of seq: %i , '
           'max char len of word: %i, '
           'max word len of mention: %i' % (max_sent_len,
-                                           max_seq_len,
+                                           max_sdp_len,
                                            max_word_len,
                                            max_mention_len))
 
     return doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
-           max_sent_len, max_seq_len, max_mention_len, max_word_len
+           max_sent_len, max_sdp_len, max_mention_len, max_word_len
 
 
-def prepare_DRL_data(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, max_seq_len, max_tok_len, max_char_len, feat_types=None):
+def prepare_DRL_data(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, max_sdp_len, max_tok_len, max_char_len, feat_types=None):
 
     event_link_data = []
 
@@ -484,13 +484,13 @@ def prepare_DRL_data(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, ma
                 link_feat = []
 
                 for feat_type in feat_types:
-                    if feat_type in ['word_seq']:
-                        link_feat.append(torch.tensor(padding_2d(prepare_seq_2d(feat, word_idx), max_seq_len)))
+                    if feat_type in ['word_sdp']:
+                        link_feat.append(torch.tensor(padding_2d(prepare_seq_2d(feat, word_idx), max_sdp_len)))
                     elif feat_type in ['char_seq']:
                         link_feat.append(
-                            torch.tensor(padding_3d(prepare_seq_3d(feat, char_idx), max_seq_len, max_char_len)))
-                    elif feat_type in ['sour_dist_seq', 'targ_dist_seq']:
-                        link_feat.append(torch.tensor(padding_2d(prepare_seq_2d(feat, dist_idx), max_seq_len)))
+                            torch.tensor(padding_3d(prepare_seq_3d(feat, char_idx), max_sdp_len, max_char_len)))
+                    elif feat_type in ['sour_dist_sdp', 'targ_dist_sdp']:
+                        link_feat.append(torch.tensor(padding_2d(prepare_seq_2d(feat, dist_idx), max_sdp_len)))
                     elif feat_type in ['sour_word_tok', 'targ_word_tok']:
                         link_feat.append(torch.tensor(padding_2d(prepare_seq_2d(feat, word_idx), max_tok_len)))
                     elif feat_type in ['sour_dist_tok', 'targ_dist_tok']:
@@ -647,21 +647,21 @@ def prepare_global(pkl_file, pretrained_file, link_type='Event-Timex'):
         for link in doc.get_links_by_type(link_type):
             if link_type in ['Event-Timex', 'Event-Event']:
                 tokens = doc.geneSentTokens(link.sour, link.targ)
-                link.feat_inputs['word_seq'] = [tok.content for tok in tokens]
-                link.feat_inputs['char_seq'] = [ list(tok.content.lower()) for tok in tokens]
-                link.feat_inputs['sour_dist_seq'] = getMentionDist(tokens, link.sour)
-                link.feat_inputs['targ_dist_seq'] = getMentionDist(tokens, link.targ)
+                link.feat_inputs['word_sdp'] = [tok.content for tok in tokens]
+                link.feat_inputs['char_sdp'] = [ list(tok.content.lower()) for tok in tokens]
+                link.feat_inputs['sour_dist_sdp'] = getMentionDist(tokens, link.sour)
+                link.feat_inputs['targ_dist_sdp'] = getMentionDist(tokens, link.targ)
                 link.feat_inputs['sour_word_tok'] = link.sour.content.split()
                 link.feat_inputs['targ_word_tok'] = link.targ.content.split()
                 link.feat_inputs['sour_dist_tok'], link.feat_inputs['targ_dist_tok']  = getEndPosition(link.sour, link.targ)
             elif link_type in ['Event-DCT']:
                 tokens = doc.geneSentOfMention(link.sour)
-                link.feat_inputs['word_seq'] = [tok.content for tok in tokens]
-                link.feat_inputs['char_seq'] = [list(tok.content.lower()) for tok in tokens]
-                link.feat_inputs['sour_dist_seq'] = getMentionDist(tokens, link.sour)
+                link.feat_inputs['word_sdp'] = [tok.content for tok in tokens]
+                link.feat_inputs['char_sdp'] = [list(tok.content.lower()) for tok in tokens]
+                link.feat_inputs['sour_dist_sdp'] = getMentionDist(tokens, link.sour)
                 link.feat_inputs['sour_word_tok'] = link.sour.content.split()
 
-    word_vocab = doc2fvocab(doc_dic, 'word_seq', link_type)
+    word_vocab = doc2fvocab(doc_dic, 'word_sdp', link_type)
     char_vocab = wvocab2cvocab(word_vocab)
     char_idx = vocab2idx(char_vocab, feat_idx={'zeropadding': 0})
     max_char_len = max([len(word) for word in word_vocab])
@@ -672,31 +672,31 @@ def prepare_global(pkl_file, pretrained_file, link_type='Event-Timex'):
     else:
         pre_model = None
         word_idx = vocab2idx(word_vocab, feat_idx={'zeropadding': 0})
-        # word_idx = feat2idx(doc_dic, 'token_seq', link_type, feat_idx={'zeropadding': 0})
+        # word_idx = feat2idx(doc_dic, 'token_sdp', link_type, feat_idx={'zeropadding': 0})
 
     # create feat index map
     if link_type in ['Event-Timex', 'Event-Event']:
-        sour_dist_vocab = doc2fvocab(doc_dic, 'sour_dist_seq', link_type)
+        sour_dist_vocab = doc2fvocab(doc_dic, 'sour_dist_sdp', link_type)
         sour_dist_idx = vocab2idx(sour_dist_vocab, feat_idx={'zeropadding': 0})
-        targ_dist_vocab = doc2fvocab(doc_dic, 'targ_dist_seq', link_type)
+        targ_dist_vocab = doc2fvocab(doc_dic, 'targ_dist_sdp', link_type)
         dist_idx = vocab2idx(targ_dist_vocab, feat_idx=sour_dist_idx)
         max_tok_len = max(max_length(doc_dic, 'sour_word_tok', link_type), max_length(doc_dic, 'targ_word_tok', link_type))
     elif link_type in ['Event-DCT']:
-        dist_vocab = doc2fvocab(doc_dic, 'sour_dist_seq', link_type)
+        dist_vocab = doc2fvocab(doc_dic, 'sour_dist_sdp', link_type)
         dist_idx = vocab2idx(dist_vocab, feat_idx={'zeropadding': 0})
         max_tok_len = max_length(doc_dic, 'sour_word_tok', link_type)
     rel_idx = rel2idx(doc_dic, link_type)
-    max_seq_len = max_length(doc_dic, 'word_seq', link_type)
+    max_sdp_len = max_length(doc_dic, 'word_sdp', link_type)
     print('word vocab size: %i, char vocab size: %i, dist size: %i, relation size: %i\n' \
           'max word len of seq: %i , max char len of word: %i, , max word len of mention: %i' %  (len(word_idx),
                                                                                                  len(char_idx),
                                                                                                  len(dist_idx),
                                                                                                  len(rel_idx),
-                                                                                                 max_seq_len,
+                                                                                                 max_sdp_len,
                                                                                                  max_char_len,
                                                                                                  max_tok_len))
     return doc_dic, word_idx, char_idx, dist_idx, rel_idx, \
-           max_seq_len, max_tok_len, max_char_len, pre_model
+           max_sdp_len, max_tok_len, max_char_len, pre_model
 
 
 def writeCommonTimeML2txt(annotator1_dir, annotator2_dir, out_dir):
@@ -746,22 +746,22 @@ class TestTempData(unittest.TestCase):
         link_type = 'Event-Timex'
         pkl_file = "data/0531_%s.pkl" % (link_type)
         doc_dic, word_idx, char_idx, dist_idx, rel_idx, \
-        max_seq_len, max_token_len, max_char_len, pre_model = prepare_global(pkl_file, None)
+        max_sdp_len, max_token_len, max_char_len, pre_model = prepare_global(pkl_file, None)
 
     def test_prepare_feat_dataset(self):
         link_type = 'Event-Timex'
         pkl_file = "data/0531.pkl"
-        feat_types = ['word_seq',
-                    # 'char_seq',
-                    'sour_dist_seq',
-                    'targ_dist_seq',
+        feat_types = ['word_sdp',
+                    # 'char_sdp',
+                    'sour_dist_sdp',
+                    'targ_dist_sdp',
                     'sour_word_tok',
                     'targ_word_tok',
                     'sour_dist_tok',
                     'targ_dist_tok']
         doc_dic, word_idx, char_idx, dist_idx, rel_idx, \
-        max_seq_len, max_tok_len, max_char_len, pre_model = prepare_global(pkl_file, None, link_type)
-        train_inputs, train_target = prepare_feats_dataset(doc_dic, TA_TEST, word_idx, char_idx, dist_idx, rel_idx, max_seq_len, max_tok_len, max_char_len, link_type, feat_types=feat_types)
+        max_sdp_len, max_tok_len, max_char_len, pre_model = prepare_global(pkl_file, None, link_type)
+        train_inputs, train_target = prepare_feats_dataset(doc_dic, TA_TEST, word_idx, char_idx, dist_idx, rel_idx, max_sdp_len, max_tok_len, max_char_len, link_type, feat_types=feat_types)
         print([ (feat_type, feat.shape) for feat, feat_type in zip(train_inputs, feat_types)], train_target.shape)
 
     def test_pickle_data(self):
@@ -836,7 +836,7 @@ class TestTempData(unittest.TestCase):
         # anchor_file2doc(timeml_dir, anchor_file, pkl_file, sent_win, oper=False)
 
         doc_dic, word_idx, char_idx, pos_idx, dep_idx, rel_idx, \
-        max_seq_len, max_mention_len, max_word_len = prepareGlobalSDP(pkl_file, link_types=['Event-DCT', 'Event-Timex'])
+        max_sdp_len, max_mention_len, max_word_len = prepareGlobalSDP(pkl_file, link_types=['Event-DCT', 'Event-Timex'])
 
         pretrained_file = "Resources/embed/giga-aacw.d200.bin"
         pre_lookup_table, word_idx = readPretrainedEmbedding(pretrained_file)
@@ -845,22 +845,22 @@ class TestTempData(unittest.TestCase):
         print train/dev/test feats shape
         '''
         train_feats, train_target = feat2tensorSDP(doc_dic, TBD_TRAIN, word_idx, char_idx, pos_idx, dep_idx, rel_idx,
-                                                   max_seq_len, max_mention_len, max_word_len, link_type)
+                                                   max_sdp_len, max_mention_len, max_word_len, link_type)
         print(len(train_feats))
-        print(train_feats['sour_word_seq'].shape)
-        print(train_feats['sour_char_seq'].shape)
+        print(train_feats['sour_word_sdp'].shape)
+        print(train_feats['sour_char_sdp'].shape)
         print(train_feats['sour_word_tok'].shape)
 
         dev_feats, dev_target = feat2tensorSDP(doc_dic, TBD_DEV, word_idx, char_idx, pos_idx, dep_idx, rel_idx,
-                                               max_seq_len, max_mention_len, max_word_len, link_type)
+                                               max_sdp_len, max_mention_len, max_word_len, link_type)
         print(len(dev_feats))
-        print(dev_feats['sour_word_seq'].shape)
-        print(dev_feats['sour_char_seq'].shape)
+        print(dev_feats['sour_word_sdp'].shape)
+        print(dev_feats['sour_char_sdp'].shape)
         print(train_feats['sour_word_tok'].shape)
 
         test_feats, test_target = feat2tensorSDP(doc_dic, TBD_TEST, word_idx, char_idx, pos_idx, dep_idx, rel_idx,
-                                                 max_seq_len, max_mention_len, max_word_len, link_type)
+                                                 max_sdp_len, max_mention_len, max_word_len, link_type)
         print(len(test_feats))
-        print(test_feats['sour_word_seq'].shape)
-        print(test_feats['sour_char_seq'].shape)
+        print(test_feats['sour_word_sdp'].shape)
+        print(test_feats['sour_char_sdp'].shape)
         print(train_feats['sour_word_tok'].shape)

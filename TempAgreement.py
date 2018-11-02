@@ -112,8 +112,8 @@ def evalAgreementFromDir(annotator1_dir, annotator2_dir, verbose=0):
 
 
 def main():
-    annotator1_dir = "20180919/kd"
-    annotator2_dir = "20180919/td"
+    annotator1_dir = "/Users/fei-c/Resources/timex/anchor/final_1016/Agreement/Kd_Agreement/tml"
+    annotator2_dir = "/Users/fei-c/Resources/timex/anchor/final_1016/Agreement/Td_Agreement/tml"
     evalAgreementFromDir(annotator1_dir, annotator2_dir, verbose=0)
 
 

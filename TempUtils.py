@@ -208,6 +208,8 @@ def doc2featList(doc_dic, dataset, feat_name, link_types):
 
 def vocab2idx(vocab, feat_idx=None):
     if vocab:
+        if not feat_idx:
+            feat_idx = {}
         for feat in vocab:
             feat_idx.setdefault(feat, len(feat_idx))
         return feat_idx
@@ -295,10 +297,3 @@ def dict2str(dic):
     return ','.join(out)
 
 
-def save_checkpoint(state, is_best, filename):
-    """Save checkpoint if a new best is achieved"""
-    if is_best:
-        torch.save(state, filename)  # save checkpoint
-        return "=> Saving a new best"
-    else:
-        return ""

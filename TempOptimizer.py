@@ -20,6 +20,7 @@ plt.switch_backend('agg')
 
 from TempModules import *
 from TempData import *
+from ModuleOptim import *
 import TempUtils
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device("cpu")
@@ -45,16 +46,6 @@ def setup_logger(logger_name, log_file, level=logging.INFO):
     l.setLevel(level)
     l.addHandler(fileHandler)
     l.addHandler(streamHandler)
-
-
-def is_best_score(score, best_score, monitor):
-    if not best_score:
-        is_best = True
-        best_score = score
-    else:
-        is_best = bool(score < best_score) if monitor == 'val_loss' else bool(score > best_score)
-        best_score = score if is_best else best_score
-    return is_best, best_score
 
 
 class TempOptimizer(nn.Module):

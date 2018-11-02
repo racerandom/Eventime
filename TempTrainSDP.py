@@ -6,6 +6,7 @@ import torch.utils.data as Data
 import torch
 from TempData import *
 from TempModules import *
+from ModuleOptim import *
 from sklearn.metrics import classification_report
 from statistics import mean, median, variance, stdev
 
@@ -17,24 +18,8 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 
-
-def is_best_score(score, best_score, monitor):
-    if not best_score:
-        is_best = True
-        best_score = score
-    else:
-        is_best = bool(score < best_score) if monitor == 'val_loss' else bool(score > best_score)
-        best_score = score if is_best else best_score
-    return is_best, best_score
-
-
-def copyData2device(data, device):
-    feat_dict, target = data
-    feat_types = list(feat_dict.keys())
-    feat_list = batch_to_device(list(feat_dict.values()), device)
-    target = target.to(device=device)
-    return dict(zip(feat_types, feat_list)), target
-
+import logging
+logger = logging.getLogger("TempTrainSDP.py")
 
 def preprocessData(task, sent_win, oper, doc_reset):
     timeml_dir = os.path.join(os.path.dirname(__file__), "data/Timebank")
@@ -89,6 +74,8 @@ def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, acti
     for name, param in model.named_parameters():
         if param.requires_grad:
             print('*', name)
+
+    print("Parameters:", count_parameters(model))
 
     return model, optimizer
 
@@ -293,7 +280,8 @@ def main():
         'sent_win': [1],
         'oper_label': [True],
         'link_type': [task],
-        'init_weight': [None, 'xavier', 'kaiming'],
+        'init_weight': [None],  # 'xavier', 'kaiming'
+        'dropout_sent_in': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'elmo': [False],
         'dropout_elmo': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'char_dim': [0],
@@ -304,17 +292,15 @@ def main():
         'sent_rnn_dim': range(100, 400+1, 10),
         'sent_out_cat': ['max'],
         'sdp_out_cat': ['max'],
-        'dropout_sour_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
-        'dropout_targ_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
+        'rnn_layer':[2],
+        'dropout_sdp_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'dropout_sent_rnn': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'dropout_feat': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'mention_cat': ['sum', 'max', 'mean'],
         'fc_hidden_dim': range(100, 400+1, 10),
         'sent_sdp': [True],
-        'seq_rnn_pool': [True],
-        'sent_rnn_pool': [False],
         'sent_rnn': [True],
-        'sdp_rnn': [True],
+        'sdp_rnn': [False],
         'lexical_feat': [True],
         'dropout_fc': [0.0, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8],
         'batch_size': [16, 32, 64, 128],
@@ -324,7 +310,7 @@ def main():
         'max_norm': [1, 5, 10],
         'monitor': ['val_acc'],
         'doc_reset': [False],
-        'data_reset': [True]
+        'data_reset': [False]
     }
     pretrained_file = "Resources/embed/deps.words.bin"
 
