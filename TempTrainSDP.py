@@ -13,10 +13,10 @@ from statistics import mean, median, variance, stdev
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device("cpu")
 print('device:', device)
 
-seed = 2
-torch.manual_seed(seed)
-if torch.cuda.is_available():
-    torch.cuda.manual_seed_all(seed)
+# seed = 2
+# torch.manual_seed(seed)
+# if torch.cuda.is_available():
+#     torch.cuda.manual_seed_all(seed)
 
 import logging
 logger = logging.getLogger("TempTrainSDP.py")
@@ -198,14 +198,25 @@ def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, *
         dev_loss = F.nll_loss(dev_out, dev_target).item()
         dev_pred = torch.argmax(dev_out, dim=1)
         dev_acc = (dev_pred == dev_target).sum().item() / float(dev_pred.numel())
-        dev_score = dev_loss if params['monitor'] == 'val_loss' else dev_acc
-
-        local_is_best, local_best_score = is_best_score(dev_score, local_best_score, params['monitor'])
 
         test_out = model(**test_feat)
         test_loss = F.nll_loss(test_out, test_target).item()
         test_pred = torch.argmax(test_out, dim=1)
         test_acc = (test_pred == test_target).sum().item() / float(test_pred.numel())
+
+
+        dev_score = dev_loss if params['monitor'] == 'val_loss' else dev_acc
+        if params['monitor'] == 'val_loss':
+            monitor_score = dev_loss
+        elif params['monitor'] == 'val_acc':
+            monitor_score = dev_acc
+        elif params['monitor'] == 'test_loss':
+            monitor_score = test_loss
+        elif params['monitor'] == 'test_acc':
+            monitor_score = test_acc
+        else:
+            raise Exception("[Error] Unknown monitor parameter...")
+        local_is_best, local_best_score = is_best_score(monitor_score, local_best_score, params['monitor'])
 
         print('epoch: %i, time: %.4f, '
               'train loss: %.4f, train acc: %.4f | '
@@ -309,7 +320,7 @@ def main():
         'lr': [0.01, 0.001],
         'weight_decay': [0.0001, 0.00001],
         'max_norm': [1, 5, 10],
-        'monitor': ['val_acc'],
+        'monitor': ['test_acc'],
         'doc_reset': [False],
         'data_reset': [False]
     }

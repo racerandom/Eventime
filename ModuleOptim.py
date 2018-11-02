@@ -27,7 +27,7 @@ def is_best_score(score, best_score, monitor):
         is_best = True
         best_score = score
     else:
-        is_best = bool(score < best_score) if monitor == 'val_loss' else bool(score > best_score)
+        is_best = bool(score < best_score) if monitor.endswith('_loss') else bool(score > best_score)
         best_score = score if is_best else best_score
     return is_best, best_score
 
