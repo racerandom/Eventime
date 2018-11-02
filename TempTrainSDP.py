@@ -62,7 +62,7 @@ def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, acti
                    max_sent_len, max_seq_len, max_mention_len, max_word_len,
                    pre_embed, verbose=1, **params):
 
-    model = sentRNN(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
+    model = sentCNN(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
                        max_sent_len, max_seq_len, max_mention_len, max_word_len,
                        pre_embed=pre_embed,
                        verbose=verbose, **params).to(device=device)
@@ -288,6 +288,7 @@ def main():
         'pos_dim': [0],
         'dep_dim': [0],
         'dist_dim': range(5, 30+1, 5),
+        'kernel': range(2, 7, 1),
         'seq_rnn_dim': range(100, 400+1, 10),
         'sent_rnn_dim': range(100, 400+1, 10),
         'sent_out_cat': ['max'],

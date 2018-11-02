@@ -415,8 +415,8 @@ class sentCNN(baseNN):
 
         self.sent_input_dim = self.word_dim + self.char_dim + self.dist_dim
 
-        self.c1 = nn.Conv1d(self.sent_input_dim, self.sent_hidden_dim, 3)
-        self.kernel_dim = self.max_sent_len - 3 + 1
+        self.c1 = nn.Conv1d(self.sent_input_dim, self.sent_hidden_dim, self.params['kernel'])
+        self.kernel_dim = self.max_sent_len - self.params['kernel'] + 1
         self.p1 = nn.MaxPool1d(self.kernel_dim)
         self.conv_dropout = nn.Dropout()
 
