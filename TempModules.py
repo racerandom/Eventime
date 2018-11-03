@@ -1,8 +1,9 @@
+# coding=utf-8
+
 import torch
 import torch.autograd as autograd
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
 from IPython.display import clear_output
 import numpy as np
 import random

@@ -4,8 +4,10 @@ warnings.simplefilter("ignore", UserWarning)
 
 import torch.utils.data as Data
 import torch
+import torch.nn.functional as F
+
 from TempData import *
-from TempModules import *
+import TempModules                 
 from ModuleOptim import *
 from sklearn.metrics import classification_report
 from statistics import mean, median, variance, stdev
@@ -62,15 +64,16 @@ def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, acti
                    max_sent_len, max_seq_len, max_mention_len, max_word_len,
                    pre_embed, verbose=1, **params):
 
-    model = sentCNN(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
-                       max_sent_len, max_seq_len, max_mention_len, max_word_len,
-                       pre_embed=pre_embed,
-                       verbose=verbose, **params).to(device=device)
+    model = getattr(TempModules, params['classification_model'])(
+                wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
+                max_sent_len, max_seq_len, max_mention_len, max_word_len,
+                pre_embed=pre_embed,
+                verbose=verbose, **params).to(device=device)
 
     # optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=params['lr'],
     #                        weight_decay=params['weight_decay'])
 
-    optimizer = getattr(optim, params['optim'])(filter(lambda p: p.requires_grad, model.parameters()))
+    optimizer = getattr(torch.optim, params['optim'])(filter(lambda p: p.requires_grad, model.parameters()))
 
     print(model)
     for name, param in model.named_parameters():
@@ -283,6 +286,7 @@ def main():
         'sent_win': [1],
         'oper_label': [True],
         'link_type': [task],
+        'classification_model':['sentRNN'],
         'init_weight': [None],  # 'xavier', 'kaiming'
         'dropout_sent_in': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
         'elmo': [False],
@@ -296,7 +300,7 @@ def main():
         'sent_rnn_dim': range(5, 500+1, 5),
         'sent_out_cat': ['max'],
         'sdp_out_cat': ['max'],
-        'rnn_layer':[2],
+        'rnn_layer':[1],
         'dropout_sdp_rnn': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
         'dropout_sent_rnn': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
         'dropout_feat': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
@@ -315,7 +319,7 @@ def main():
         'max_norm': [1, 5, 10],
         'monitor': ['test_acc'],
         'doc_reset': [False],
-        'data_reset': [True]
+        'data_reset': [False]
     }
     pretrained_file = "Resources/embed/giga-aacw.d200.bin"
 
