@@ -416,7 +416,7 @@ class sentCNN(baseNN):
         self.c1 = nn.Conv1d(self.sent_input_dim, self.sent_hidden_dim, self.params['kernel'])
         self.kernel_dim = self.max_sent_len - self.params['kernel'] + 1
         self.p1 = nn.MaxPool1d(self.kernel_dim)
-        self.conv_dropout = nn.Dropout()
+        self.conv_dropout = nn.Dropout(p=self.params['dropout_sent'])
 
         if self.params['sdp_rnn']:
             self.sdp_input_dim = self.sent_hidden_dim + \
@@ -436,9 +436,10 @@ class sentCNN(baseNN):
                                         batch_first=True,
                                         bidirectional=True)
 
-            self.sdp_rnn_drop = nn.Dropout(p=self.params['dropout_sdp_rnn'])
+            self.sdp_rnn_drop = nn.Dropout(p=self.params['dropout_sdp'])
 
-        self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
+        if self.params['lexical_feat']:
+            self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
 
         self.fc1_input_dim = (self.sent_hidden_dim if not self.params['sdp_rnn'] else self.seq_hidden_dim) \
                              + (self.word_dim + self.pos_dim + self.dep_dim
@@ -535,6 +536,8 @@ class sentRNN(baseNN):
                                 batch_first=True,
                                 bidirectional=True)
 
+        self.sent_rnn_drop = nn.Dropout(p=self.params['dropout_sent'])
+
         if self.params['sdp_rnn']:
             self.seq_input_dim = self.sent_hidden_dim + \
                                  self.params['pos_dim'] + \
@@ -553,9 +556,10 @@ class sentRNN(baseNN):
                                         batch_first=True,
                                         bidirectional=True)
 
-            self.sdp_rnn_drop = nn.Dropout(p=self.params['dropout_sdp_rnn'])
+            self.sdp_rnn_drop = nn.Dropout(p=self.params['dropout_sdp'])
 
-        self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
+        if self.params['lexical_feat']:
+            self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
 
         self.fc1_input_dim = (self.sent_hidden_dim if not self.params['sdp_rnn'] else self.sdp_hidden_dim) + \
                              ((self.word_dim + self.pos_dim + self.dep_dim) if self.params['lexical_feat'] else 0)
@@ -606,7 +610,7 @@ class sentRNN(baseNN):
         if self.params['sdp_rnn']:
             self.sour_rnn_hidden = self.init_rnn_hidden(batch_size, self.sdp_hidden_dim)
             sour_sdp_out, self.sour_rnn_hidden = self.sour_rnn(sour_sdp_input, self.sour_rnn_hidden)
-            # sour_sdp_out = catOverTime(sour_sdp_out, self.params['sdp_out_cat'])
+            sour_sdp_out = catOverTime(sour_sdp_out, self.params['sdp_out_cat'])
 
             if self.link_type in ['Event-Timex', 'Event-Event']:
                 self.targ_rnn_hidden = self.init_rnn_hidden(batch_size, self.sdp_hidden_dim)
@@ -623,7 +627,7 @@ class sentRNN(baseNN):
         if self.params['sent_rnn']:
             if self.params['sent_sdp']:
                 if self.params['sdp_rnn']:
-                    cat_input.append(self.sdp_rnn_drop(sour_sdp_out[:, -1, :]))
+                    cat_input.append(self.sdp_rnn_drop(sour_sdp_out))
                 else:
                     sour_sdp_out = catOverTime(sour_sdp_input, self.params['sent_out_cat'])
                     cat_input.append(self.feat_drop(sour_sdp_out))
