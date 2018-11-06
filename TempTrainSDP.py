@@ -1,16 +1,15 @@
 # coding=utf-8
 import warnings
-warnings.simplefilter("ignore", UserWarning)
 
-import torch.utils.data as Data
-import torch
+import logging
 import torch.nn.functional as F
 
-from TempData import *
-import TempModules                 
+import TempModules
 from ModuleOptim import *
 from sklearn.metrics import classification_report
 from statistics import mean, median, variance, stdev
+
+warnings.simplefilter("ignore", UserWarning)
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device("cpu")
 print('device:', device)
@@ -20,8 +19,9 @@ print('device:', device)
 # if torch.cuda.is_available():
 #     torch.cuda.manual_seed_all(seed)
 
-import logging
-logger = logging.getLogger("TempTrainSDP.py")
+setup_stream_logger('TempTrainSDP', level=logging.DEBUG)
+logger = logging.getLogger('TempTrainSDP')
+
 
 def preprocessData(task, sent_win, oper, doc_reset):
     timeml_dir = os.path.join(os.path.dirname(__file__), "data/Timebank")
@@ -45,7 +45,6 @@ def preprocessData(task, sent_win, oper, doc_reset):
 
 def splitData(doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
               max_sent_len, max_seq_len, max_mention_len, max_word_len, task):
-
     '''
     print train/dev/test feats shape
     '''
@@ -63,30 +62,30 @@ def splitData(doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
 def model_instance(wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
                    max_sent_len, max_seq_len, max_mention_len, max_word_len,
                    pre_embed, verbose=1, **params):
-
     model = getattr(TempModules, params['classification_model'])(
-                wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
-                max_sent_len, max_seq_len, max_mention_len, max_word_len,
-                pre_embed=pre_embed,
-                verbose=verbose, **params).to(device=device)
+        wvocab_size, cvocab_size, pos_size, dep_size, dist_size, action_size,
+        max_sent_len, max_seq_len, max_mention_len, max_word_len,
+        pre_embed=pre_embed,
+        verbose=verbose, **params).to(device=device)
 
     # optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=params['lr'],
     #                        weight_decay=params['weight_decay'])
 
     optimizer = getattr(torch.optim, params['optim'])(filter(lambda p: p.requires_grad, model.parameters()))
 
-    print(model)
+    logger.debug(model)
     for name, param in model.named_parameters():
         if param.requires_grad:
-            print('*', name)
+            logger.debug('* %s' % name)
+        else:
+            logger.debug('%s' % name)
 
-    print("Parameters:", count_parameters(model))
+    logger.debug("Parameters: %i" % count_parameters(model))
 
     return model, optimizer
 
 
 def optimize_model(pretrained_file, task, param_space, max_evals):
-
     embedding_corpus = pretrained_file.split('/')[-1].split('.')[0]
     pickle_embedding = "data/embedding_%s.pkl" % embedding_corpus
     pickle_data = 'data/task_%s-embedding_%s.pkl' % (param_space['link_type'], embedding_corpus)
@@ -102,7 +101,6 @@ def optimize_model(pretrained_file, task, param_space, max_evals):
         max_sent_len, max_seq_len, max_mention_len, max_word_len = preprocessData(task, sent_win, oper, doc_reset)
 
         word_idx, embedding = slimEmbedding(pretrained_file, pickle_embedding, word_idx, lowercase=False)
-
 
         train_data, dev_data, test_data = splitData(doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
                                                     max_sent_len, max_seq_len, max_mention_len, max_word_len, task)
@@ -124,7 +122,7 @@ def optimize_model(pretrained_file, task, param_space, max_evals):
         for key, values in param_space.items():
             params[key] = random.choice(values)
 
-        print('[Selected %i Params]:' % eval_i, params)
+        logger.info('[Selected %i Params]:' % eval_i, params)
 
         model, optimizer = model_instance(sizeOfVocab(word_idx),
                                           sizeOfVocab(char_idx),
@@ -140,28 +138,30 @@ def optimize_model(pretrained_file, task, param_space, max_evals):
                                           verbose=0,
                                           **params)
 
-        local_monitor_score, local_test_loss, local_test_acc, local_param = train_sdp_model(model, optimizer, train_data, dev_data, test_data, rel_idx, **params)
+        local_monitor_score, local_test_loss, local_test_acc, local_param = train_sdp_model(model, optimizer,
+                                                                                            train_data, dev_data,
+                                                                                            test_data, rel_idx,
+                                                                                            **params)
         monitor_score.append(local_monitor_score)
         test_loss.append(local_test_loss)
         test_acc.append(local_test_acc)
         test_param.append(local_param)
 
         best_index = monitor_score.index(max(monitor_score) if monitor.endswith('acc') else min(monitor_score))
-        print("Current best test_acc: %.4f" % test_acc[best_index])
+        logger.info("Current best test_acc: %.4f" % test_acc[best_index])
 
-    print("test_acc, mean: %.4f, stdev: %.4f" % (mean(test_acc), stdev(test_acc)))
+    logger.info("test_acc, mean: %.4f, stdev: %.4f" % (mean(test_acc), stdev(test_acc)))
     best_index = monitor_score.index(max(monitor_score) if monitor.endswith('acc') else min(monitor_score))
-    print("Final best test_acc: %.4f" % test_acc[best_index])
-    print("Final best params:", test_param[best_index])
+    logger.info("Final best test_acc: %.4f" % test_acc[best_index])
+    logger.info("Final best params:", test_param[best_index])
 
 
 def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, **params):
-
     train_feat_dict, train_target = train_data
     train_feat_types = list(train_feat_dict.keys())
     train_feat_list = list(train_feat_dict.values())
 
-    train_dataset = MultipleDatasets(*train_feat_list, train_target)
+    train_dataset = MultipleDatasets(*(train_feat_list + [train_target]))
 
     train_data_loader = Data.DataLoader(
         dataset=train_dataset,
@@ -198,32 +198,33 @@ def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, *
             epoch_acc.append((pred == train_epoch_target).sum().item() / float(pred.numel()))
 
         model.eval()
-        # with torch.no_grad():
-        dev_out = model(**dev_feat)
-        dev_loss = F.nll_loss(dev_out, dev_target).item()
-        dev_pred = torch.argmax(dev_out, dim=1)
-        dev_acc = (dev_pred == dev_target).sum().item() / float(dev_pred.numel())
+        with torch.no_grad():
+            dev_out = model(**dev_feat)
+            dev_loss = F.nll_loss(dev_out, dev_target).item()
+            dev_pred = torch.argmax(dev_out, dim=1)
+            dev_acc = (dev_pred == dev_target).sum().item() / float(dev_pred.numel())
 
-        test_out = model(**test_feat)
-        test_loss = F.nll_loss(test_out, test_target).item()
-        test_pred = torch.argmax(test_out, dim=1)
-        test_acc = (test_pred == test_target).sum().item() / float(test_pred.numel())
+            test_out = model(**test_feat)
+            test_loss = F.nll_loss(test_out, test_target).item()
+            test_pred = torch.argmax(test_out, dim=1)
+            test_acc = (test_pred == test_target).sum().item() / float(test_pred.numel())
 
         monitor_score = locals()[params['monitor']]
 
         local_is_best, local_best_score = is_best_score(monitor_score, local_best_score, params['monitor'])
 
-        print('epoch: %i, time: %.4f, '
-              'train loss: %.4f, train acc: %.4f | '
-              'dev loss: %.4f, dev acc: %.4f | '
-              'test loss: %.4f, test acc: %.4f' % (epoch,
-                                                   time.time() - start_time,
-                                                   sum(epoch_loss)/float(len(epoch_loss)),
-                                                   sum(epoch_acc)/float(len(epoch_acc)),
-                                                   dev_loss,
-                                                   dev_acc,
-                                                   test_loss,
-                                                   test_acc))
+        logger.info(
+            'epoch: %i, time: %.4f, '
+            'train loss: %.4f, train acc: %.4f | '
+            'dev loss: %.4f, dev acc: %.4f | '
+            'test loss: %.4f, test acc: %.4f' % (epoch,
+                                                 time.time() - start_time,
+                                                 sum(epoch_loss) / float(len(epoch_loss)),
+                                                 sum(epoch_acc) / float(len(epoch_acc)),
+                                                 dev_loss,
+                                                 dev_acc,
+                                                 test_loss,
+                                                 test_acc))
         if local_is_best:
             local_best_state = {'best_score': local_best_score,
                                 'val_loss': dev_loss,
@@ -246,10 +247,13 @@ def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, *
         }, local_is_best, "models/best.pth")
 
     local_checkpoint = torch.load("models/best.pth", map_location=lambda storage, loc: storage)
-    print('Local best: val_loss %.4f, val_acc %.4f | test_loss %.4f, test_acc %.4f' % (local_checkpoint['val_loss'],
-                                                                                       local_checkpoint['val_acc'],
-                                                                                       local_checkpoint['test_loss'],
-                                                                                       local_checkpoint['test_acc']))
+    logger.info('Local best: val_loss %.4f, val_acc %.4f | test_loss %.4f, test_acc %.4f' % (
+        local_checkpoint['val_loss'],
+        local_checkpoint['val_acc'],
+        local_checkpoint['test_loss'],
+        local_checkpoint['test_acc']
+    ))
+
     model.load_state_dict(local_checkpoint['state_dict'])
 
     eval_data(model, test_feat, test_target, labels)
@@ -257,7 +261,6 @@ def train_sdp_model(model, optimizer, train_data, dev_data, test_data, labels, *
 
 
 def eval_data(model, feat_dict, target, rel_idx):
-
     model.eval()
 
     with torch.no_grad():
@@ -267,7 +270,7 @@ def eval_data(model, feat_dict, target, rel_idx):
         pred = torch.argmax(out, dim=1)
         acc = (pred == target).sum().item() / float(pred.numel())
 
-        idx_set = list(set([ p.item() for p in pred]).union(set([ t.item() for t in target])))
+        idx_set = list(set([p.item() for p in pred]).union(set([t.item() for t in target])))
 
         print('-' * 80)
         print(classification_report(pred,
@@ -279,14 +282,13 @@ def eval_data(model, feat_dict, target, rel_idx):
 
 
 def main():
-
     task = 'day_len'
 
     param_space = {
         'sent_win': [1],
         'oper_label': [True],
         'link_type': [task],
-        'classification_model':['sentRNN'],
+        'classification_model': ['sentRNN'],
         'init_weight': [None],  # 'xavier', 'kaiming'
         'dropout_sent_in': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
         'elmo': [False],
@@ -294,22 +296,22 @@ def main():
         'char_dim': [0],
         'pos_dim': [0],
         'dep_dim': [0],
-        'dist_dim': range(5, 30+1, 1),
+        'dist_dim': [0],
         'kernel': range(2, 7, 1),
-        'seq_rnn_dim': range(100, 400+1, 10),
-        'sent_rnn_dim': range(5, 500+1, 5),
+        'seq_rnn_dim': range(100, 500 + 1, 10),
+        'sent_rnn_dim': range(100, 500 + 1, 10),
         'sent_out_cat': ['max'],
         'sdp_out_cat': ['max'],
-        'rnn_layer':[1],
+        'rnn_layer': [1],
         'dropout_sdp_rnn': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
         'dropout_sent_rnn': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
         'dropout_feat': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
         'mention_cat': ['sum', 'max', 'mean'],
-        'fc_hidden_dim': range(5, 300+1, 5),
+        'fc_hidden_dim': range(100, 500 + 1, 10),
         'sent_sdp': [True],
         'sent_rnn': [True],
-        'sdp_rnn': [False],
-        'lexical_feat': [True],
+        'sdp_rnn': [True],
+        'lexical_feat': [False],
         'dropout_fc': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
         'batch_size': [32, 64, 128],
         'epoch_num': [20],

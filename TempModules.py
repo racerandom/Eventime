@@ -13,14 +13,10 @@ import gensim
 from allennlp.modules.elmo import Elmo, batch_to_ids
 
 import TempUtils
-from TempData import MultipleDatasets
 import logging
-logger = logging.getLogger("TempTrainSDP.py")
+logger = logging.getLogger('TempTrainSDP')
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-import random
 
 
 def is_sdp_feat(feat_type):
@@ -96,7 +92,7 @@ def seq_input_dim(params, word_dim):
 
 def getPartOfTensor3D(tensor, index, pad_direct="right"):
     """
-    Retrieve SDP seq from RNN output
+    Retrieve SDP elements from sent RNN output
     :param tensor: RNN output seq (batch_size, max_sent_len, hidden_dim)
     :param index:  SDP index (batch_size, max_SDP_len), element value is conll_id, padded with zeros
     :param pad_direct: defaut 'right' to padding zero tensor
@@ -372,7 +368,8 @@ class TempAttnCNN(nn.Module):
         cat_inputs = [self.conv_dropout(attn_out.squeeze(-1))]
         for feat, feat_type in zip(feat_inputs, feat_types):
             if not is_sdp_feat(feat_type):
-                if (which_feat(feat_type) == 'word' and params['cat_word_tok']) or (which_feat(feat_type) == 'dist' and params['cat_dist_tok']):
+                if (which_feat(feat_type) == 'word' and params['cat_word_tok']) or \
+                        (which_feat(feat_type) == 'dist' and params['cat_dist_tok']):
                     if params['mention_cat'] == 'sum':
                         mention_feat = feat.sum(dim=1)
                     elif params['mention_cat'] == 'max':
@@ -443,7 +440,7 @@ class sentCNN(baseNN):
 
         self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
 
-        self.fc1_input_dim = self.sent_hidden_dim \
+        self.fc1_input_dim = (self.sent_hidden_dim if not self.params['sdp_rnn'] else self.seq_hidden_dim) \
                              + (self.word_dim + self.pos_dim + self.dep_dim
                                 if self.params['lexical_feat']
                                 else 0)
@@ -560,8 +557,8 @@ class sentRNN(baseNN):
 
         self.feat_drop = nn.Dropout(p=self.params['dropout_feat'])
 
-        self.fc1_input_dim = self.sent_hidden_dim + \
-                             (self.word_dim + self.pos_dim + self.dep_dim if self.params['lexical_feat'] else 0)
+        self.fc1_input_dim = (self.sent_hidden_dim if not self.params['sdp_rnn'] else self.sdp_hidden_dim) + \
+                             ((self.word_dim + self.pos_dim + self.dep_dim) if self.params['lexical_feat'] else 0)
 
         self.fc1 = nn.Linear(self.fc1_input_dim, self.params['fc_hidden_dim'])
         self.fc1_drop = nn.Dropout(p=self.params['dropout_fc'])
@@ -609,7 +606,7 @@ class sentRNN(baseNN):
         if self.params['sdp_rnn']:
             self.sour_rnn_hidden = self.init_rnn_hidden(batch_size, self.sdp_hidden_dim)
             sour_sdp_out, self.sour_rnn_hidden = self.sour_rnn(sour_sdp_input, self.sour_rnn_hidden)
-            sour_sdp_out = catOverTime(sour_sdp_out, self.params['sdp_out_cat'])
+            # sour_sdp_out = catOverTime(sour_sdp_out, self.params['sdp_out_cat'])
 
             if self.link_type in ['Event-Timex', 'Event-Event']:
                 self.targ_rnn_hidden = self.init_rnn_hidden(batch_size, self.sdp_hidden_dim)
@@ -626,7 +623,7 @@ class sentRNN(baseNN):
         if self.params['sent_rnn']:
             if self.params['sent_sdp']:
                 if self.params['sdp_rnn']:
-                    cat_input.append(self.sdp_rnn_drop(sour_sdp_out))
+                    cat_input.append(self.sdp_rnn_drop(sour_sdp_out[:, -1, :]))
                 else:
                     sour_sdp_out = catOverTime(sour_sdp_input, self.params['sent_out_cat'])
                     cat_input.append(self.feat_drop(sour_sdp_out))

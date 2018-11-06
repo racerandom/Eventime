@@ -8,14 +8,6 @@ from TempData import *
 from sklearn.metrics import classification_report
 from statistics import mean, median, variance, stdev
 
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device("cpu")
-print('device:', device)
-
-seed = 2
-torch.manual_seed(seed)
-if torch.cuda.is_available():
-    torch.cuda.manual_seed_all(seed)
-
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)

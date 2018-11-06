@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import gensim
 import numpy as np
-
+import logging
 import time
 
 
@@ -289,7 +289,6 @@ def getMentionDist(tokens, sour):
     return dist
 
 
-
 def dict2str(dic):
     out = []
     for k, v in dic.items():
@@ -297,3 +296,25 @@ def dict2str(dic):
     return ','.join(out)
 
 
+def setup_logger(logger_name, log_file, level=logging.INFO):
+    l = logging.getLogger(logger_name)
+    formatter = logging.Formatter('%(message)s')
+    fileHandler = logging.FileHandler(log_file, mode='w')
+    fileHandler.setFormatter(formatter)
+    streamHandler = logging.StreamHandler()
+    streamHandler.setFormatter(formatter)
+
+    l.setLevel(level)
+    l.addHandler(fileHandler)
+    l.addHandler(streamHandler)
+
+
+def setup_stream_logger(logger_name, level=logging.INFO):
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(level)
+
+    formatter = logging.Formatter('%(message)s')
+    streamHandler = logging.StreamHandler()
+    streamHandler.setFormatter(formatter)
+
+    logger.addHandler(streamHandler)
