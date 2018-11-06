@@ -536,7 +536,8 @@ class sentRNN(baseNN):
                                 batch_first=True,
                                 bidirectional=True)
 
-        self.sent_rnn_drop = nn.Dropout(p=self.params['dropout_sent'])
+        if not self.params['sent_sdp']:
+            self.sent_rnn_drop = nn.Dropout(p=self.params['dropout_sent'])
 
         if self.params['sdp_rnn']:
             self.seq_input_dim = self.sent_hidden_dim + \
@@ -556,6 +557,7 @@ class sentRNN(baseNN):
                                         batch_first=True,
                                         bidirectional=True)
 
+        if self.params['sent_sdp']:
             self.sdp_rnn_drop = nn.Dropout(p=self.params['dropout_sdp'])
 
         if self.params['lexical_feat']:
@@ -610,7 +612,6 @@ class sentRNN(baseNN):
         if self.params['sdp_rnn']:
             self.sour_rnn_hidden = self.init_rnn_hidden(batch_size, self.sdp_hidden_dim)
             sour_sdp_out, self.sour_rnn_hidden = self.sour_rnn(sour_sdp_input, self.sour_rnn_hidden)
-            sour_sdp_out = catOverTime(sour_sdp_out, self.params['sdp_out_cat'])
 
             if self.link_type in ['Event-Timex', 'Event-Event']:
                 self.targ_rnn_hidden = self.init_rnn_hidden(batch_size, self.sdp_hidden_dim)
@@ -627,13 +628,15 @@ class sentRNN(baseNN):
         if self.params['sent_rnn']:
             if self.params['sent_sdp']:
                 if self.params['sdp_rnn']:
+                    sour_sdp_out = catOverTime(sour_sdp_out, self.params['sdp_out_cat'])
                     cat_input.append(self.sdp_rnn_drop(sour_sdp_out))
                 else:
                     sour_sdp_out = catOverTime(sour_sdp_input, self.params['sent_out_cat'])
-                    cat_input.append(self.feat_drop(sour_sdp_out))
+                    cat_input.append(self.sdp_rnn_drop(sour_sdp_out))
             else:
                 sent_rnn_out = catOverTime(sent_rnn_out, self.params['sent_out_cat'])
-                cat_input.append(self.feat_drop(sent_rnn_out))
+                cat_input.append(self.sent_rnn_drop(sent_rnn_out))
+
 
 
         if self.params['lexical_feat']:
