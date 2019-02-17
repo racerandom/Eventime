@@ -100,7 +100,11 @@ def optimize_model(train_file, test_file, embed_file, param_space,
     train_dataset, val_dataset, test_dataset, \
     word2ix, ldis2ix, targ2ix, max_sent_len, pretrained_embed = data_load_ET()
 
-    logger.info('Word size %i, ldis size %i...' % (len(word2ix), len(ldis2ix)))
+    logger.info('Word size %i, ldis size %i, max sentence len %i...' % (
+        len(word2ix),
+        len(ldis2ix),
+        max_sent_len
+    ))
     logger.info('Train/Val/Test data size: %i / %i / %i' % (len(train_dataset[-1]),
                                                             len(val_dataset[-1]),
                                                             len(test_dataset[-1])))

@@ -879,7 +879,7 @@ def main():
     # # #
     # split_doc_pkl(trainall_pkl, train_pkl, val_pkl, train_ratio=0.85, seed=23)
 
-    train_doc_dic = preprocess_doc(train_pkl, oper=oper, sent_win=10, reverse_rel=reverse_rel)
+    train_doc_dic = preprocess_doc(train_pkl, oper=oper, sent_win=5, reverse_rel=reverse_rel)
     val_doc_dic = preprocess_doc(val_pkl, oper=oper, sent_win=2, reverse_rel=reverse_rel)
     test_doc_dic = preprocess_doc(test_pkl, oper=oper, sent_win=2, reverse_rel=reverse_rel)
 
