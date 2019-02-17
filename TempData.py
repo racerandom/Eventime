@@ -866,7 +866,7 @@ def main():
     oper = 3
     sent_win=1
     addSEP=True
-    reverse_rel=True
+    reverse_rel=False
 
     train_pkl = "data/20190202_train.pkl"
     val_pkl = "data/20190202_val.pkl"
