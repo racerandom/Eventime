@@ -319,11 +319,11 @@ def feats2tensor_dict(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, m
     return tensor_dict, target_tensor
 
 
-def prepare_feats(doc_pkl_file, link_type, addSEP=None):
+def prepare_feats(doc_dic, link_type, addSEP=None):
 
     feat_dic, targets = defaultdict(list), []
 
-    doc_dic = load_doc(doc_pkl_file)
+    # doc_dic = load_doc(doc_pkl_file)
 
     for doc_id, doc in doc_dic.items():
 
@@ -571,7 +571,7 @@ def writeTimeML2txt(timeml_file, out_dir):
         fo.write(str_out)
 
 
-def AnchorML2doc(anchorml_dir, pkl_file, oper=3, anchor_type='anchor1', sent_win=0, reverse_rel=None):
+def AnchorML2doc(anchorml_dir, pkl_file):
     """
     1. load anchorml files and return a doc object
     2. normalize the tanchors of all the timex entities
@@ -581,29 +581,37 @@ def AnchorML2doc(anchorml_dir, pkl_file, oper=3, anchor_type='anchor1', sent_win
 
     anchorml_list = [os.path.join(anchorml_dir, filename) for filename in sorted(os.listdir(anchorml_dir))]
     doc_dic = {}
-    non_count = 0
+    # non_count = 0
     for filename in anchorml_list:
         try:
             doc = load_anchorml(filename)
-            doc.setSentIds2mention()  # set a sent_id to each mention and token in a doc
-            doc.normalize_timex_value(verbose=0)
-            doc.normalize_event_value(anchor_type, verbose=0)
-            for e_id, event in doc.events.items():
-                if not event.tanchor:
-                    non_count += 1
-                    print(e_id, event.value, event.tanchor)
-            doc.geneEventDCTPair(oper=oper)
-            doc.geneEventTimexPair(sent_win, order=False, oper=oper, reverse_rel=reverse_rel)
-
             doc_dic[doc.docid] = doc
         except Exception as ex:
             traceback.print_exc()
             print(filename, ex)
 
     save_doc(doc_dic, pkl_file)
+    # print("Event num: %i" % sum([len(doc.events) for doc in doc_dic.values()]))
+    # print(", non event", non_count)
+
+
+def preprocess_doc(doc_pkl, oper=3, anchor_type='anchor1', sent_win=0, reverse_rel=None):
+
+    doc_dic = load_pickle(doc_pkl)
+    non_count = 0
+    for doc_id, doc in doc_dic.items():
+        doc.setSentIds2mention()  # set a sent_id to each mention and token in a doc
+        doc.normalize_timex_value(verbose=0)
+        doc.normalize_event_value(anchor_type, verbose=0)
+        for e_id, event in doc.events.items():
+            if not event.tanchor:
+                non_count += 1
+                print(e_id, event.value, event.tanchor)
+        doc.geneEventDCTPair(oper=oper)
+        doc.geneEventTimexPair(sent_win, order=False, oper=oper, reverse_rel=reverse_rel)
     print("Event num: %i" % sum([len(doc.events) for doc in doc_dic.values()]))
     print(", non event", non_count)
-
+    return doc_dic
 
 ## 1. load event anchor from an aditional file and return a doc object
 ## 2. normalize the tanchors of all the timex entities
@@ -864,18 +872,22 @@ def main():
     val_pkl = "data/20190202_val.pkl"
     test_pkl = "data/20190202_test.pkl"
 
-    AnchorML2doc(anchorml_train, trainall_pkl, oper=oper, sent_win=2, reverse_rel=reverse_rel)
-    AnchorML2doc(anchorml_test, test_pkl, oper=oper, sent_win=2, reverse_rel=reverse_rel)
-    # #
-    # # distrib_labels(load_doc(test_pkl))
-    # #
-    split_doc_pkl(trainall_pkl, train_pkl, val_pkl, train_ratio=0.85, seed=23)
+    # AnchorML2doc(anchorml_train, trainall_pkl)
+    # AnchorML2doc(anchorml_test, test_pkl)
+    # # #
+    # # # distrib_labels(load_doc(test_pkl))
+    # # #
+    # split_doc_pkl(trainall_pkl, train_pkl, val_pkl, train_ratio=0.85, seed=23)
 
-    train_dataset = prepare_feats(train_pkl, link_type, addSEP=addSEP)
+    train_doc_dic = preprocess_doc(train_pkl, oper=oper, sent_win=10, reverse_rel=reverse_rel)
+    val_doc_dic = preprocess_doc(val_pkl, oper=oper, sent_win=2, reverse_rel=reverse_rel)
+    test_doc_dic = preprocess_doc(test_pkl, oper=oper, sent_win=2, reverse_rel=reverse_rel)
 
-    val_dataset = prepare_feats(val_pkl, link_type, addSEP=addSEP)
+    train_dataset = prepare_feats(train_doc_dic, link_type, addSEP=addSEP)
 
-    test_dataset = prepare_feats(test_pkl, link_type, addSEP=addSEP)
+    val_dataset = prepare_feats(val_doc_dic, link_type, addSEP=addSEP)
+
+    test_dataset = prepare_feats(test_doc_dic, link_type, addSEP=addSEP)
     #
     word2ix, ldis2ix, targ2ix, max_sent_len = prepare_global_ED(train_dataset,
                                                                 val_dataset,
