@@ -571,7 +571,7 @@ def writeTimeML2txt(timeml_file, out_dir):
         fo.write(str_out)
 
 
-def AnchorML2doc(anchorml_dir, pkl_file, oper=3, anchor_type='anchor1', sent_win=0):
+def AnchorML2doc(anchorml_dir, pkl_file, oper=3, anchor_type='anchor1', sent_win=0, reverse_rel=False):
     """
     1. load anchorml files and return a doc object
     2. normalize the tanchors of all the timex entities
@@ -593,7 +593,7 @@ def AnchorML2doc(anchorml_dir, pkl_file, oper=3, anchor_type='anchor1', sent_win
                     non_count += 1
                     print(e_id, event.value, event.tanchor)
             doc.geneEventDCTPair(oper=oper)
-            doc.geneEventTimexPair(sent_win, order=False, oper=oper)
+            doc.geneEventTimexPair(sent_win, order=False, oper=oper, reverse_rel=reverse_rel)
 
             doc_dic[doc.docid] = doc
         except Exception as ex:
@@ -857,21 +857,20 @@ def main():
     link_type = 'Event-Timex'
     oper = 3
     sent_win=1
-    addSEP=False
+    addSEP=True
+    reverse_rel=True
 
     train_pkl = "data/20190202_train.pkl"
     val_pkl = "data/20190202_val.pkl"
     test_pkl = "data/20190202_test.pkl"
 
-    addSEP = True
-
-    AnchorML2doc(anchorml_train, trainall_pkl, oper=oper, sent_win=5)
-    AnchorML2doc(anchorml_test, test_pkl, oper=oper, sent_win=1)
+    AnchorML2doc(anchorml_train, trainall_pkl, oper=oper, sent_win=5, reverse_rel=reverse_rel)
+    AnchorML2doc(anchorml_test, test_pkl, oper=oper, sent_win=1, reverse_rel=reverse_rel)
     # #
     # # distrib_labels(load_doc(test_pkl))
     # #
     split_doc_pkl(trainall_pkl, train_pkl, val_pkl, train_ratio=0.85, seed=23)
-    #
+
     train_dataset = prepare_feats(train_pkl, link_type, addSEP=addSEP)
 
     val_dataset = prepare_feats(val_pkl, link_type, addSEP=addSEP)

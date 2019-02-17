@@ -677,7 +677,7 @@ class TimeMLDoc:
             self.add_temp_link(link)
             lid += 1
 
-    def geneEventTimexPair(self, sent_win, order=True, oper=1):
+    def geneEventTimexPair(self, sent_win, order=True, oper=1, reverse_rel=False):
         lid = 0
 
         if oper == 0:
@@ -705,7 +705,8 @@ class TimeMLDoc:
                         sour, targ = event, timex
                     else:
                         sour, targ = timex, event
-                        is_reverse = True
+                        if reverse_rel:
+                            is_reverse = True
 
                 link = TempLink(lid='let%i' % lid,
                                 sour=sour,

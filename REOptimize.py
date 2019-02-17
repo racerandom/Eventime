@@ -373,20 +373,20 @@ def main():
         'dsdp_dim': [25],
         'dist_dim': [25],
         'input_dropout': [0.3],     # hyper-parameters of neural networks
-        'rnn_hidden_dim': [200],
+        'rnn_hidden_dim': [300],
         'rnn_layer': [1],
         'rnn_dropout': [0.3],
         'attn_dropout': [0.3],
-        'fc1_hidden_dim': [200],
+        'fc1_hidden_dim': [300],
         'fc1_dropout': [0.5],
-        'batch_size': [32],
-        'epoch_num': [1],
+        'batch_size': [64],
+        'epoch_num': [200],
         'lr': [1e-0],           # hyper-parameters of optimizer
         'weight_decay': [1e-4],
         'max_norm': [4],
         'patience': [10],       # early stopping
         'monitor': ['val_acc'],
-        'check_interval': [30],    # checkpoint based on val performance given a step interval
+        'check_interval': [100],    # checkpoint based on val performance given a step interval
         'kbest_checkpoint': [5],
         'ranking_loss': [False],    # ranking loss for the baseRNN model
         'omit_other': [False],
