@@ -380,10 +380,10 @@ def getEndPosition(sour, targ):
             right_mention.append(tok_id - sour.tok_ids[-1])
     return left_mention, right_mention
 
-def getMentionDist(tokens, sour):
+def getMentionDist(tokens, sour, prefix='e'):
     dist = []
     for tok in tokens:
-        dist.append(tok.tok_id - sour.tok_ids[-1])
+        dist.append('%s:%s' % (prefix, tok.tok_id - sour.tok_ids[-1]))
     return dist
 
 

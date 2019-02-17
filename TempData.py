@@ -337,7 +337,7 @@ def prepare_feats(doc_pkl_file, link_type, addSEP=None):
                     feat_dic['full_word_sent'].append(sent_tokens)
                 else:
                     feat_dic['full_word_sent'].append([token.content for token in sent_tokens])
-                    feat_dic['sour_dist_sent'].append(getMentionDist(sent_tokens, link.sour))
+                    feat_dic['sour_dist_sent'].append(getMentionDist(sent_tokens, link.sour, prefix='e'))
             elif link_type == 'Event-Timex':
                 # print(link.sour.tok_ids, link.targ.tok_ids)
                 sent_tokens = doc.geneSentTokens(link.sour, link.targ, addSEP=addSEP)
@@ -346,8 +346,10 @@ def prepare_feats(doc_pkl_file, link_type, addSEP=None):
                 else:
                     feat_dic['full_word_sent'].append([token.content for token in sent_tokens])
                 # feat_dic['full_word_sent'].append([tok.content for tok in sent_tokens])
-                # feat_dic['sour_dist_sent'].append(getMentionDist(sent_tokens, link.sour))
-                # feat_dic['sour_dist_sent'].append(getMentionDist(sent_tokens, link.sour))
+                    sour_prefix = 'e' if link.sour.mention_type in ['Event'] else 't'
+                    targ_prefix = 'e' if link.sour.mention_type in ['Event'] else 't'
+                    feat_dic['sour_dist_sent'].append(getMentionDist(sent_tokens, link.sour, prefix=sour_prefix))
+                    feat_dic['targ_dist_sent'].append(getMentionDist(sent_tokens, link.targ, prefix=targ_prefix))
             else:
                 raise Exception("[ERROR] Unknown link_type parameter!!!")
 
@@ -852,7 +854,7 @@ def main():
     anchorml_train = "/Users/fei-c/Resources/timex/AnchorData/all_20190202/train"
     anchorml_test = "/Users/fei-c/Resources/timex/AnchorData/all_20190202/test"
     trainall_pkl = "data/20190202_trainall.pkl"
-    link_type = 'Event-DCT'
+    link_type = 'Event-Timex'
     oper = 3
     sent_win=1
     addSEP=False

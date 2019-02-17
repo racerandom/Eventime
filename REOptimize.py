@@ -68,7 +68,7 @@ def model_instance_ET(word_size, dist_size, targ2ix,
 
 def data_load_ET():
 
-    link_type = 'Event-DCT'
+    link_type = 'Event-Timex'
 
     train_dataset = TempUtils.load_pickle('data/eventime/120190202_train_tensor_%s.pkl' % link_type)
 
@@ -100,7 +100,10 @@ def optimize_model(train_file, test_file, embed_file, param_space,
     train_dataset, val_dataset, test_dataset, \
     word2ix, ldis2ix, targ2ix, max_sent_len, pretrained_embed = data_load_ET()
 
-    print('Word size %i, ldis size %i...' % (len(word2ix), len(ldis2ix)))
+    logger.info('Word size %i, ldis size %i...' % (len(word2ix), len(ldis2ix)))
+    logger.info('Train/Val/Test data size: %i / %i / %i' % (len(train_dataset[-1]),
+                                                            len(val_dataset[-1]),
+                                                            len(test_dataset[-1])))
 
     # train_dataset = (train_dataset[: -1], train_dataset[-1])
     # val_dataset = (val_dataset[: -1], val_dataset[-1])

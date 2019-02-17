@@ -57,14 +57,14 @@ class TempAttnRNN(nn.Module):
 
         batch_size = tensor_feats[0].shape[0]
 
-        word_embed_input = self.word_embeddings(tensor_feats[0])
+        rnn_input = self.word_embeddings(tensor_feats[0])
 
         if self.dist_size > 0:
-            dist_embed_input = self.dist_embeddings(tensor_feats[1])
-            rnn_input = torch.cat((word_embed_input, dist_embed_input), dim=-1)
+            for t_f in tensor_feats[1:3]:
+                rnn_input = torch.cat((rnn_input, self.dist_embeddings(t_f)), dim=-1)
             rnn_input = self.input_dropout(rnn_input)
         else:
-            rnn_input = self.input_dropout(word_embed_input)
+            rnn_input = self.input_dropout(rnn_input)
 
         rnn_hidden = self.init_rnn_hidden(batch_size,
                                           self.params['rnn_hidden_dim'],
@@ -141,14 +141,14 @@ class TempRNN(nn.Module):
 
         batch_size = tensor_feats[0].shape[0]
 
-        word_embed_input = self.word_embeddings(tensor_feats[0])
+        rnn_input = self.word_embeddings(tensor_feats[0])
 
         if self.dist_size > 0:
-            dist_embed_input = self.dist_embeddings(tensor_feats[1])
-            rnn_input = torch.cat((word_embed_input, dist_embed_input), dim=-1)
+            for t_f in tensor_feats[1:3]:
+                rnn_input = torch.cat((rnn_input, self.dist_embeddings(t_f)), dim=-1)
             rnn_input = self.input_dropout(rnn_input)
         else:
-            rnn_input = self.input_dropout(word_embed_input)
+            rnn_input = self.input_dropout(rnn_input)
 
         rnn_hidden = self.init_rnn_hidden(batch_size,
                                           self.params['rnn_hidden_dim'],
