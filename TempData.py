@@ -571,7 +571,7 @@ def writeTimeML2txt(timeml_file, out_dir):
         fo.write(str_out)
 
 
-def AnchorML2doc(anchorml_dir, pkl_file, oper=3, anchor_type='anchor1', sent_win=0, reverse_rel=False):
+def AnchorML2doc(anchorml_dir, pkl_file, oper=3, anchor_type='anchor1', sent_win=0, reverse_rel=None):
     """
     1. load anchorml files and return a doc object
     2. normalize the tanchors of all the timex entities
@@ -864,8 +864,8 @@ def main():
     val_pkl = "data/20190202_val.pkl"
     test_pkl = "data/20190202_test.pkl"
 
-    AnchorML2doc(anchorml_train, trainall_pkl, oper=oper, sent_win=5, reverse_rel=reverse_rel)
-    AnchorML2doc(anchorml_test, test_pkl, oper=oper, sent_win=1, reverse_rel=reverse_rel)
+    AnchorML2doc(anchorml_train, trainall_pkl, oper=oper, sent_win=2, reverse_rel=reverse_rel)
+    AnchorML2doc(anchorml_test, test_pkl, oper=oper, sent_win=2, reverse_rel=reverse_rel)
     # #
     # # distrib_labels(load_doc(test_pkl))
     # #
