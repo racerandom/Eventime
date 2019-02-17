@@ -863,12 +863,12 @@ def main():
     val_pkl = "data/20190202_val.pkl"
     test_pkl = "data/20190202_test.pkl"
 
-    # AnchorML2doc(anchorml_train, trainall_pkl, oper=oper, sent_win=10)
-    # AnchorML2doc(anchorml_test, test_pkl, oper=oper, sent_win=1)
+    AnchorML2doc(anchorml_train, trainall_pkl, oper=oper, sent_win=5)
+    AnchorML2doc(anchorml_test, test_pkl, oper=oper, sent_win=1)
     # #
     # # distrib_labels(load_doc(test_pkl))
     # #
-    # split_doc_pkl(trainall_pkl, train_pkl, val_pkl, train_ratio=0.85, seed=23)
+    split_doc_pkl(trainall_pkl, train_pkl, val_pkl, train_ratio=0.85, seed=23)
     #
     train_dataset = prepare_feats(train_pkl, link_type)
 
