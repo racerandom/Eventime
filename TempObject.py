@@ -1,3 +1,5 @@
+import unittest
+
 from TempNormalization import *
 from TempOrder import InduceMethod
 import TempUtils
@@ -532,7 +534,6 @@ class TimeMLDoc:
                     print(index, self.tokens[index].content)
                     raise Exception("Sentence and token aren't matching")
 
-
     def setSentIds2mention(self):
         self.setSentIds2tok()
         for event in self.events.values():
@@ -560,7 +561,7 @@ class TimeMLDoc:
         toks = self.tokens[left_id: right_id + 1]
         return [ tok.content for tok in toks]
 
-    def geneSentTokens(self, source, target):
+    def geneSentTokens(self, source, target, addSEP=False):
 
         begin_id = source.tok_ids[0]
         end_id = target.tok_ids[-1]
@@ -575,10 +576,27 @@ class TimeMLDoc:
                 break
             end_id = j
 
-        toks = self.tokens[begin_id: end_id + 1]
-        return toks
+        if addSEP:
+            prev_toks = self.tokens[begin_id: source.tok_ids[0]]
+            if source.mention_type == 'Event':
+                sour_toks = ['<e>'] + [self.tokens[tok_id].content for tok_id in source.tok_ids] + ['</e>']
+            elif source.mention_type == 'Timex':
+                sour_toks = ['<t>'] + [self.tokens[tok_id].content for tok_id in source.tok_ids] + ['</t>']
+            middle_toks = self.tokens[source.tok_ids[-1] + 1: target.tok_ids[0]]
+            if target.mention_type == 'Event':
+                targ_toks = ['<e>'] + [self.tokens[tok_id].content for tok_id in target.tok_ids] + ['</e>']
+            elif target.mention_type == 'Timex':
+                targ_toks = ['<t>'] + [self.tokens[tok_id].content for tok_id in target.tok_ids] + ['</t>']
+            next_toks = self.tokens[target.tok_ids[-1] + 1: end_id + 1]
+            return [tok.content for tok in prev_toks] + \
+                   sour_toks + \
+                   [tok.content for tok in middle_toks] + \
+                   targ_toks + \
+                   [tok.content for tok in next_toks]
+        else:
+            return self.tokens[begin_id: end_id + 1]
 
-    def geneSentOfMention(self, source):
+    def geneSentOfMention(self, source, addSEP=False):
 
         begin_id = source.tok_ids[0]
         end_id = source.tok_ids[-1]
@@ -593,8 +611,13 @@ class TimeMLDoc:
                 break
             end_id = j
 
-        toks = self.tokens[begin_id: end_id + 1]
-        return toks
+        if addSEP:
+            prev_toks = self.tokens[begin_id: source.tok_ids[0]]
+            next_toks = self.tokens[source.tok_ids[-1] + 1: end_id + 1]
+            men_toks = ['<e>'] + [self.tokens[id].content for id in source.tok_ids] + ['</e>']
+            return [tok.content for tok in prev_toks] + men_toks + [tok.content for tok in next_toks]
+        else:
+            return self.tokens[begin_id: end_id + 1]
 
     def getSdpFromMentionToRoot(self, mention, direct='mention2root', dep_ver='SD'):
         sent_tokens = self.geneSentOfMention(mention)
@@ -620,7 +643,7 @@ class TimeMLDoc:
                 [ dep_graph.get_by_address(conll_id)['tag'] for conll_id in conll_ids],
                 [ dep_graph.get_by_address(conll_id)['rel'] for conll_id in conll_ids])
 
-    def getTlinkListByMention(self, mention_id, link_types=['Event-DCT', 'Event-Timex']):
+    def getTlinkListByMention(self, mention_id, link_types):
         tlinks = []
         for link_type in link_types:
             for link in self.temp_links[link_type]:
@@ -628,27 +651,52 @@ class TimeMLDoc:
                     tlinks.append(link)
         return tlinks
 
-
-    def geneEventDCTPair(self, oper=False):
+    def geneEventDCTPair(self, oper=1):
         lid = 0
+
+        if oper == 0:
+            induceMethod = InduceMethod.induceRelationWithSourEvent
+        elif oper == 1:
+            induceMethod = InduceMethod.induce_update_action0
+        elif oper == 2:
+            induceMethod = InduceMethod.induce_update_action1
+        elif oper == 3:
+            induceMethod = InduceMethod.induce_update_action2
+        else:
+            raise Exception('[ERROR] Unknown Inducing Method...')
+
         for eid, event in self.events.items():
             # print(InduceMethod.induce_relation(event, self.dct))
             link = TempLink(lid='led%i' % lid ,
-                                        sour=event,
-                                        targ=self.dct,
-                                        rel=InduceMethod.induceRelationWithSourEvent(event, self.dct) if not oper else
-                                            InduceMethod.induce_operation(event, self.dct))
+                            sour=event,
+                            targ=self.dct,
+                            # rel=InduceMethod.induceRelationWithSourEvent(event, self.dct) if not oper else
+                            #     InduceMethod.induce_update_action2(event.tanchor, self.dct.tanchor)
+                            rel=induceMethod(event.tanchor, self.dct.tanchor)
+                            )
             self.add_temp_link(link)
             lid += 1
 
-    def geneEventTimexPair(self, sent_win, order='fixed', oper=False):
+    def geneEventTimexPair(self, sent_win, order=True, oper=1):
         lid = 0
+
+        if oper == 0:
+            induceMethod = InduceMethod.induceRelationWithSourEvent
+        elif oper == 1:
+            induceMethod = InduceMethod.induce_update_action0
+        elif oper == 2:
+            induceMethod = InduceMethod.induce_update_action1
+        elif oper == 3:
+            induceMethod = InduceMethod.induce_update_action2
+        else:
+            raise Exception('[ERROR] Unknown Inducing Method...')
+
         for eid, event in self.events.items():
             for tid, timex in self.timexs.items():
                 if abs(timex.sent_id - event.sent_id) > sent_win:
                     continue
 
-                if order == 'fixed':
+                if order:
                     sour, targ = event, timex
                 else:
                     if event.tok_ids[0] <= timex.tok_ids[0]:  # specifying: a tlink is always from left to right
@@ -656,28 +704,45 @@ class TimeMLDoc:
                     else:
                         sour, targ = timex, event
 
-                link = TempLink(lid='let%i' % lid ,
-                                              sour=sour,
-                                              targ=targ,
-                                              rel=InduceMethod.induceRelationWithSourEvent(sour, targ) if not oper else
-                                                  InduceMethod.induce_operation(sour, targ))
+                link = TempLink(lid='let%i' % lid,
+                                sour=sour,
+                                targ=targ,
+                                              # rel=InduceMethod.induceRelationWithSourEvent(sour, targ) if not oper else
+                                              #     InduceMethod.induce_update_action2(sour.tanchor, targ.tanchor)
+                                rel=induceMethod(event.tanchor, timex.tanchor)
+                                )
+
                 tokens = self.geneSentTokens(sour, targ)
                 link.interwords = [tok.content for tok in tokens]
                 link.interpos = TempUtils.geneSentPostion(tokens, sour, targ)
                 self.add_temp_link(link)
                 lid += 1
 
-    def geneEventsPair(self, sent_win, oper=False):
+    def geneEventsPair(self, sent_win, oper=1):
         lid = 0
+
+        if oper == 0:
+            induceMethod = InduceMethod.induceRelationWithSourEvent
+        elif oper == 1:
+            induceMethod = InduceMethod.induce_update_action0
+        elif oper == 2:
+            induceMethod = InduceMethod.induce_update_action1
+        elif oper == 3:
+            induceMethod = InduceMethod.induce_update_action2
+        else:
+            raise Exception('[ERROR] Unknown Inducing Method...')
+
         for sour_eid, sour_event in self.events.items():
             for targ_eid, targ_event in self.events.items():
                 if 0 <= (targ_event.sent_id - sour_event.sent_id) <= sent_win:
                     if targ_event.tok_ids[0] > sour_event.tok_ids[0]:
                         link = TempLink(lid='lee%i' % lid ,
-                                                      sour=sour_event,
-                                                      targ=targ_event,
-                                                      rel=InduceMethod.induce_relation(sour_event, targ_event)
-                                                          if not oper else InduceMethod.induce_operation(sour_event, targ_event))
+                                        sour=sour_event,
+                                        targ=targ_event,
+                                        # rel=InduceMethod.induce_relation(sour_event, targ_event)
+                                        #                   if not oper else InduceMethod.induce_operation(sour_event, targ_event)
+                                        rel=induceMethod(sour_event.tanchor, targ_event.tanchor)
+                                        )
                         tokens = self.geneSentTokens(sour_event, targ_event)
                         link.interwords = [tok.content for tok in tokens]
                         link.interpos = TempUtils.geneSentPostion(tokens, sour_event, targ_event)
@@ -703,23 +768,26 @@ class TimeMLDoc:
                             timex.beginPoint])
             except Exception as ex:
                 print("Normalize timex error:", key, timex.value)
+
         if verbose:
             for key, timex in self.timexs.items():
                 print(key, timex.content, timex.value, timex.tanchor)
 
-    def normalize_event_value(self, anchor_type='anchor0', verbose=0):
+    def normalize_event_value(self, anchor_type, verbose=0):
         for key, event in self.events.items():
             try:
                 if anchor_type == 'anchor0':
                     event.tanchor = normalize_anchor(event.value)
                 elif anchor_type == 'anchor1':
                     event.tanchor = normalize_tanchor(event.value)
+                if verbose:
+                    print('event time: %s || %s' % (event.value,
+                                                    tuple([i.strftime("%Y/%m/%d") if i else 'None' for i in event.tanchor])))
                 event.daylen = dayLengthOfMention(event.tanchor)
                 # print(event.value, normalize_anchor(event.value))
             except Exception as ex:
                 print("Normalize event error:", key, event.value)
 
-import unittest
 
 class TestEventMention(unittest.TestCase):
 
@@ -732,6 +800,7 @@ class TestEventMention(unittest.TestCase):
     def test_timex(self):
         t = Timex(content='next week', tid=1, value='1998-01-01')
         print(t.content, t.value, t.tid, t.mention_type)
+
 
 class TestTempLink(unittest.TestCase):
 

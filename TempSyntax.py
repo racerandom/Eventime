@@ -4,7 +4,9 @@ from stanfordcorenlp import StanfordCoreNLP
 from nltk.parse.dependencygraph import DependencyGraph, malt_demo
 import networkx as nx
 import json
+import warnings
 
+warnings.simplefilter("ignore", ResourceWarning)
 
 def reformSDPforMention(mention_tok_ids, sdp, direct='mention2root'):
     if direct == 'mention2root':
@@ -94,7 +96,26 @@ class TempSyntax():
     def close(self):
         self.nlp_server.close()
 
+    @staticmethod
+    def get_deps_along_sdp(sdp, dep_graph):
+        deps = []
+        directs = []
+        for i in range(len(sdp) - 1):
+            deps.append(TempSyntax.get_dep_by_nodes(dep_graph, sdp[i], sdp[i + 1]))
+        deps.append("%s-%s" % (dep_graph.nodes[sdp[-1]]['rel'], 'head'))
+        return deps
 
+
+    @staticmethod
+    def get_dep_by_nodes(dep_graph, sour_id, targ_id):
+        sour = dep_graph.nodes[sour_id]
+        if sour['head'] == targ_id:
+            return "%s-%s" % (sour['rel'], 'head')
+        else:
+            for dep, childs in sour['deps'].items():
+                if targ_id in childs:
+                    return "%s-%s" % (dep, 'modifier')
+            raise Exception('[ERROR] There is no dep relation between %i and %i' % (sour_id, targ_id))
 
 import unittest
 
@@ -103,20 +124,39 @@ class TestTempSyntax(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(TestTempSyntax, self).__init__(*args, **kwargs)
         self.TempSyntaxer = TempSyntax()
-        self.sent_case = "The panel also will look at the exodus of about 2 million Rwanda Hutus to neighboring countries where they lived in U.N.-run refugee camps for 2-1/2 years ."
+        # self.sent_case = "The panel also will look at the exodus of about 2 million Rwanda Hutus to neighboring countries where they lived in U.N.-run refugee camps for 2-1/2 years ."
+        self.sent_case = "Steve Jobs was the co-founder and CEO of Apple and formerly Pixar ."
 
     def test_get_token(self):
         tokens = self.TempSyntaxer.get_token(self.sent_case)
         print(tokens)
 
-    def test_get_token(self):
+    def test_get_sent(self):
         sents = self.TempSyntaxer.get_sent(self.sent_case)
         print(sents)
 
-    def test_get_dep_graph(self):
+    def test_draw_dep_tree(self):
         sd_dep_graph = self.TempSyntaxer.get_dep_graph(self.sent_case, dep_ver='SD')
         sd_dep_graph.tree().draw()
+
+    def test_get_dep_graph(self):
+        sd_dep_graph = self.TempSyntaxer.get_dep_graph(self.sent_case, dep_ver='SD')
+        print(sd_dep_graph)
+
+    def test_get_dep_conll(self):
+        sd_dep_graph = self.TempSyntaxer.get_dep_graph(self.sent_case, dep_ver='SD')
         print(sd_dep_graph.to_conll(4))
+
+    def test_get_sdp(self):
+        sd_dep_graph = self.TempSyntaxer.get_dep_graph(self.sent_case, dep_ver='SD')
+        sd_sdp = self.TempSyntaxer.get_sdp(sd_dep_graph, 16, 0)
+        print(sd_sdp)
+
+    def test_get_deps_along_sdp(self):
+        sd_dep_graph = self.TempSyntaxer.get_dep_graph(self.sent_case, dep_ver='SD')
+        sd_sdp = self.TempSyntaxer.get_sdp(sd_dep_graph, 16, 25)
+        print(sd_sdp)
+        print(self.TempSyntaxer.get_deps_along_sdp(sd_sdp, sd_dep_graph))
 
     def test_get_dep_nx(self):
         sd_dep_graph = self.TempSyntaxer.get_dep_graph(self.sent_case, dep_ver='SD')
@@ -136,7 +176,13 @@ class TestTempSyntax(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+
+    TempSyntaxer = TempSyntax()
+    sd_dep_graph = TempSyntaxer.get_dep_graph(
+        "Robots in popular culture are there to remind us of the awesomeness of unbound human agency.", dep_ver='UD')
+    sd_dep_graph.tree().draw()
+
+    # unittest.main()
 
 # dep_networkx = nlp_server.get_dep_networkx(text, dep_ver='SD')
 # print(nx.shortest_path(dep_networkx, source='chased5', target='2018-12'))

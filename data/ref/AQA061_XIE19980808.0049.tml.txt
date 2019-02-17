@@ -8,11 +8,3 @@
  Aircraft have <e15>taken</e15> off from the United States , Europe and elsewhere in Africa <e16>bearing</e16> medical suplies and other equipment , along with replacement personnel for the two embassies . 
  A 62-member rescue team , previously <e17>sent</e17> to the bombed-out federal building in Oklahoma City , Okla. , was en route to Nairobi . 
  U.S. embassies and military installations around the world were <e19>ordered</e19> to <e20>set</e20> up barriers and <e21>tighten</e21> security systems to <e22>prevent</e22> easy access by unauthorized people -- Americans and foreigners .
- 
- 
- Comments:
- 1)Being consistent with the tense of events is important.
- 	a) "to <e23>hunt</e23> down" and "we will <e41>pursue</e41> terrorists" are more suitable assigned with the begin 	date "after 1998-08-08". In these cases, we tend to 'infinitive', 'future tense' events 'after' a date. Also, I think 	'e6', 'e8', 'e9', etc. are more suitable to be assigned as "after 1998-08-08".
- 	b) 'e13', 'e15', 'e16'('Present perfect tense') are more suitable to be assigned with the exact end date 	"1998-08-08", instead of "before 1998-08-08". 
- 2) Some events 'e13', 'e14', 'e15', 'e16' can not be clearly recognized as single or multi day events. We tend to annotate them as multi-day events. For instance, 'e13' is more suitable to be assigned as (begin:(after 1998-08-07, before 1998-08-08), end:1998-08-08)", instead of "(after 1998-08-07, before 1998-08-08)
- 

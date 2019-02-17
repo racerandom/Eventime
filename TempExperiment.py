@@ -1,44 +1,76 @@
 # coding=utf-8
-from TempNormalization import *
-from krippendorff_alpha import *
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
 
-from collections import defaultdict
-
-dic1, dic2 = defaultdict(dict), defaultdict(dict)
-out1, out2 = [], []
-
-with open('/Users/fei-c/Resources/timex/Event Time Corpus/event-times-annotator1_normalized.tab', 'r') as fi:
-    for line in fi:
-        toks = line.strip().split()
-        dic1[toks[0]][toks[4]] = toks[-1]
-        # dic1[toks[0]][toks[4]] = normalize_anchor(toks[-1]) if toks[-1] else None
-
-with open('/Users/fei-c/Resources/timex/Event Time Corpus/event-times-annotator2_normalized.tab', 'r') as fi:
-    for line in fi:
-        toks = line.strip().split()
-        dic2[toks[0]][toks[4]] = toks[-1]
-        # dic2[toks[0]][toks[4]] = normalize_anchor(toks[-1]) if toks[-1] else None
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-agree, total = 0, 0
 
-for doc_id, doc in dic1.items():
-    for event_id, time in doc.items():
-        total += 1
-        out1.append(dic1[doc_id][event_id])
-        out2.append(dic2[doc_id][event_id])
-        if dic1[doc_id][event_id] == dic2[doc_id][event_id]:
-            agree += 1
+class softmax_layer(nn.Module):
+
+    def __init__(self, model_out_dim, targ_size):
+        super(softmax_layer, self).__init__()
+        self.fc = nn.Linear(model_out_dim, targ_size)
+
+    def forward(self, model_out):
+        fc_out = self.fc(model_out)
+        softmax_out = F.log_softmax(fc_out, dim=1)
+        return softmax_out
+
+class baseRNN(baseConfig, nn.Module):
+
+    def __init__(self, word_size, dsdp_size, targ_size,
+                 max_sent_len, max_sdp_len, pre_embed, **params):
+
+        baseConfig.__init__(
+            self, word_size, targ_size,
+            max_sent_len, **params
+        )
+        nn.Module.__init__(self)
+
+        if isinstance(pre_embed, np.ndarray):
+            self.word_dim = pre_embed.shape[1]
+            self.word_embeddings = REData.pre2embed(pre_embed, freeze_mode=self.params['freeze_mode'])
+
+        self.input_dropout = nn.Dropout(p=self.params['input_dropout'])
+
+        self.rnn_input_dim = self.word_dim
+
+        self.rnn = nn.LSTM(self.rnn_input_dim,
+                           self.rnn_hidden_dim // 2,
+                           num_layers=self.params['rnn_layer'],
+                           batch_first=True,
+                           bidirectional=True)
+
+        self.rnn_dropout = nn.Dropout(p=self.params['rnn_dropout'])
+
+        if self.params['ranking_loss']:
+            self.output_layer = ranking_layer(self.rnn_hidden_dim,
+                                              targ_size)
         else:
-            print(dic1[doc_id][event_id], " ||| ", dic2[doc_id][event_id])
+            self.output_layer = softmax_layer(self.rnn_hidden_dim,
+                                              targ_size)
 
+    def forward(self, *tensor_feats):
 
+        batch_size = tensor_feats[0].shape[0]
 
-print(agree, total, agree/total)
-print("kappa: ", krippendorff_alpha([out1, out2],
-                                    nominal_metric,
-                                    convert_items=str,
-                                    missing_items='n/a'))
+        word_embed_input = self.word_embeddings(tensor_feats[0])
 
+        rnn_input = self.input_dropout(word_embed_input)
 
+        rnn_hidden = self.init_rnn_hidden(batch_size,
+                                          self.rnn_hidden_dim,
+                                          num_layer=self.params['rnn_layer'])
 
+        rnn_out, rnn_hidden = self.rnn(rnn_input, rnn_hidden)
+
+        # fc_in = torch.cat(torch.unbind(rnn_hidden[0],dim=0), dim=1) ## last hidden state
+
+        rnn_out = self.rnn_dropout(catOverTime(rnn_out, 'max'))
+
+        model_out = self.output_layer(rnn_out)
+
+        return model_out

@@ -6,10 +6,12 @@
 
 
 class InduceMethod():
+    """
+    we transfer an tanchor into 2 formats
+    (after YYYY-MM-DD, before YYYY-MM-DD)  one day (certain and uncertain)
+    (YYYY-MM-DD, YYYY-MM-DD, YYYY-MM-DD, YYYY-MM-DD) multiple days
+    """
 
-    ## we transfer an tanchor into 2 formats
-    ## (after YYYY-MM-DD, before YYYY-MM-DD)  one day (certain and uncertain)
-    ## (YYYY-MM-DD, YYYY-MM-DD, YYYY-MM-DD, YYYY-MM-DD) multiple days
     label_dic = {
             "after": "before",
             "before": "after",
@@ -196,10 +198,89 @@ class InduceMethod():
 
         return operation
 
+    @staticmethod
+    def induce_update_action0(event_time, norm_timex):
 
+        if event_time is None or norm_timex is None:
+            return None
 
+        if len(norm_timex) == 4:
+            norm_timex = (norm_timex[0], norm_timex[2])
+        update_label = ""
+        for t_d in norm_timex:
+            for e_d in event_time:
+                if e_d is None:
+                    update_label += '0'
+                elif e_d == t_d:
+                    update_label += '1'
+                else:
+                    update_label += '0'
+        return update_label
 
+    @staticmethod
+    def induce_update_action1(event_time, norm_timex):
 
+        if event_time is None or norm_timex is None:
+            return None
 
+        if len(norm_timex) == 4:
+            norm_timex = (norm_timex[0], norm_timex[2])
+        update_label = ""
+        for t_d in norm_timex:
+            for e_d in event_time:
+                if e_d is None:
+                    update_label += 'v'
+                elif e_d == t_d:
+                    update_label += 's'
+                elif e_d > t_d:
+                    update_label += 'a'
+                elif e_d < t_d:
+                    update_label += 'b'
+                else:
+                    update_label += 'v'
+        return update_label
 
+    @staticmethod
+    def induce_update_action2(event_time, norm_timex):
 
+        def induce_day(event_aday, event_bday, time_day):
+
+            if event_aday and event_bday:
+                if event_aday == event_bday == time_day:
+                    return 'S'
+                elif event_aday >= time_day:
+                    return 'A'
+                elif event_bday <= time_day:
+                    return 'B'
+                elif event_aday < time_day < event_bday:
+                    return 'V'
+                else:
+                    return 'V'
+            elif event_aday is not None:
+                if event_aday >= time_day:
+                    return 'A'
+                else:
+                    return 'V'
+            elif event_bday is not None:
+                if event_bday <= time_day:
+                    return 'B'
+                else:
+                    return 'V'
+            else:
+                raise Exception('[ERROR] the event_day anchor is none!!!')
+
+        if event_time is None or norm_timex is None:
+            return None
+
+        if len(norm_timex) == 4:
+            norm_timex = (norm_timex[0], norm_timex[2])
+
+        update_label = ""
+        for t_d in norm_timex:
+            if t_d is None:
+                update_label += 'VV'
+            else:
+                for i in range(2):
+                    update_label += induce_day(event_time[i * 2], event_time[i * 2 + 1], t_d)
+
+        return update_label

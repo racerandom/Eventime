@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 import TempModules
 from ModuleOptim import *
+from TempData import *
 from sklearn.metrics import classification_report
 from statistics import mean, median, variance, stdev
 
@@ -14,10 +15,10 @@ warnings.simplefilter("ignore", UserWarning)
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device("cpu")
 print('device:', device)
 
-# seed = 2
-# torch.manual_seed(seed)
-# if torch.cuda.is_available():
-#     torch.cuda.manual_seed_all(seed)
+seed = 2
+torch.manual_seed(seed)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(seed)
 
 setup_stream_logger('TempTrainSDP', level=logging.DEBUG)
 logger = logging.getLogger('TempTrainSDP')
@@ -122,7 +123,7 @@ def optimize_model(pretrained_file, task, param_space, max_evals):
         for key, values in param_space.items():
             params[key] = random.choice(values)
 
-        logger.info('[Selected %i Params]:' % eval_i, params)
+        logger.info('[Selected %i Params]: %s' % (eval_i, params))
 
         model, optimizer = model_instance(sizeOfVocab(word_idx),
                                           sizeOfVocab(char_idx),

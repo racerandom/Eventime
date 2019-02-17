@@ -9,15 +9,3 @@
  U.S. President Bill Clinton has <e29>requested</e29> dlrs 50 million in emergency assistance funding from Congress for Tanzania and Kenya . 
  The U.S. government already has <e30>contributed</e30> dlrs 3.2 million in assistance to the two countries . 
  On <T v='1998-09-25'>Friday</T> , the Kenyan government planned to <e32>pay</e32> the first 32 death claims of 100,000 Kenyan shillings ( dlrs 1,667 ) each .
- 
- 
- Comments: 
- 1) In this news, many events such as 'e2', 'e6', 'e10', 'e12', 'e36' will last a period of time in the future, which are supposed to be annotated as multi-day events.
- 2) "Satcher <e8>said</e8> at a news <e35>conference</e35> ." I think the news conference is more likely held before DCT (even there is no clear evidence). This example could occure in many news articles. 
- 3) 'e16' is supposed to be annotated as "(begin:before 1995-12-31, end:before 1998-09-30)", instead of "(begin:before 1998-09-30, end:before 1998-09-30)". Because "in a <e41>bombing</e41> in <T v='1995'>1995</T> " provide a more precise begin date compare to DCT. 'e30' is supposed to begin after 1998-08-07. It's important to narrow down the date range as precise as possible. 
- 
- 
- 
- 
- 
- 

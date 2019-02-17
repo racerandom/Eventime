@@ -876,127 +876,128 @@ class TempBranchRNN(nn.Module):
         return fc2_out
 
 
-class TempRNN(nn.Module):
 
-    def __init__(self, seq_len, action_size, verbose=0, **params):
-        super(TempRNN, self).__init__()
-
-        ## parameters
-        self.hidden_dim = params['filter_nb']
-        self.batch_size = params['batch_size']
-        self.verbose_level = verbose
-
-        ## neural layers
-        self.embedding_dropout = nn.Dropout(p=params['dropout_emb'])
-        rnn1_input_dim = 0
-        for feat_type in feat_types:
-            if feat_type.split('_')[-1] == 'seq':
-                if feat_type.split('_')[-2] == 'token':
-                    rnn1_input_dim += params['word_dim']
-                elif feat_type.split('_')[-2] == 'dist':
-                    rnn1_input_dim += params['pos_dim']
-        self.rnn1 = nn.LSTM(rnn1_input_dim, params['filter_nb'] // 2, num_layers=1, batch_first=True, bidirectional=True)
-        self.rnn1hid_drop = nn.Dropout(p=params['dropout_rnn'])
-
-        self.cat_drop = nn.Dropout(p=params['dropout_cat'])
-        fc1_input_dim = params['filter_nb']
-        for feat_type in feat_types:
-            if feat_type.split('_')[-1] == 'token':
-                fc1_input_dim += params['word_dim']
-            elif feat_type.split('_')[-1] == 'dist':
-                fc1_input_dim += params['pos_dim']
-
-        self.fc1 = nn.Linear(fc1_input_dim, params['fc_hidden_dim'])
-        self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
-        self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
-
-    def init_hidden(self, batch_size):
-        return (torch.zeros(2, batch_size, self.hidden_dim // 2).to(device),
-                torch.zeros(2, batch_size, self.hidden_dim // 2).to(device))
-
-    def forward(self, feat_types, *feat_inputs):
-
-        ## RNN1 network
-
-        seq_inputs = []
-
-        for feat, feat_type in zip(feat_inputs, feat_types):
-            if feat_type.split('_')[-1] == 'seq':
-                if self.verbose_level:
-                    print(feat_type, feat.shape)
-                seq_inputs.append(feat)
-        seq_inputs = torch.cat(seq_inputs, dim=2)
-        embed_inputs = self.embedding_dropout(seq_inputs) # [batch, len, dim]
-
-        if self.verbose_level:
-            print("embedd_input size:", embed_inputs.shape)
-
-        self.rnn1_hidden = self.init_hidden(embed_inputs.shape[0])
-        rnn1_out, self.rnn1_hidden = self.rnn1(embed_inputs, self.rnn1_hidden)
-        if self.verbose_level:
-            print("rnn_out size:", rnn1_out.shape, "position_input,", position_input.shape)
-
-        cat_inputs = [rnn1_out[-1]]
-        for feat, feat_type in zip(feat_inputs, feat_types):
-            if feat_type.split('_')[-1] != 'seq':
-                if self.verbose_level:
-                    print(feat_type, feat.shape)
-                    print('tok pool:', self.tok_p1(feat).squeeze(-1).shape)
-                cat_inputs.append(self.tok_p1(feat).squeeze(-1))
-        cat_out = torch.cat(cat_inputs, dim=1)
-        cat_out = self.cat_dropout(cat_out)
-        if self.verbose_level:
-            print("cat_output size:", cat_out.shape)
-
-        ## FC and softmax layer
-        fc1_out = F.relu(self.fc1(cat_out))
-        fc1_out = self.fc1_drop(fc1_out)
-        fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
-
-        return fc2_out
-
-
-class TempAttnRNN(nn.Module):
-
-    def __init__(self, vocab_size, pos_size, action_size, max_len, pre_model=None, **params):
-        super(TempAttnRNN, self).__init__()
-        self.hidden_dim = params['hidden_dim']
-        self.rnn1 = nn.LSTM(params['word_dim'] + params['pos_dim'], params['hidden_dim'] // 2, num_layers=1, batch_first=True, bidirectional=True)
-        self.rnn1_hidden = self.init_hidden()
-        self.rnn1hid_drop = nn.Dropout(p=params['dropout_rnn'])
-        self.attn_W = torch.randn(params['hidden_dim'], requires_grad=True)
-        self.cat_drop = nn.Dropout(p=params['dropout_cat'])
-        self.fc1 = nn.Linear(params['filter_nb'], params['fc_hidden_dim'])
-        self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
-        self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
-
-    def init_hidden(self):
-        return (torch.zeros(2, self.batch_size, self.hidden_dim // 2),
-                torch.zeros(2, self.batch_size, self.hidden_dim // 2))
-
-    def forward(self, word_input, position_input):
-
-        ## RNN1 network
-        cat_input = torch.cat((word_input, position_input), dim=2)
-        rnn1_out, self.rnn1_hidden = self.rnn1(cat_input, self.rnn1hid_drop(self.hidden_dim))
-
-        ## Attention layer
-        attn_in = rnn1_out.transpose(1, 2) # transpose rnn1_out from [batch_size, max_len, hidden_dim] to [batch_size, hidden_dim, max_len]
-        attn_M = F.tanh(attn_in)
-        W = self.attn_W.unsqueeze(0).expand(10, -1, -1)   # W: [batch_size, 1, hidden_dim]
-        attn_alpha = F.softmax(torch.bmm(W, attn_M), dim=2)       # rnn1_alpha: [batch_size, 1, max_len]
-        attn_out = torch.bmm(attn_in, attn_alpha.transpose(1, 2)) # attn_out: [batch_size, hidden_dim, 1]
-
-        ## catenate the RNN1 output and position embeddings
-        cat_out = torch.cat((attn_out.squeeze(), position_input[:, 0, :], position_input[:, -1, :]), dim=1)
-        cat_out = self.cat_drop(cat_out)
-
-        ## FC and softmax layer
-        fc1_out = F.relu(self.fc1(p1_out))
-        fc1_out = self.fc1_drop(fc1_out)
-        fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
-
-        return fc2_out
+# class TempRNN(nn.Module):
+#
+#     def __init__(self, seq_len, action_size, verbose=0, **params):
+#         super(TempRNN, self).__init__()
+#
+#         ## parameters
+#         self.hidden_dim = params['filter_nb']
+#         self.batch_size = params['batch_size']
+#         self.verbose_level = verbose
+#
+#         ## neural layers
+#         self.embedding_dropout = nn.Dropout(p=params['dropout_emb'])
+#         rnn1_input_dim = 0
+#         for feat_type in feat_types:
+#             if feat_type.split('_')[-1] == 'seq':
+#                 if feat_type.split('_')[-2] == 'token':
+#                     rnn1_input_dim += params['word_dim']
+#                 elif feat_type.split('_')[-2] == 'dist':
+#                     rnn1_input_dim += params['pos_dim']
+#         self.rnn1 = nn.LSTM(rnn1_input_dim, params['filter_nb'] // 2, num_layers=1, batch_first=True, bidirectional=True)
+#         self.rnn1hid_drop = nn.Dropout(p=params['dropout_rnn'])
+#
+#         self.cat_drop = nn.Dropout(p=params['dropout_cat'])
+#         fc1_input_dim = params['filter_nb']
+#         for feat_type in feat_types:
+#             if feat_type.split('_')[-1] == 'token':
+#                 fc1_input_dim += params['word_dim']
+#             elif feat_type.split('_')[-1] == 'dist':
+#                 fc1_input_dim += params['pos_dim']
+#
+#         self.fc1 = nn.Linear(fc1_input_dim, params['fc_hidden_dim'])
+#         self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
+#         self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
+#
+#     def init_hidden(self, batch_size):
+#         return (torch.zeros(2, batch_size, self.hidden_dim // 2).to(device),
+#                 torch.zeros(2, batch_size, self.hidden_dim // 2).to(device))
+#
+#     def forward(self, feat_types, *feat_inputs):
+#
+#         ## RNN1 network
+#
+#         seq_inputs = []
+#
+#         for feat, feat_type in zip(feat_inputs, feat_types):
+#             if feat_type.split('_')[-1] == 'seq':
+#                 if self.verbose_level:
+#                     print(feat_type, feat.shape)
+#                 seq_inputs.append(feat)
+#         seq_inputs = torch.cat(seq_inputs, dim=2)
+#         embed_inputs = self.embedding_dropout(seq_inputs) # [batch, len, dim]
+#
+#         if self.verbose_level:
+#             print("embedd_input size:", embed_inputs.shape)
+#
+#         self.rnn1_hidden = self.init_hidden(embed_inputs.shape[0])
+#         rnn1_out, self.rnn1_hidden = self.rnn1(embed_inputs, self.rnn1_hidden)
+#         if self.verbose_level:
+#             print("rnn_out size:", rnn1_out.shape, "position_input,", position_input.shape)
+#
+#         cat_inputs = [rnn1_out[-1]]
+#         for feat, feat_type in zip(feat_inputs, feat_types):
+#             if feat_type.split('_')[-1] != 'seq':
+#                 if self.verbose_level:
+#                     print(feat_type, feat.shape)
+#                     print('tok pool:', self.tok_p1(feat).squeeze(-1).shape)
+#                 cat_inputs.append(self.tok_p1(feat).squeeze(-1))
+#         cat_out = torch.cat(cat_inputs, dim=1)
+#         cat_out = self.cat_dropout(cat_out)
+#         if self.verbose_level:
+#             print("cat_output size:", cat_out.shape)
+#
+#         ## FC and softmax layer
+#         fc1_out = F.relu(self.fc1(cat_out))
+#         fc1_out = self.fc1_drop(fc1_out)
+#         fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
+#
+#         return fc2_out
+#
+#
+# class TempAttnRNN(nn.Module):
+#
+#     def __init__(self, vocab_size, pos_size, action_size, max_len, pre_model=None, **params):
+#         super(TempAttnRNN, self).__init__()
+#         self.hidden_dim = params['hidden_dim']
+#         self.rnn1 = nn.LSTM(params['word_dim'] + params['pos_dim'], params['hidden_dim'] // 2, num_layers=1, batch_first=True, bidirectional=True)
+#         self.rnn1_hidden = self.init_hidden()
+#         self.rnn1hid_drop = nn.Dropout(p=params['dropout_rnn'])
+#         self.attn_W = torch.randn(params['hidden_dim'], requires_grad=True)
+#         self.cat_drop = nn.Dropout(p=params['dropout_cat'])
+#         self.fc1 = nn.Linear(params['filter_nb'], params['fc_hidden_dim'])
+#         self.fc1_drop = nn.Dropout(p=params['dropout_fc'])
+#         self.fc2 = nn.Linear(params['fc_hidden_dim'], action_size)
+#
+#     def init_hidden(self):
+#         return (torch.zeros(2, self.batch_size, self.hidden_dim // 2),
+#                 torch.zeros(2, self.batch_size, self.hidden_dim // 2))
+#
+#     def forward(self, word_input, position_input):
+#
+#         ## RNN1 network
+#         cat_input = torch.cat((word_input, position_input), dim=2)
+#         rnn1_out, self.rnn1_hidden = self.rnn1(cat_input, self.rnn1hid_drop(self.hidden_dim))
+#
+#         ## Attention layer
+#         attn_in = rnn1_out.transpose(1, 2) # transpose rnn1_out from [batch_size, max_len, hidden_dim] to [batch_size, hidden_dim, max_len]
+#         attn_M = F.tanh(attn_in)
+#         W = self.attn_W.unsqueeze(0).expand(10, -1, -1)   # W: [batch_size, 1, hidden_dim]
+#         attn_alpha = F.softmax(torch.bmm(W, attn_M), dim=2)       # rnn1_alpha: [batch_size, 1, max_len]
+#         attn_out = torch.bmm(attn_in, attn_alpha.transpose(1, 2)) # attn_out: [batch_size, hidden_dim, 1]
+#
+#         ## catenate the RNN1 output and position embeddings
+#         cat_out = torch.cat((attn_out.squeeze(), position_input[:, 0, :], position_input[:, -1, :]), dim=1)
+#         cat_out = self.cat_drop(cat_out)
+#
+#         ## FC and softmax layer
+#         fc1_out = F.relu(self.fc1(p1_out))
+#         fc1_out = self.fc1_drop(fc1_out)
+#         fc2_out = F.log_softmax(self.fc2(fc1_out), dim=1)
+#
+#         return fc2_out
 
 
 class TempClassifier(nn.Module):

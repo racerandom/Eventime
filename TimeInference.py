@@ -1,6 +1,7 @@
 # coding=utf-8
 
 import os
+import math
 from TimeMLReader import *
 from TempData import *
 
@@ -152,5 +153,95 @@ def main():
     print("single num %i, multiple num %i" % (single, multiple))
     print("single accuracy %.3f, multiple accurracy %.3f" % (single_correct/single, multiple_correct/multiple))
 
+
+def infer_time(event_time, norm_timex, rels):
+    for i in range(len(rels)):
+        if i == 0:
+            if norm_timex[0] is None:
+                continue
+            if rels[i] == 'A':
+                if event_time[0] is None or event_time[0] < norm_timex[0]:
+                    event_time[0] = norm_timex[0]
+            elif rels[i] == 'B':
+                if event_time[1] is None or event_time[1] > norm_timex[0]:
+                    event_time[1] = norm_timex[0]
+            elif rels[i] == 'S':
+                event_time[0] = norm_timex[0]
+                event_time[1] = norm_timex[0]
+        elif i == 1:
+            if norm_timex[0] is None:
+                continue
+            if rels[i] == 'A':
+                if event_time[2] is None or event_time[2] < norm_timex[0]:
+                    event_time[2] = norm_timex[0]
+            elif rels[i] == 'B':
+                if event_time[3] is None or event_time[3] > norm_timex[0]:
+                    event_time[3] = norm_timex[0]
+            elif rels[i] == 'S':
+                event_time[2] = norm_timex[0]
+                event_time[3] = norm_timex[0]
+        elif i == 2:
+            if norm_timex[1] is None:
+                continue
+            if rels[i] == 'A':
+                if event_time[0] is None or event_time[0] < norm_timex[1]:
+                    event_time[0] = norm_timex[1]
+            elif rels[i] == 'B':
+                if event_time[1] is None or event_time[1] > norm_timex[1]:
+                    event_time[1] = norm_timex[1]
+            elif rels[i] == 'S':
+                event_time[0] = norm_timex[1]
+                event_time[1] = norm_timex[1]
+        elif i == 3:
+            if norm_timex[1] is None:
+                continue
+            if rels[i] == 'A':
+                if event_time[2] is None or event_time[2] < norm_timex[1]:
+                    event_time[2] = norm_timex[1]
+            elif rels[i] == 'B':
+                if event_time[3] is None or event_time[3] > norm_timex[1]:
+                    event_time[3] = norm_timex[1]
+            elif rels[i] == 'S':
+                event_time[2] = norm_timex[1]
+                event_time[3] = norm_timex[1]
+    return event_time
+
+
+def main2():
+
+    doc_dic = load_doc("data/20190202_test.pkl")
+
+    event_count, correct_time = 0, 0
+
+    link_num = []
+
+    for doc_id, doc in doc_dic.items():
+        for event_id, event in doc.events.items():
+            if event.tanchor is None:
+                continue
+            event_pred = [None, None, None, None]
+            event_count += 1
+            tlinks = doc.getTlinkListByMention(event_id)
+
+            link_num.append(len(tlinks))
+
+            for link in tlinks:
+                if link.sour.mention_type in ['DCT', 'Timex']:
+                    timex = link.sour
+                else:
+                    timex = link.targ
+                if timex.tanchor is None:
+                    continue
+                if len(timex.tanchor) == 4:
+                    norm_time = (timex.tanchor[0], timex.tanchor[2])
+                else:
+                    norm_time = timex.tanchor
+                event_pred = infer_time(event_pred, norm_time, link.rel)
+            if tuple(event_pred) == event.tanchor:
+                correct_time += 1
+    print(correct_time, event_count, correct_time / event_count, sum(link_num) / event_count)
+
+
+
 if __name__ == '__main__':
-    main()
+    main2()

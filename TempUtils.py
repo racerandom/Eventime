@@ -1,9 +1,24 @@
+import os
 import torch
 import torch.nn as nn
 import gensim
 import numpy as np
+import pickle
 import logging
 import time
+
+
+def setup_stream_logger(logger_name, level=logging.INFO):
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(level)
+
+    formatter = logging.Formatter('%(message)s')
+    streamHandler = logging.StreamHandler()
+    streamHandler.setFormatter(formatter)
+
+    logger.addHandler(streamHandler)
+
+    return logger
 
 
 def load_pre(embed_file, binary=True, addZeroPad=True):
@@ -26,10 +41,9 @@ def embed_txt2bin(embed_file):
     pass
 
 
-def pre2embed(pre_vectors):
+def pre2embed(pre_vectors, freeze_mode):
     pre_weights = torch.FloatTensor(pre_vectors)
-    #print("[Pre-trained embeddings] weight size: ", pre_weights.size())
-    return nn.Embedding.from_pretrained(pre_weights, freeze=True)
+    return nn.Embedding.from_pretrained(pre_weights, freeze=freeze_mode)
 
 
 def tok2ix(tok, to_ix, unk_ix=0):
@@ -132,6 +146,13 @@ def feat2idx(doc_dic, feat_name, link_type, feat_idx=None):
     return feat_idx
 
 
+def label_to_ix(targs):
+    targ2ix = {}
+    for targ in targs:
+        targ2ix.setdefault(targ, len(targ2ix))
+    return targ2ix
+
+
 def wvocab2cvocab(word_vocab):
     char_vocab = set()
     for word in word_vocab:
@@ -217,6 +238,15 @@ def vocab2idx(vocab, feat_idx=None):
         return None
 
 
+def feat_to_ix(feats, feat2ix=None):
+    if feat2ix is None:
+        feat2ix = {'zeropadding': 0}
+    for feat_sample in feats:
+        for tok in feat_sample:
+            feat2ix.setdefault(tok, len(feat2ix))
+    return feat2ix
+
+
 def word2idx(doc_dic, link_types):
     tok_idx = {'zeropadding': 0}
     for doc in doc_dic.values():
@@ -225,6 +255,70 @@ def word2idx(doc_dic, link_types):
                 for tok in link.interwords:
                     tok_idx.setdefault(tok, len(tok_idx))
     return tok_idx
+
+
+def pickle_data(data, pickle_file='data/temp.pkl'):
+    with open(pickle_file, 'wb') as f:  # Python 3: open(..., 'wb')
+        pickle.dump(data, f)
+    print("Successfully save '%s'..." % pickle_file)
+
+
+def load_pickle(pickle_file='data/temp.pkl'):
+    with open(pickle_file, 'rb') as f:
+        data = pickle.load(f)
+    print("Successfully load data from pickle file '%s'..." % pickle_file)
+    return data
+
+
+def pre2embed(pre_vectors, freeze_mode):
+    pre_weights = torch.FloatTensor(pre_vectors)
+    return nn.Embedding.from_pretrained(pre_weights, freeze=freeze_mode)
+
+
+def slim_word_embed(word2ix, embed_file, embed_pickle_file):
+
+
+
+    def load_pre_embed(embed_file, binary):
+        if embed_file and os.path.isfile(os.path.join(os.getenv("HOME"), embed_file)):
+            start_time = time.time()
+            pre_embed = gensim.models.KeyedVectors.load_word2vec_format(embed_file, binary=binary)
+            pre_word2ix = {}
+            for word, value in pre_embed.vocab.items():
+                pre_word2ix[word] = value.index
+            print("[Embedding] Successfully load the pre-trained embedding file '%s' in %i seconds..." % (embed_file,
+                                                                                                          time.time() - start_time))
+            return pre_word2ix, pre_embed.vectors
+        else:
+            raise Exception("[ERROR]Cannot find the pre-trained embedding file...")
+
+    def pre_embed_to_weight(word2ix, embed_file, binary=True):
+        pre_word2ix, pre_weights = load_pre_embed(embed_file, binary)
+        count = 0
+        word_dim = pre_weights.shape[1]
+        weights = []
+        for key, ix in sorted(word2ix.items(), key=lambda x: x[1]):
+            if ix == 0:
+                weights.append(np.zeros(word_dim))
+            else:
+                if key in pre_word2ix:
+                    count += 1
+                    weights.append(pre_weights[pre_word2ix[key]])
+                elif key.lower() in pre_word2ix:
+                    count += 1
+                    weights.append(pre_weights[pre_word2ix[key.lower()]])
+                else:
+                    weights.append(np.random.uniform(-1, 1, word_dim))
+        slim_weights = np.stack(weights, axis=0)
+        print("[Embedding] Successfully the slim embedding weights from %i to %i words, "
+              "%i words (%.2f%%) are covered" % (len(pre_word2ix),
+                                                 len(word2ix),
+                                                 count,
+                                                 100 * count / len(word2ix)))
+        return slim_weights
+
+    embed_weights = pre_embed_to_weight(word2ix, embed_file)
+    pickle_data((word2ix, embed_weights), pickle_file=embed_pickle_file)
 
 
 def rel2idx(doc_dic, task):
@@ -256,6 +350,10 @@ def max_length(doc_dic, task, feat_names):
         return max([len(feat) for feat in feat_list])
     else:
         return 0
+
+
+def max_len_2d(seq_2d):
+    return max([len(seq_1d) for seq_1d in seq_2d])
 
 
 def geneInterPostion(word_list):
@@ -296,25 +394,35 @@ def dict2str(dic):
     return ','.join(out)
 
 
-def setup_logger(logger_name, log_file, level=logging.INFO):
-    l = logging.getLogger(logger_name)
-    formatter = logging.Formatter('%(message)s')
-    fileHandler = logging.FileHandler(log_file, mode='w')
-    fileHandler.setFormatter(formatter)
-    streamHandler = logging.StreamHandler()
-    streamHandler.setFormatter(formatter)
+# def setup_logger(logger_name, log_file, level=logging.INFO):
+#     l = logging.getLogger(logger_name)
+#     formatter = logging.Formatter('%(message)s')
+#     fileHandler = logging.FileHandler(log_file, mode='w')
+#     fileHandler.setFormatter(formatter)
+#     streamHandler = logging.StreamHandler()
+#     streamHandler.setFormatter(formatter)
+#
+#     l.setLevel(level)
+#     l.addHandler(fileHandler)
+#     l.addHandler(streamHandler)
+#
+#
+# def setup_stream_logger(logger_name, level=logging.INFO):
+#     logger = logging.getLogger(logger_name)
+#     logger.setLevel(level)
+#
+#     formatter = logging.Formatter('%(message)s')
+#     streamHandler = logging.StreamHandler()
+#     streamHandler.setFormatter(formatter)
+#
+#     logger.addHandler(streamHandler)
 
-    l.setLevel(level)
-    l.addHandler(fileHandler)
-    l.addHandler(streamHandler)
+import unittest
+class TestTempUtils(unittest.TestCase):
 
+    def __init__(self, *args, **kwargs):
+        super(TestTempUtils, self).__init__(*args, **kwargs)
+        self.pretrained_embedding_file = '/Users/fei-c/Resources/embed/giga-aacw.d200.bin'
 
-def setup_stream_logger(logger_name, level=logging.INFO):
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(level)
-
-    formatter = logging.Formatter('%(message)s')
-    streamHandler = logging.StreamHandler()
-    streamHandler.setFormatter(formatter)
-
-    logger.addHandler(streamHandler)
+    def test_load_pre(self):
+        pre_vectors, word2ix = load_pre(self.pretrained_embedding_file, binary=True, addZeroPad=True)

@@ -67,6 +67,7 @@ class TempOptimizer(nn.Module):
                             'lr':[1e-2, 1e-3],
                             'weight_decay':[1e-3, 1e-4, 1e-5, 0]
                             }
+
         elif classifier in ['RNN', 'AttnRNN']:
             self.param_space = {
                 'filter_nb': range(100, 500 + 1, 10),
