@@ -241,7 +241,12 @@ class InduceMethod():
         return update_label
 
     @staticmethod
-    def induce_update_action2(event_time, norm_timex):
+    def induce_update_action2(event_time, norm_timex, reverse=False):
+
+        reverse_label = {'V': 'V',
+                         'A': 'B',
+                         'B': 'A',
+                         'S': 'S'}
 
         def induce_day(event_aday, event_bday, time_day):
 
@@ -281,6 +286,7 @@ class InduceMethod():
                 update_label += 'VV'
             else:
                 for i in range(2):
-                    update_label += induce_day(event_time[i * 2], event_time[i * 2 + 1], t_d)
+                    label = induce_day(event_time[i * 2], event_time[i * 2 + 1], t_d)
+                    update_label += label if not reverse else reverse_label[label]
 
         return update_label

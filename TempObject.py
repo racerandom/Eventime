@@ -696,6 +696,8 @@ class TimeMLDoc:
                 if abs(timex.sent_id - event.sent_id) > sent_win:
                     continue
 
+                is_reverse = False
+
                 if order:
                     sour, targ = event, timex
                 else:
@@ -703,13 +705,14 @@ class TimeMLDoc:
                         sour, targ = event, timex
                     else:
                         sour, targ = timex, event
+                        is_reverse = True
 
                 link = TempLink(lid='let%i' % lid,
                                 sour=sour,
                                 targ=targ,
                                               # rel=InduceMethod.induceRelationWithSourEvent(sour, targ) if not oper else
                                               #     InduceMethod.induce_update_action2(sour.tanchor, targ.tanchor)
-                                rel=induceMethod(event.tanchor, timex.tanchor)
+                                rel=induceMethod(event.tanchor, timex.tanchor, reverse=is_reverse)
                                 )
 
                 tokens = self.geneSentTokens(sour, targ)

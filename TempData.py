@@ -863,6 +863,8 @@ def main():
     val_pkl = "data/20190202_val.pkl"
     test_pkl = "data/20190202_test.pkl"
 
+    addSEP = True
+
     AnchorML2doc(anchorml_train, trainall_pkl, oper=oper, sent_win=5)
     AnchorML2doc(anchorml_test, test_pkl, oper=oper, sent_win=1)
     # #
@@ -870,11 +872,11 @@ def main():
     # #
     split_doc_pkl(trainall_pkl, train_pkl, val_pkl, train_ratio=0.85, seed=23)
     #
-    train_dataset = prepare_feats(train_pkl, link_type)
+    train_dataset = prepare_feats(train_pkl, link_type, addSEP=addSEP)
 
-    val_dataset = prepare_feats(val_pkl, link_type)
+    val_dataset = prepare_feats(val_pkl, link_type, addSEP=addSEP)
 
-    test_dataset = prepare_feats(test_pkl, link_type)
+    test_dataset = prepare_feats(test_pkl, link_type, addSEP=addSEP)
     #
     word2ix, ldis2ix, targ2ix, max_sent_len = prepare_global_ED(train_dataset,
                                                                 val_dataset,

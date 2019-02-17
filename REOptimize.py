@@ -104,10 +104,10 @@ def optimize_model(train_file, test_file, embed_file, param_space,
     logger.info('Train/Val/Test data size: %i / %i / %i' % (len(train_dataset[-1]),
                                                             len(val_dataset[-1]),
                                                             len(test_dataset[-1])))
-
-    # train_dataset = (train_dataset[: -1], train_dataset[-1])
-    # val_dataset = (val_dataset[: -1], val_dataset[-1])
-    # test_dataset = (test_dataset[: -1], test_dataset[-1])
+    if len(ldis2ix) == 0:
+        train_dataset = (train_dataset[0], train_dataset[-1])
+        val_dataset = (val_dataset[0], val_dataset[-1])
+        test_dataset = (test_dataset[0], test_dataset[-1])
 
     global_eval_history = defaultdict(list)
 
