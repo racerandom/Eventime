@@ -858,6 +858,41 @@ def split_doc_pkl(pkl_file, train_pkl, val_pkl, train_ratio=0.85, seed=13):
     save_doc(val_dic, val_pkl)
 
 
+def split_full_doc_pkl(pkl_file, train_pkl, val_pkl, test_pkl, data_split=(3, 1, 1), seed=13):
+
+    doc_dic = load_doc(pkl_file)
+
+    train_dic, val_dic, test_dic = {}, {}, {}
+
+    random.seed(seed)
+
+    train_interval = data_split[0] / sum(data_split)
+    val_interval = (data_split[0] + data_split[1])/ sum(data_split)
+
+    for doc_id, doc in doc_dic.items():
+        random_num = random.random()
+        if random_num <= train_interval:
+            train_dic[doc_id] = doc
+        elif train_interval < random_num <= val_interval:
+            val_dic[doc_id] = doc
+        else:
+            test_dic[doc_id] = doc
+
+    print("Split train/val doc data: train %i, val %i, test %i" % (len(train_dic),
+                                                                   len(val_dic),
+                                                                   len(test_dic)))
+
+    print("Event number: train %i, val %i, test %i" % (
+        sum([len(doc.events) for doc in train_dic.values()]),
+        sum([len(doc.events) for doc in val_dic.values()]),
+        sum([len(doc.events) for doc in test_dic.values()]
+    )))
+
+    save_doc(train_dic, train_pkl)
+    save_doc(val_dic, val_pkl)
+    save_doc(test_dic, test_pkl)
+
+
 def main():
     anchorml_train = "/Users/fei-c/Resources/timex/AnchorData/all_20190202/train"
     anchorml_test = "/Users/fei-c/Resources/timex/AnchorData/all_20190202/test"
@@ -878,6 +913,8 @@ def main():
     # # # distrib_labels(load_doc(test_pkl))
     # # #
     # split_doc_pkl(trainall_pkl, train_pkl, val_pkl, train_ratio=0.85, seed=23)
+
+    split_full_doc_pkl(trainall_pkl, train_pkl, val_pkl, test_pkl, data_split=(3, 1, 1), seed=13)
 
     train_doc_dic = preprocess_doc(train_pkl, oper=oper, sent_win=5, reverse_rel=reverse_rel)
     val_doc_dic = preprocess_doc(val_pkl, oper=oper, sent_win=2, reverse_rel=reverse_rel)
