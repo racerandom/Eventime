@@ -9,7 +9,7 @@ import pickle
 import torch
 import torch.utils.data as Data
 
-from allennlp.modules.elmo import Elmo, batch_to_ids
+#from allennlp.modules.elmo import Elmo, batch_to_ids
 
 
 TBD_TRAIN = ['ABC19980120.1830.0957', 'APW19980213.1380', 'APW19980219.0476', 'ea980120.1830.0456',
@@ -145,6 +145,17 @@ def prepare_artificial_classification():
     targets = torch.randint(0, ACTION_SIZE, (500, 1), dtype=torch.long)
 
     return dct_inputs, position_inputs, time_inputs, targets
+
+
+def read_word2ix_from_doc(doc_pickle):
+
+    doc_dic = load_pickle(doc_pickle)
+
+    doc_tokens = [[token.content for token in doc.tokens] for doc in doc_dic.values()]
+
+    word2ix = feat_to_ix(doc_tokens)
+
+    return word2ix
 
 
 def readPretrainedEmbedding(pretrained_file):
@@ -319,41 +330,65 @@ def feats2tensor_dict(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, m
     return tensor_dict, target_tensor
 
 
-def prepare_feats(doc_dic, link_type, addSEP=None):
+def prepare_feats(doc_dic, addSEP=None):
 
-    feat_dic, targets = defaultdict(list), []
+    ed_feat_dic, ed_targets = defaultdict(list), []
+    et_feat_dic, et_targets = defaultdict(list), []
 
-    # doc_dic = load_doc(doc_pkl_file)
+    ed_indices, et_indices = defaultdict(list), defaultdict(list)
 
     for doc_id, doc in doc_dic.items():
 
-        for link in doc.temp_links[link_type]:
-            if link.rel is None:
-                continue
-            targets.append(link.rel)
-            if link_type == 'Event-DCT':
-                sent_tokens = doc.geneSentOfMention(link.sour, addSEP=addSEP)
-                if addSEP:
-                    feat_dic['full_word_sent'].append(sent_tokens)
-                else:
-                    feat_dic['full_word_sent'].append([token.content for token in sent_tokens])
-                    feat_dic['sour_dist_sent'].append(getMentionDist(sent_tokens, link.sour, prefix='e'))
-            elif link_type == 'Event-Timex':
-                # print(link.sour.tok_ids, link.targ.tok_ids)
-                sent_tokens = doc.geneSentTokens(link.sour, link.targ, addSEP=addSEP)
-                if addSEP:
-                    feat_dic['full_word_sent'].append(sent_tokens)
-                else:
-                    feat_dic['full_word_sent'].append([token.content for token in sent_tokens])
-                # feat_dic['full_word_sent'].append([tok.content for tok in sent_tokens])
-                    sour_prefix = 'e' if link.sour.mention_type in ['Event'] else 't'
-                    targ_prefix = 'e' if link.sour.mention_type in ['Event'] else 't'
-                    feat_dic['sour_dist_sent'].append(getMentionDist(sent_tokens, link.sour, prefix=sour_prefix))
-                    feat_dic['targ_dist_sent'].append(getMentionDist(sent_tokens, link.targ, prefix=targ_prefix))
-            else:
-                raise Exception("[ERROR] Unknown link_type parameter!!!")
+        for link_type in ['Event-DCT', 'Event-Timex']:
 
-    return feat_dic, targets
+            for link in doc.temp_links[link_type]:
+
+                event = link.sour if link.sour.mention_type == 'Event' else link.targ
+                timex = link.sour if link.sour.mention_type != 'Event' else link.targ
+                key = '%s ||| %s' % (doc_id, event.eid)
+
+                if link_type == 'Event-DCT':
+
+                    ed_indices[key].append((len(ed_targets), TempUtils.norm_time_4to2(timex.tanchor)))
+                    ed_targets.append(link.rel)
+
+                    sent_tokens = doc.geneSentOfMention(link.sour, addSEP=addSEP)
+                    if addSEP:
+                        ed_feat_dic['full_word_sent'].append(sent_tokens)
+                    else:
+                        ed_feat_dic['full_word_sent'].append([token.content for token in sent_tokens])
+                        ed_feat_dic['sour_dist_sent'].append(getMentionDist(sent_tokens, link.sour, prefix='e'))
+
+                elif link_type == 'Event-Timex':
+
+                    et_indices[key].append((len(et_targets), TempUtils.norm_time_4to2(timex.tanchor)))
+                    et_targets.append(link.rel)
+
+                    sent_tokens = doc.geneSentTokens(link.sour, link.targ, addSEP=addSEP)
+                    if addSEP:
+                        et_feat_dic['full_word_sent'].append(sent_tokens)
+                    else:
+                        et_feat_dic['full_word_sent'].append([token.content for token in sent_tokens])
+                        sour_prefix = 'e' if link.sour.mention_type in ['Event'] else 't'
+                        targ_prefix = 'e' if link.sour.mention_type in ['Event'] else 't'
+                        et_feat_dic['sour_dist_sent'].append(getMentionDist(sent_tokens, link.sour, prefix=sour_prefix))
+                        et_feat_dic['targ_dist_sent'].append(getMentionDist(sent_tokens, link.targ, prefix=targ_prefix))
+                else:
+                    raise Exception("[ERROR] Unknown link_type parameter!!!")
+
+    return (ed_feat_dic, ed_targets), (et_feat_dic, et_targets), (ed_indices, et_indices)
+
+
+def prepare_gold(doc_dic):
+
+    targets = {}
+    for doc_id, doc in doc_dic.items():
+
+        for link in doc.temp_links['Event-DCT']:
+            event = link.sour if link.sour.mention_type == 'Event' else link.targ
+            key = '%s ||| %s' % (doc_id, event.eid)
+            targets[key] = event.tanchor
+    return targets
 
 
 def prepare_global_ED(train_dataset, val_dataset, test_dataset):
@@ -361,9 +396,15 @@ def prepare_global_ED(train_dataset, val_dataset, test_dataset):
     word2ix = feat_to_ix(train_dataset[0]['full_word_sent'] +
                          val_dataset[0]['full_word_sent'] +
                          test_dataset[0]['full_word_sent'])
-    ldis2ix = feat_to_ix(train_dataset[0]['sour_dist_sent'] +
+
+    dist2ix = feat_to_ix(train_dataset[0]['sour_dist_sent'] +
                          val_dataset[0]['sour_dist_sent'] +
                          test_dataset[0]['sour_dist_sent'], feat2ix={})
+
+    if 'targ_dist_sent' in train_dataset[0]:
+        dist2ix = feat_to_ix(train_dataset[0]['targ_dist_sent'] +
+                             val_dataset[0]['targ_dist_sent'] +
+                             test_dataset[0]['targ_dist_sent'], feat2ix=dist2ix)
 
     targ2ix = feat_to_ix(train_dataset[1] +
                          val_dataset[1] +
@@ -373,7 +414,7 @@ def prepare_global_ED(train_dataset, val_dataset, test_dataset):
                               val_dataset[0]['full_word_sent'] +
                               test_dataset[0]['full_word_sent'])
 
-    return word2ix, ldis2ix, targ2ix, max_sent_len
+    return word2ix, dist2ix, targ2ix, max_sent_len
 
 
 def prepareGlobalSDP(doc_pkl_file, task):
@@ -571,7 +612,7 @@ def writeTimeML2txt(timeml_file, out_dir):
         fo.write(str_out)
 
 
-def AnchorML2doc(anchorml_dir, pkl_file):
+def anchorML_to_doc(anchorml_dir, pkl_file):
     """
     1. load anchorml files and return a doc object
     2. normalize the tanchors of all the timex entities
@@ -595,29 +636,68 @@ def AnchorML2doc(anchorml_dir, pkl_file):
     # print(", non event", non_count)
 
 
-def preprocess_doc(doc_pkl, oper=3, anchor_type='anchor1', sent_win=0, reverse_rel=None):
+def refine_tanchor(tanchor):
+    if tanchor[1] is None and tanchor[3] is not None:
+        return True
+    elif tanchor[2] is None and tanchor[0] is not None:
+        return True
+    else:
+        return False
+
+
+def is_certain_tanchor(tanchor):
+    if None in tanchor:
+        return False
+    elif tanchor[0] == tanchor[1] == tanchor[2] == tanchor[3]:
+        return True
+    elif tanchor[0] == tanchor[1] and tanchor[2] == tanchor[3]:
+        return True
+    else:
+        return False
+
+
+def preprocess_doc(doc_pkl, oper=3, anchor_type='tanchor', sent_win=0, reverse_rel=None):
 
     doc_dic = load_pickle(doc_pkl)
-    non_count = 0
+    event_count, refine_cases, certain_case = 0, 0, 0
     for doc_id, doc in doc_dic.items():
         doc.setSentIds2mention()  # set a sent_id to each mention and token in a doc
         doc.normalize_timex_value(verbose=0)
         doc.normalize_event_value(anchor_type, verbose=0)
         for e_id, event in doc.events.items():
-            if not event.tanchor:
-                non_count += 1
+            if event.tanchor:
+                event_count += 1
+                if refine_tanchor(event.tanchor):
+                    refine_cases += 1
+                if is_certain_tanchor(event.tanchor):
+                    certain_case += 1
+            else:
                 print(e_id, event.value, event.tanchor)
         doc.geneEventDCTPair(oper=oper)
         doc.geneEventTimexPair(sent_win, order=False, oper=oper, reverse_rel=reverse_rel)
+
     print("Event num: %i" % sum([len(doc.events) for doc in doc_dic.values()]))
-    print(", non event", non_count)
+    print(", effective event num: %i, refined num %i, certain_case %i" % (
+        event_count,
+        refine_cases,
+        certain_case
+    ))
     return doc_dic
 
-## 1. load event anchor from an aditional file and return a doc object
-## 2. normalize the tanchors of all the timex entities
-## 3. normalize the tanchors of all the events
-## 4. induce relations of mention pairs
+
 def anchor_file2doc(timeml_dir, anchor_file, pkl_out, sent_win, oper=False):
+    """
+    1. load event anchor from an aditional file and return a doc object
+    2. normalize the tanchors of all the timex entities
+    3. normalize the tanchors of all the events
+    4. induce relations of mention pairs
+    :param timeml_dir:
+    :param anchor_file:
+    :param pkl_out:
+    :param sent_win:
+    :param oper:
+    :return: None
+    """
     anchor_docs = defaultdict(dict)
     doc_dic = {}
     with open(anchor_file, 'r') as anchor_fi:
@@ -629,18 +709,19 @@ def anchor_file2doc(timeml_dir, anchor_file, pkl_out, sent_win, oper=False):
         try:
             doc = load_anchorml(filename)
 
-            ## read event anchor from 'anchor_docs'
+            # read event anchor from 'anchor_docs'
             for event_id, event in doc.events.items():
                 event.value = anchor_docs[doc_id][event_id]
             doc.setSentIds2mention()  # set a sent_id to each mention and token in a doc
 
-            ## normalize time anchors for entities
+            # normalize time anchors for entities
             doc.normalize_timex_value()
             doc.normalize_event_value()
 
-            ## Induce temporal relation for E-D, E-T, E-E pairs
+            # Induce temporal relation for E-D, E-T, E-E pairs
             doc.geneEventDCTPair(oper=oper)
             doc.geneEventTimexPair(sent_win, order='nonfixed', oper=oper)
+
             # doc.geneEventsPair(sent_win, oper=oper)
             doc_dic[doc.docid] = doc
         except Exception as ex:
@@ -907,58 +988,94 @@ def main():
     val_pkl = "data/20190202_val.pkl"
     test_pkl = "data/20190202_test.pkl"
 
-    # AnchorML2doc(anchorml_train, trainall_pkl)
-    # AnchorML2doc(anchorml_test, test_pkl)
-    # # #
-    # # # distrib_labels(load_doc(test_pkl))
-    # # #
+    # anchorML_to_doc(anchorml_train, trainall_pkl)
+    # anchorML_to_doc(anchorml_test, test_pkl)
+    #
+    # distrib_labels(load_doc(test_pkl))
+    #
     # split_doc_pkl(trainall_pkl, train_pkl, val_pkl, train_ratio=0.85, seed=23)
 
-    split_full_doc_pkl(trainall_pkl, train_pkl, val_pkl, test_pkl, data_split=(3, 1, 1), seed=13)
+    # split_full_doc_pkl(trainall_pkl, train_pkl, val_pkl, test_pkl, data_split=(3, 1, 1), seed=13)
 
-    train_doc_dic = preprocess_doc(train_pkl, oper=oper, sent_win=5, reverse_rel=reverse_rel)
+    # slim embedding
+    word2ix = read_word2ix_from_doc(trainall_pkl)
+    home = os.environ['HOME']
+    embed_file = os.path.join(home, "Resources/embed/giga-aacw.d200.bin")
+    embed_pickle_file = "data/eventime/giga.d200.embed"
+    slim_word_embed(word2ix, embed_file, embed_pickle_file)
+
+    train_doc_dic = preprocess_doc(train_pkl, oper=oper, sent_win=6, reverse_rel=reverse_rel)
+
     val_doc_dic = preprocess_doc(val_pkl, oper=oper, sent_win=2, reverse_rel=reverse_rel)
+
     test_doc_dic = preprocess_doc(test_pkl, oper=oper, sent_win=2, reverse_rel=reverse_rel)
 
-    train_dataset = prepare_feats(train_doc_dic, link_type, addSEP=addSEP)
+    test_gold = prepare_gold(test_doc_dic)
 
-    val_dataset = prepare_feats(val_doc_dic, link_type, addSEP=addSEP)
+    print(test_gold)
 
-    test_dataset = prepare_feats(test_doc_dic, link_type, addSEP=addSEP)
-    #
-    word2ix, ldis2ix, targ2ix, max_sent_len = prepare_global_ED(train_dataset,
-                                                                val_dataset,
-                                                                test_dataset)
-    print(ldis2ix)
-    print(targ2ix)
+    ed_train_dataset, et_train_dataset, _ = prepare_feats(train_doc_dic, addSEP=addSEP)
 
-    train_tensor_dataset = prepare_tensors_ED(train_dataset,
-                                              word2ix,
-                                              ldis2ix,
-                                              targ2ix,
-                                              max_sent_len)
+    ed_val_dataset, et_val_dataset,_ = prepare_feats(val_doc_dic, addSEP=addSEP)
 
-    val_tensor_dataset = prepare_tensors_ED(val_dataset,
-                                            word2ix,
-                                            ldis2ix,
-                                            targ2ix,
-                                            max_sent_len)
+    ed_test_dataset, et_test_dataset, test_indices = prepare_feats(test_doc_dic, addSEP=addSEP)
 
-    test_tensor_dataset = prepare_tensors_ED(test_dataset,
-                                             word2ix,
-                                             ldis2ix,
-                                             targ2ix,
-                                             max_sent_len)
+    print(len(test_indices[0]), len(test_indices[1]))
 
-    pickle_data(train_tensor_dataset, 'data/eventime/120190202_train_tensor_%s.pkl' % link_type)
-    pickle_data(val_tensor_dataset, 'data/eventime/120190202_val_tensor_%s.pkl' % link_type)
-    pickle_data(test_tensor_dataset, 'data/eventime/120190202_test_tensor_%s.pkl' % link_type)
-    pickle_data((ldis2ix, targ2ix, max_sent_len), 'data/eventime/120190202_glob_info_%s.pkl' % link_type)
+    pickle_data((test_gold, test_indices[0], test_indices[1]), 'data/eventime/20190202_test_gold.pkl')
 
-    embed_file = "/Users/fei-c/Resources/embed/giga-aacw.d200.bin"
-    embed_pickle_file = "data/eventime/giga.d200.%s.embed" % link_type
+    targ2ix = {'A': 0, 'B': 1, 'S': 2, 'V': 3}
 
-    slim_word_embed(word2ix, embed_file, embed_pickle_file)
+    for link_type in ['Event-DCT', 'Event-Timex']:
+
+        if link_type == 'Event-DCT':
+            train_dataset, val_dataset, test_dataset = ed_train_dataset, ed_val_dataset, ed_test_dataset
+        elif link_type == 'Event-Timex':
+            train_dataset, val_dataset, test_dataset = et_train_dataset, et_val_dataset, et_test_dataset
+        else:
+            raise Exception('[ERROR] Unknown link_type...')
+
+        _, dist2ix, _, max_sent_len = prepare_global_ED(train_dataset,
+                                                        val_dataset,
+                                                        test_dataset)
+
+        print(dist2ix)
+        print(targ2ix)
+
+        train_tensor_dataset = prepare_tensors_ED(
+            train_dataset,
+            word2ix,
+            dist2ix,
+            targ2ix,
+            max_sent_len
+        )
+
+        val_tensor_dataset = prepare_tensors_ED(
+            val_dataset,
+            word2ix,
+            dist2ix,
+            targ2ix,
+            max_sent_len
+        )
+
+        test_tensor_dataset = prepare_tensors_ED(
+            test_dataset,
+            word2ix,
+            dist2ix,
+            targ2ix,
+            max_sent_len
+        )
+
+        print(train_tensor_dataset[0].shape,
+              val_tensor_dataset[0].shape,
+              test_tensor_dataset[0].shape)
+
+        pickle_data(train_tensor_dataset, 'data/eventime/120190202_train_tensor_%s.pkl' % link_type)
+        pickle_data(val_tensor_dataset, 'data/eventime/120190202_val_tensor_%s.pkl' % link_type)
+        pickle_data(test_tensor_dataset, 'data/eventime/120190202_test_tensor_%s.pkl' % link_type)
+        pickle_data((dist2ix, targ2ix, max_sent_len), 'data/eventime/120190202_glob_info_%s.pkl' % link_type)
+
+
 
     # pickle_doc(anchorml, pkl_file, link_type)
 
@@ -971,6 +1088,7 @@ def main():
     #
     # TA_TRAIN = sample_train(doc_dic.keys(), TA_DEV, TA_TEST, rate=0.5)
     # print(len(TA_TRAIN), len(TA_DEV), len(TA_TEST), (len(TA_TRAIN) + len(TA_DEV) + len(TA_TEST)))
+
 
 if __name__ == '__main__':
     main()

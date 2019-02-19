@@ -247,6 +247,13 @@ def feat_to_ix(feats, feat2ix=None):
     return feat2ix
 
 
+def norm_time_4to2(tanchor):
+    if len(tanchor) == 2:
+        return tanchor
+    elif len(tanchor) == 4:
+        return (tanchor[0], tanchor[2])
+
+
 def word2idx(doc_dic, link_types):
     tok_idx = {'zeropadding': 0}
     for doc in doc_dic.values():

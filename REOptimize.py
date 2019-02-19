@@ -66,26 +66,24 @@ def model_instance_ET(word_size, dist_size, targ2ix,
     return model, optimizer
 
 
-def data_load_ET():
+def data_load_ET(train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl):
 
-    link_type = 'Event-Timex'
 
-    train_dataset = TempUtils.load_pickle('data/eventime/120190202_train_tensor_%s.pkl' % link_type)
+    train_dataset = TempUtils.load_pickle(train_pkl)
 
-    val_dataset = TempUtils.load_pickle('data/eventime/120190202_val_tensor_%s.pkl' % link_type)
+    val_dataset = TempUtils.load_pickle(val_pkl)
 
-    test_dataset = TempUtils.load_pickle('data/eventime/120190202_test_tensor_%s.pkl' % link_type)
+    test_dataset = TempUtils.load_pickle(test_pkl)
 
-    word2ix, pretrained_embed = TempUtils.load_pickle('data/eventime/giga.d200.%s.embed' % link_type)
+    word2ix, pretrained_embed = TempUtils.load_pickle(embed_pkl)
 
-    ldis2ix, targ2ix, max_sent_len = TempUtils.load_pickle('data/eventime/120190202_glob_info_%s.pkl' % link_type)
+    ldis2ix, targ2ix, max_sent_len = TempUtils.load_pickle(info_pkl)
 
     return train_dataset, val_dataset, test_dataset, \
            word2ix, ldis2ix, targ2ix, max_sent_len, pretrained_embed
 
 
-def optimize_model(train_file, test_file, embed_file, param_space,
-                   feat_dict, max_evals=10):
+def optimize_model(train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, param_space, max_evals=10):
 
     print('device:', device)
 
@@ -98,20 +96,42 @@ def optimize_model(train_file, test_file, embed_file, param_space,
     # word2ix, dsdp2ix, targ2ix, max_sent_len, max_sdp_len = data_load_RE(train_file, test_file, embed_file, feat_dict)
 
     train_dataset, val_dataset, test_dataset, \
-    word2ix, ldis2ix, targ2ix, max_sent_len, pretrained_embed = data_load_ET()
+    word2ix, ldis2ix, targ2ix, max_sent_len, pretrained_embed = data_load_ET(train_pkl,
+                                                                             val_pkl,
+                                                                             test_pkl,
+                                                                             info_pkl,
+                                                                             embed_pkl)
 
     logger.info('Word size %i, ldis size %i, max sentence len %i...' % (
         len(word2ix),
         len(ldis2ix),
         max_sent_len
     ))
-    logger.info('Train/Val/Test data size: %i / %i / %i' % (len(train_dataset[-1]),
-                                                            len(val_dataset[-1]),
-                                                            len(test_dataset[-1])))
+    logger.info('Train/Val/Test data size: %s / %s / %s' % (train_dataset[0].shape,
+                                                            val_dataset[0].shape,
+                                                            test_dataset[0].shape))
+
     if len(ldis2ix) == 0:
         train_dataset = (train_dataset[0], train_dataset[-1])
         val_dataset = (val_dataset[0], val_dataset[-1])
         test_dataset = (test_dataset[0], test_dataset[-1])
+
+
+    test_data_loader = Data.DataLoader(
+        dataset=ModuleOptim.CustomizedDatasets(*test_dataset),
+        batch_size=128,
+        collate_fn=ModuleOptim.collate_fn,
+        shuffle=False,
+        num_workers=1,
+    )
+
+    val_data_loader = Data.DataLoader(
+        dataset=ModuleOptim.CustomizedDatasets(*val_dataset),
+        batch_size=128,
+        collate_fn=ModuleOptim.collate_fn,
+        shuffle=False,
+        num_workers=1,
+    )
 
     global_eval_history = defaultdict(list)
 
@@ -120,6 +140,8 @@ def optimize_model(train_file, test_file, embed_file, param_space,
     params_history = []
 
     kbest_scores = []
+
+    loss_func = ModuleOptim.multilabel_loss
 
     for eval_i in range(1, max_evals + 1):
 
@@ -134,10 +156,20 @@ def optimize_model(train_file, test_file, embed_file, param_space,
         model, optimizer = model_instance_ET(len(word2ix), len(ldis2ix), targ2ix,
                                              max_sent_len, pretrained_embed, **params)
 
+        train_data_loader = Data.DataLoader(
+            dataset=ModuleOptim.CustomizedDatasets(*train_dataset),
+            batch_size=params['batch_size'],
+            collate_fn=ModuleOptim.collate_fn,
+            shuffle=True,
+            num_workers=1,
+        )
+
+
         kbest_scores = train_model_ET(
             model, optimizer, kbest_scores,
-            train_dataset, val_dataset, test_dataset,
-            # targ2ix,
+            train_data_loader, val_data_loader, test_data_loader,
+            targ2ix,
+            loss_func,
             checkpoint_base,
             **params
         )
@@ -164,70 +196,24 @@ def optimize_model(train_file, test_file, embed_file, param_space,
         max_sent_len, pretrained_embed, **params
     ).to(device)
 
-    test_data_loader = Data.DataLoader(
-        dataset=ModuleOptim.CustomizedDatasets(*test_dataset),
-        batch_size=128,
-        collate_fn=ModuleOptim.collate_fn,
-        shuffle=False,
-        num_workers=1,
-    )
-
-    val_data_loader = Data.DataLoader(
-        dataset=ModuleOptim.CustomizedDatasets(*val_dataset),
-        batch_size=128,
-        collate_fn=ModuleOptim.collate_fn,
-        shuffle=False,
-        num_workers=1,
-    )
-
     model.load_state_dict(best_checkpoint['state_dict'])
 
-    # loss_func = REModule.ranking_loss if param_space['ranking_loss'][0] else F.nll_loss
-    # REEval.batch_eval(model,
-    #                   test_data_loader,
-    #                   targ2ix,
-    #                   loss_func,
-    #                   param_space['omit_other'][0],
-    #                   report_result=True)
-    loss_func = ModuleOptim.multilabel_loss
+    val_loss, val_acc, _ = TempEval.batch_eval_ET(model, val_data_loader, loss_func, targ2ix, report=True)
 
-    val_loss, val_acc = TempEval.batch_eval_ET(model, val_data_loader, loss_func, report=True)
+    test_loss, test_acc, test_pred = TempEval.batch_eval_ET(model, test_data_loader, loss_func, targ2ix, report=True)
 
-    test_loss, test_acc = TempEval.batch_eval_ET(model, test_data_loader, loss_func, report=True)
+    print(len(pred_pkl), pred_pkl[0])
+
+    TempUtils.pickle_data(test_pred, pred_pkl)
 
 
 def train_model_ET(model, optimizer, kbest_scores,
-                   train_data, val_data, test_data,
-                 # targ2ix,
+                   train_data_loader, val_data_loader, test_data_loader,
+                   targ2ix,
+                   loss_func,
                    checkpoint_base, **params):
 
     monitor = params['monitor']
-
-    multi_loss = ModuleOptim.multilabel_loss
-
-    train_data_loader = Data.DataLoader(
-        dataset=ModuleOptim.CustomizedDatasets(*train_data),
-        batch_size=params['batch_size'],
-        collate_fn=ModuleOptim.collate_fn,
-        shuffle=True,
-        num_workers=1,
-    )
-
-    val_data_loader = Data.DataLoader(
-        dataset=ModuleOptim.CustomizedDatasets(*val_data),
-        batch_size=params['batch_size'],
-        collate_fn=ModuleOptim.collate_fn,
-        shuffle=True,
-        num_workers=1,
-    )
-
-    test_data_loader = Data.DataLoader(
-        dataset=ModuleOptim.CustomizedDatasets(*test_data),
-        batch_size=params['batch_size'],
-        collate_fn=ModuleOptim.collate_fn,
-        shuffle=False,
-        num_workers=1,
-    )
 
     eval_history = defaultdict(list)
 
@@ -257,7 +243,7 @@ def train_model_ET(model, optimizer, kbest_scores,
 
             pred_prob = model(*train_feats)
 
-            train_loss = multi_loss(pred_prob, train_targ)
+            train_loss = loss_func(pred_prob, train_targ)
             # batch_size = pred_prob.shape[0]
             # train_loss = F.nll_loss(pred_prob.view(batch_size * 4, -1), train_targ.view(-1))
 
@@ -276,7 +262,7 @@ def train_model_ET(model, optimizer, kbest_scores,
 
             if (step != 0 and step % params['check_interval'] == 0) or step == step_num - 1:
 
-                val_loss, val_acc = TempEval.batch_eval_ET(model, val_data_loader, multi_loss)
+                val_loss, val_acc, _ = TempEval.batch_eval_ET(model, val_data_loader, loss_func, targ2ix)
 
                 eval_history['val_loss'].append(val_loss)
                 eval_history['val_acc'].append(val_acc)
@@ -313,7 +299,7 @@ def train_model_ET(model, optimizer, kbest_scores,
                                                  monitor,
                                                  monitor_score))
 
-                test_loss, test_acc = TempEval.batch_eval_ET(model, test_data_loader, multi_loss)
+                test_loss, test_acc, _ = TempEval.batch_eval_ET(model, test_data_loader, loss_func, targ2ix)
 
                 logger.debug(
                     'epoch: %2i, step: %4i, time: %4.1fs | '
@@ -377,14 +363,14 @@ def main():
         'dsdp_dim': [25],
         'dist_dim': [25],
         'input_dropout': [0.3],     # hyper-parameters of neural networks
-        'rnn_hidden_dim': [300],
+        'rnn_hidden_dim': [200],
         'rnn_layer': [1],
         'rnn_dropout': [0.3],
         'attn_dropout': [0.3],
-        'fc1_hidden_dim': [300],
+        'fc1_hidden_dim': [200],
         'fc1_dropout': [0.5],
         'batch_size': [64],
-        'epoch_num': [200],
+        'epoch_num': [1],
         'lr': [1e-0],           # hyper-parameters of optimizer
         'weight_decay': [1e-4],
         'max_norm': [4],
@@ -399,23 +385,16 @@ def main():
         'margin_neg': [0.5],
     }
 
-    feat_dict = {
-        'PI': True,   # Position Indicator Features for 'baseRNN', 'attnRNN'
-        'SDP': False,
-        'TSDP': False,
-        'DSDP': False
-    }
+    link_type = 'Event-Timex'
 
-    feat_suffix = ''
-    for k, v in feat_dict.items():
-        if v:
-            feat_suffix += '.%s' % k
+    train_pkl = 'data/eventime/120190202_train_tensor_%s.pkl' % link_type
+    val_pkl = 'data/eventime/120190202_val_tensor_%s.pkl' % link_type
+    test_pkl = 'data/eventime/120190202_test_tensor_%s.pkl' % link_type
+    info_pkl = 'data/eventime/120190202_glob_info_%s.pkl' % link_type
+    embed_pkl = 'data/eventime/giga.d200.embed'
+    pred_pkl = 'data/eventime/120190202_pred_%s.pkl' % link_type
 
-    train_file = "data/train%s.pkl" % feat_suffix
-    test_file = "data/test%s.pkl" % feat_suffix
-    embed_file = "data/glove.100d.embed"
-
-    optimize_model(train_file, test_file, embed_file, param_space, feat_dict, max_evals=1)
+    optimize_model(train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, param_space, max_evals=1)
 
 
 if __name__ == '__main__':

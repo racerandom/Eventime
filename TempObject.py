@@ -667,6 +667,8 @@ class TimeMLDoc:
 
         for eid, event in self.events.items():
             # print(InduceMethod.induce_relation(event, self.dct))
+            if event.tanchor is None:
+                continue
             link = TempLink(lid='led%i' % lid ,
                             sour=event,
                             targ=self.dct,
@@ -692,7 +694,15 @@ class TimeMLDoc:
             raise Exception('[ERROR] Unknown Inducing Method...')
 
         for eid, event in self.events.items():
+
+            if event.tanchor is None:
+                continue
+
             for tid, timex in self.timexs.items():
+
+                if timex.tanchor is None:
+                    continue
+
                 if abs(timex.sent_id - event.sent_id) > sent_win:
                     continue
 
@@ -782,7 +792,7 @@ class TimeMLDoc:
             try:
                 if anchor_type == 'anchor0':
                     event.tanchor = normalize_anchor(event.value)
-                elif anchor_type == 'anchor1':
+                elif anchor_type == 'tanchor':
                     event.tanchor = normalize_tanchor(event.value)
                 if verbose:
                     print('event time: %s || %s' % (event.value,

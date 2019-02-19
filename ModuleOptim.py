@@ -56,6 +56,13 @@ def calc_multi_acc(pred_prob, targets):
     return correct / batch_size
 
 
+def pred_ix_to_label(pred_ix, ix2targ):
+    return [''.join([ix2targ[i.item()] for i in ix]) for ix in pred_ix]
+
+
+
+
+
 def update_kbest_scores(kbest_scores, new_score, monitor, kbest=5):
 
     def is_kbest(score, kbest):
