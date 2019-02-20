@@ -376,7 +376,7 @@ def prepare_feats(doc_dic, addSEP=None):
                 else:
                     raise Exception("[ERROR] Unknown link_type parameter!!!")
 
-    return (ed_feat_dic, ed_targets), (et_feat_dic, et_targets), (ed_indices, et_indices)
+    return (ed_feat_dic, ed_targets), (et_feat_dic, et_targets), (ed_indices, et_indices), (ed_targets, et_targets)
 
 
 def prepare_gold(doc_dic):
@@ -994,7 +994,7 @@ def main():
     reverse_rel=False
     home = os.environ['HOME']
 
-    dataset = '20190202' # '20190202' or 'TBD'
+    dataset = 'TBD' # '20190202' or 'TBD'
 
     is_reset_doc = True
 
@@ -1032,15 +1032,18 @@ def main():
 
     print(test_gold)
 
-    ed_train_dataset, et_train_dataset, _ = prepare_feats(train_doc_dic, addSEP=addSEP)
+    ed_train_dataset, et_train_dataset, _, _ = prepare_feats(train_doc_dic, addSEP=addSEP)
 
-    ed_val_dataset, et_val_dataset,_ = prepare_feats(val_doc_dic, addSEP=addSEP)
+    ed_val_dataset, et_val_dataset, _, _ = prepare_feats(val_doc_dic, addSEP=addSEP)
 
-    ed_test_dataset, et_test_dataset, test_indices = prepare_feats(test_doc_dic, addSEP=addSEP)
+    ed_test_dataset, et_test_dataset, test_indices, test_targ = prepare_feats(test_doc_dic, addSEP=addSEP)
 
     print(len(test_indices[0]), len(test_indices[1]))
 
-    pickle_data((test_gold, test_indices[0], test_indices[1]), 'data/eventime/%s/%s_test_gold.pkl' % (dataset, dataset))
+    pickle_data(
+        (test_gold, test_indices[0], test_indices[1], test_targ[0], test_targ[1]),
+        'data/eventime/%s/%s_test_gold.pkl' % (dataset, dataset)
+    )
 
     targ2ix = {'A': 0, 'B': 1, 'S': 2, 'V': 3}
 
