@@ -266,6 +266,7 @@ def train_model_ET(model, optimizer, kbest_scores,
             if (step != 0 and step % params['check_interval'] == 0) or step == step_num - 1:
 
                 val_loss, val_acc, _ = TempEval.batch_eval_ET(model, val_data_loader, loss_func, targ2ix)
+                test_loss, test_acc, _ = TempEval.batch_eval_ET(model, test_data_loader, loss_func, targ2ix)
 
                 eval_history['val_loss'].append(val_loss)
                 eval_history['val_acc'].append(val_acc)

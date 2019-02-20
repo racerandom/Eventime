@@ -249,8 +249,6 @@ def main2():
     ed_pred = TempUtils.load_pickle(pickle_file='outputs/%s_pred_Event-DCT.pkl' % dataset)
     et_pred = TempUtils.load_pickle(pickle_file='outputs/%s_pred_Event-Timex.pkl' % dataset)
 
-
-
     event_gold, ed_links, et_links, ed_targ, et_targ = TempUtils.load_pickle(pickle_file='data/eventime/%s/%s_test_gold.pkl' % (dataset, dataset))
 
     correct_count = 0
@@ -267,12 +265,16 @@ def main2():
 
         pred_time = infer_time(pred_time, ed_time, ed_label)
 
-        if k in et_links:
-            for et_l in et_links[k]:
-                et_label = et_pred[et_l[0]]
-                et_time = et_l[1]
-                pred_time = infer_time(pred_time, et_time, et_label)
-                # print('E-T:', et_label, et_time)
+        if ed_label != 'SSSS':
+
+            if k in et_links:
+                for et_l in et_links[k]:
+                    et_label = et_pred[et_l[0]]
+                    et_time = et_l[1]
+                    pred_time = infer_time(pred_time, et_time, et_label)
+                    if et_label == 'SSSS':
+                        continue
+                    # print('E-T:', et_label, et_time)
 
         # print('gold:', gold)
         # print('pred', pred_time)

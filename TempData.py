@@ -341,40 +341,41 @@ def prepare_feats(doc_dic, addSEP=None):
 
         for link_type in ['Event-DCT', 'Event-Timex']:
 
-            for link in doc.temp_links[link_type]:
+            if link_type in doc.temp_links:
+                for link in doc.temp_links[link_type]:
 
-                event = link.sour if link.sour.mention_type == 'Event' else link.targ
-                timex = link.sour if link.sour.mention_type != 'Event' else link.targ
-                key = '%s ||| %s' % (doc_id, event.eid)
+                    event = link.sour if link.sour.mention_type == 'Event' else link.targ
+                    timex = link.sour if link.sour.mention_type != 'Event' else link.targ
+                    key = '%s ||| %s' % (doc_id, event.eid)
 
-                if link_type == 'Event-DCT':
+                    if link_type == 'Event-DCT':
 
-                    ed_indices[key].append((len(ed_targets), TempUtils.norm_time_4to2(timex.tanchor)))
-                    ed_targets.append(link.rel)
+                        ed_indices[key].append((len(ed_targets), TempUtils.norm_time_4to2(timex.tanchor)))
+                        ed_targets.append(link.rel)
 
-                    sent_tokens = doc.geneSentOfMention(link.sour, addSEP=addSEP)
-                    if addSEP:
-                        ed_feat_dic['full_word_sent'].append(sent_tokens)
+                        sent_tokens = doc.geneSentOfMention(link.sour, addSEP=addSEP)
+                        if addSEP:
+                            ed_feat_dic['full_word_sent'].append(sent_tokens)
+                        else:
+                            ed_feat_dic['full_word_sent'].append([token.content for token in sent_tokens])
+                            ed_feat_dic['sour_dist_sent'].append(getMentionDist(sent_tokens, link.sour, prefix='e'))
+
+                    elif link_type == 'Event-Timex':
+
+                        et_indices[key].append((len(et_targets), TempUtils.norm_time_4to2(timex.tanchor)))
+                        et_targets.append(link.rel)
+
+                        sent_tokens = doc.geneSentTokens(link.sour, link.targ, addSEP=addSEP)
+                        if addSEP:
+                            et_feat_dic['full_word_sent'].append(sent_tokens)
+                        else:
+                            et_feat_dic['full_word_sent'].append([token.content for token in sent_tokens])
+                            sour_prefix = 'se' if link.sour.mention_type in ['Event'] else 'st'
+                            targ_prefix = 'te' if link.sour.mention_type in ['Event'] else 'tt'
+                            et_feat_dic['sour_dist_sent'].append(getMentionDist(sent_tokens, link.sour, prefix=sour_prefix))
+                            et_feat_dic['targ_dist_sent'].append(getMentionDist(sent_tokens, link.targ, prefix=targ_prefix))
                     else:
-                        ed_feat_dic['full_word_sent'].append([token.content for token in sent_tokens])
-                        ed_feat_dic['sour_dist_sent'].append(getMentionDist(sent_tokens, link.sour, prefix='e'))
-
-                elif link_type == 'Event-Timex':
-
-                    et_indices[key].append((len(et_targets), TempUtils.norm_time_4to2(timex.tanchor)))
-                    et_targets.append(link.rel)
-
-                    sent_tokens = doc.geneSentTokens(link.sour, link.targ, addSEP=addSEP)
-                    if addSEP:
-                        et_feat_dic['full_word_sent'].append(sent_tokens)
-                    else:
-                        et_feat_dic['full_word_sent'].append([token.content for token in sent_tokens])
-                        sour_prefix = 'e' if link.sour.mention_type in ['Event'] else 't'
-                        targ_prefix = 'e' if link.sour.mention_type in ['Event'] else 't'
-                        et_feat_dic['sour_dist_sent'].append(getMentionDist(sent_tokens, link.sour, prefix=sour_prefix))
-                        et_feat_dic['targ_dist_sent'].append(getMentionDist(sent_tokens, link.targ, prefix=targ_prefix))
-                else:
-                    raise Exception("[ERROR] Unknown link_type parameter!!!")
+                        raise Exception("[ERROR] Unknown link_type parameter!!!")
 
     return (ed_feat_dic, ed_targets), (et_feat_dic, et_targets), (ed_indices, et_indices), (ed_targets, et_targets)
 
@@ -996,7 +997,7 @@ def main():
 
     dataset = 'TBD' # '20190202' or 'TBD'
 
-    is_reset_doc = True
+    is_reset_doc = False
 
     if dataset == '20190202':
         anchorml_dir = os.path.join(home, "Resources/timex/AnchorData/all_20190202/train")
@@ -1022,11 +1023,11 @@ def main():
     # embed_pickle_file = "data/eventime/giga.d200.embed"
     # slim_word_embed(word2ix, embed_file, embed_pickle_file)
 
-    train_doc_dic = preprocess_doc(train_pkl, oper=oper, sent_win=6, reverse_rel=reverse_rel)
+    train_doc_dic = preprocess_doc(train_pkl, oper=oper, sent_win=0, reverse_rel=reverse_rel)
 
-    val_doc_dic = preprocess_doc(val_pkl, oper=oper, sent_win=2, reverse_rel=reverse_rel)
+    val_doc_dic = preprocess_doc(val_pkl, oper=oper, sent_win=0, reverse_rel=reverse_rel)
 
-    test_doc_dic = preprocess_doc(test_pkl, oper=oper, sent_win=2, reverse_rel=reverse_rel)
+    test_doc_dic = preprocess_doc(test_pkl, oper=oper, sent_win=0, reverse_rel=reverse_rel)
 
     test_gold = prepare_gold(test_doc_dic)
 

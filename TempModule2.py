@@ -90,7 +90,7 @@ class TempAttnRNN(nn.Module):
 
         fc2_out = self.fc2_layer(fc1_out)
 
-        model_out = F.log_softmax(fc2_out.view(-1, 4, 5), dim=-1)
+        model_out = F.log_softmax(fc2_out.view(-1, 4, 4), dim=-1)
         # print(model_out.shape)
 
         return model_out
