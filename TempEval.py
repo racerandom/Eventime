@@ -13,7 +13,7 @@ logger = logging.getLogger('REOptimize')
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device("cpu")
 
 
-def batch_eval_ET(model, data_loader, loss_func, targ2ix, report=False):
+def batch_eval_ET(model, data_loader, loss_func, acc_func, targ2ix, report=False):
 
     model.eval()
     with torch.no_grad():
@@ -34,7 +34,7 @@ def batch_eval_ET(model, data_loader, loss_func, targ2ix, report=False):
 
     loss = loss_func(pred_prob, targ)
 
-    acc = ModuleOptim.calc_multi_acc(pred_prob, targ)
+    acc = acc_func(pred_prob, targ)
 
     pred_ix = torch.argmax(pred_prob, dim=-1)
 

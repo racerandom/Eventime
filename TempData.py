@@ -1023,15 +1023,15 @@ def main():
     # embed_pickle_file = "data/eventime/giga.d200.embed"
     # slim_word_embed(word2ix, embed_file, embed_pickle_file)
 
-    train_doc_dic = preprocess_doc(train_pkl, oper=oper, sent_win=0, reverse_rel=reverse_rel)
+    train_doc_dic = preprocess_doc(train_pkl, oper=oper, sent_win=10, reverse_rel=reverse_rel)
 
-    val_doc_dic = preprocess_doc(val_pkl, oper=oper, sent_win=0, reverse_rel=reverse_rel)
+    val_doc_dic = preprocess_doc(val_pkl, oper=oper, sent_win=5, reverse_rel=reverse_rel)
 
-    test_doc_dic = preprocess_doc(test_pkl, oper=oper, sent_win=0, reverse_rel=reverse_rel)
+    test_doc_dic = preprocess_doc(test_pkl, oper=oper, sent_win=1, reverse_rel=reverse_rel)
 
     test_gold = prepare_gold(test_doc_dic)
 
-    print(test_gold)
+    print(len(test_gold))
 
     ed_train_dataset, et_train_dataset, _, _ = prepare_feats(train_doc_dic, addSEP=addSEP)
 

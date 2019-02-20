@@ -145,6 +145,7 @@ def optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl,
     kbest_scores = []
 
     loss_func = ModuleOptim.multilabel_loss
+    acc_func = ModuleOptim.calc_element_acc
 
     for eval_i in range(1, max_evals + 1):
 
@@ -173,6 +174,7 @@ def optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl,
             train_data_loader, val_data_loader, test_data_loader,
             targ2ix,
             loss_func,
+            acc_func,
             checkpoint_base,
             **params
         )
@@ -201,9 +203,19 @@ def optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl,
 
     model.load_state_dict(best_checkpoint['state_dict'])
 
-    val_loss, val_acc, _ = TempEval.batch_eval_ET(model, val_data_loader, loss_func, targ2ix, report=True)
+    val_loss, val_acc, _ = TempEval.batch_eval_ET(
+        model,
+        val_data_loader,
+        loss_func, acc_func, targ2ix,
+        report=True
+    )
 
-    test_loss, test_acc, test_pred = TempEval.batch_eval_ET(model, test_data_loader, loss_func, targ2ix, report=True)
+    test_loss, test_acc, test_pred = TempEval.batch_eval_ET(
+        model,
+        test_data_loader,
+        loss_func, acc_func, targ2ix,
+        report=True
+    )
 
     print(len(pred_pkl), pred_pkl[0])
 
@@ -214,6 +226,7 @@ def train_model_ET(model, optimizer, kbest_scores,
                    train_data_loader, val_data_loader, test_data_loader,
                    targ2ix,
                    loss_func,
+                   acc_func,
                    checkpoint_base, **params):
 
     monitor = params['monitor']
@@ -258,15 +271,25 @@ def train_model_ET(model, optimizer, kbest_scores,
             # pred_class = torch.gt(pred_prob, 0.5).long()
             # train_acc = (pred_class == train_targ).sum().item() / float(pred_prob.shape[0] * 8)
             # train_acc = ModuleOptim.calc_acc(pred_class, train_targ)
-            train_acc = ModuleOptim.calc_multi_acc(pred_prob, train_targ)
+            train_acc = acc_func(pred_prob, train_targ)
             # print(torch.argmax(pred_prob, dim=-1)[0], train_targ[0])
 
             epoch_acces.append(train_acc)
 
             if (step != 0 and step % params['check_interval'] == 0) or step == step_num - 1:
 
-                val_loss, val_acc, _ = TempEval.batch_eval_ET(model, val_data_loader, loss_func, targ2ix)
-                test_loss, test_acc, _ = TempEval.batch_eval_ET(model, test_data_loader, loss_func, targ2ix)
+                val_loss, val_acc, _ = TempEval.batch_eval_ET(
+                    model,
+                    val_data_loader,
+                    loss_func, acc_func, targ2ix
+                )
+
+                test_loss, test_acc, _ = TempEval.batch_eval_ET(
+                    model,
+                    test_data_loader,
+                    loss_func, acc_func,
+                    targ2ix
+                )
 
                 eval_history['val_loss'].append(val_loss)
                 eval_history['val_acc'].append(val_acc)
@@ -303,7 +326,12 @@ def train_model_ET(model, optimizer, kbest_scores,
                                                  monitor,
                                                  monitor_score))
 
-                test_loss, test_acc, _ = TempEval.batch_eval_ET(model, test_data_loader, loss_func, targ2ix)
+                test_loss, test_acc, _ = TempEval.batch_eval_ET(
+                    model,
+                    test_data_loader,
+                    loss_func, acc_func,
+                    targ2ix
+                )
 
                 logger.debug(
                     'epoch: %2i, step: %4i, time: %4.1fs | '
@@ -373,14 +401,14 @@ def main():
         'attn_dropout': [0.3],
         'fc1_hidden_dim': [200],
         'fc1_dropout': [0.5],
-        'batch_size': [64],
-        'epoch_num': [1],
+        'batch_size': [16],
+        'epoch_num': [200],
         'lr': [1e-0],           # hyper-parameters of optimizer
         'weight_decay': [1e-4],
         'max_norm': [4],
         'patience': [10],       # early stopping
         'monitor': ['val_acc'],
-        'check_interval': [100],    # checkpoint based on val performance given a step interval
+        'check_interval': [10],    # checkpoint based on val performance given a step interval
         'kbest_checkpoint': [5],
         'ranking_loss': [False],    # ranking loss for the baseRNN model
         'omit_other': [False],
@@ -391,7 +419,7 @@ def main():
 
     dataset = 'TBD'
 
-    link_type = 'Event-Timex'
+    link_type = 'Event-DCT'
 
     train_pkl = 'data/eventime/%s/%s_train_tensor_%s.pkl' % (dataset, dataset, link_type)
     val_pkl = 'data/eventime/%s/%s_val_tensor_%s.pkl' % (dataset, dataset, link_type)

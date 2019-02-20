@@ -34,7 +34,7 @@ def save_checkpoint(state, is_best, filename):
         return ""
 
 
-def multilabel_loss(pred_prob, targets, average_size=False):
+def multilabel_loss(pred_prob, targets, average_size=True):
 
     batch_size, pos_size = targets.shape
     loss = F.nll_loss(pred_prob[:, 0, :], targets[:, 0])
@@ -54,6 +54,11 @@ def calc_multi_acc(pred_prob, targets):
         if torch.equal(pred_class[i], targets[i]):
             correct += 1
     return correct / batch_size
+
+
+def calc_element_acc(pred_prob, targets):
+    pred_class = torch.argmax(pred_prob, dim=-1)
+    return (pred_class == targets).sum().item() / pred_class.numel()
 
 
 def pred_ix_to_label(pred_ix, ix2targ):
