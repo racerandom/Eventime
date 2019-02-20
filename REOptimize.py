@@ -83,14 +83,17 @@ def data_load_ET(train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl):
            word2ix, ldis2ix, targ2ix, max_sent_len, pretrained_embed
 
 
-def optimize_model(train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, param_space, max_evals=10):
+def optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, param_space, max_evals=10):
 
     print('device:', device)
 
     monitor = param_space['monitor'][0]
 
-    checkpoint_base = "models/checkpoint_%s_%i" % (param_space['classification_model'][0],
-                                                   int(time.time()))
+    checkpoint_base = "models/checkpoint_%s_%s_%i" % (
+        link_type,
+        param_space['classification_model'][0],
+        int(time.time())
+    )
 
     # train_dataset, val_dataset, test_dataset, \
     # word2ix, dsdp2ix, targ2ix, max_sent_len, max_sdp_len = data_load_RE(train_file, test_file, embed_file, feat_dict)
@@ -394,7 +397,7 @@ def main():
     embed_pkl = 'data/eventime/giga.d200.embed'
     pred_pkl = 'data/eventime/120190202_pred_%s.pkl' % link_type
 
-    optimize_model(train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, param_space, max_evals=1)
+    optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, param_space, max_evals=1)
 
 
 if __name__ == '__main__':
