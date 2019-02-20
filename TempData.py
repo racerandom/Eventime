@@ -988,14 +988,14 @@ def main():
     val_pkl = "data/20190202_val.pkl"
     test_pkl = "data/20190202_test.pkl"
 
-    # anchorML_to_doc(anchorml_train, trainall_pkl)
+    anchorML_to_doc(anchorml_train, trainall_pkl)
     # anchorML_to_doc(anchorml_test, test_pkl)
     #
     # distrib_labels(load_doc(test_pkl))
     #
     # split_doc_pkl(trainall_pkl, train_pkl, val_pkl, train_ratio=0.85, seed=23)
 
-    # split_full_doc_pkl(trainall_pkl, train_pkl, val_pkl, test_pkl, data_split=(3, 1, 1), seed=13)
+    split_full_doc_pkl(trainall_pkl, train_pkl, val_pkl, test_pkl, data_split=(3, 1, 1), seed=13)
 
     # slim embedding
     word2ix = read_word2ix_from_doc(trainall_pkl)
@@ -1035,12 +1035,15 @@ def main():
         else:
             raise Exception('[ERROR] Unknown link_type...')
 
-        _, dist2ix, _, max_sent_len = prepare_global_ED(train_dataset,
+        word2ix, dist2ix, _, max_sent_len = prepare_global_ED(train_dataset,
                                                         val_dataset,
                                                         test_dataset)
-
-        print(dist2ix)
+        print(len(word2ix), len(dist2ix))
         print(targ2ix)
+
+        embed_file = os.path.join(home, "Resources/embed/giga-aacw.d200.bin")
+        embed_pickle_file = "data/eventime/giga.d200.%s.embed" % link_type
+        slim_word_embed(word2ix, embed_file, embed_pickle_file)
 
         train_tensor_dataset = prepare_tensors_ED(
             train_dataset,
