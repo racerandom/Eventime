@@ -996,21 +996,21 @@ def main():
 
     dataset = '20190202' # '20190202' or 'TBD'
 
-    is_reset_doc = False
+    is_reset_doc = True
 
     if dataset == '20190202':
         anchorml_dir = os.path.join(home, "Resources/timex/AnchorData/all_20190202/train")
-        all_pkl = "data/20190202_trainall.pkl"
-        train_pkl = "data/20190202_train.pkl"
-        val_pkl = "data/20190202_val.pkl"
-        test_pkl = "data/20190202_test.pkl"
+        all_pkl = "data/eventime/%s/%s_trainall.pkl" % (dataset, dataset)
+        train_pkl = "data/eventime/%s/%s_train.pkl" % (dataset, dataset)
+        val_pkl = "data/eventime/%s/%s_val.pkl" % (dataset, dataset)
+        test_pkl = "data/eventime/%s/%s_test.pkl" % (dataset, dataset)
         if is_reset_doc:
             prepare_full_doc_pkl(anchorml_dir, all_pkl, train_pkl, val_pkl, test_pkl)
     elif dataset == 'TBD':
         tbd_dir = os.path.join(home, "Resources/timex/AnchorData/all_20190202")
-        train_pkl = "data/%s_train.pkl" % dataset
-        val_pkl = "data/%s_val.pkl" % dataset
-        test_pkl = "data/%s_test.pkl" % dataset
+        train_pkl = "data/eventime/%s/%s_train.pkl" % (dataset, dataset)
+        val_pkl = "data/eventime/%s/%s_val.pkl" % (dataset, dataset)
+        test_pkl = "data/eventime/%s/%s_test.pkl" % (dataset, dataset)
         if is_reset_doc:
             prepare_TBD_doc_pkl(tbd_dir, train_pkl, val_pkl, test_pkl)
     else:
@@ -1040,7 +1040,7 @@ def main():
 
     print(len(test_indices[0]), len(test_indices[1]))
 
-    pickle_data((test_gold, test_indices[0], test_indices[1]), 'data/eventime/20190202_test_gold.pkl')
+    pickle_data((test_gold, test_indices[0], test_indices[1]), 'data/eventime/%s/%s_test_gold.pkl' % (dataset, dataset))
 
     targ2ix = {'A': 0, 'B': 1, 'S': 2, 'V': 3}
 
@@ -1060,7 +1060,7 @@ def main():
         print(targ2ix)
 
         embed_file = os.path.join(home, "Resources/embed/giga-aacw.d200.bin")
-        embed_pickle_file = "data/eventime/giga.d200.%s.embed" % link_type
+        embed_pickle_file = "data/eventime/%s/%s_giga.d200.%s.embed" % (dataset, dataset, link_type)
         slim_word_embed(word2ix, embed_file, embed_pickle_file)
 
         train_tensor_dataset = prepare_tensors_ED(
@@ -1091,10 +1091,10 @@ def main():
               val_tensor_dataset[0].shape,
               test_tensor_dataset[0].shape)
 
-        pickle_data(train_tensor_dataset, 'data/eventime/120190202_train_tensor_%s.pkl' % link_type)
-        pickle_data(val_tensor_dataset, 'data/eventime/120190202_val_tensor_%s.pkl' % link_type)
-        pickle_data(test_tensor_dataset, 'data/eventime/120190202_test_tensor_%s.pkl' % link_type)
-        pickle_data((dist2ix, targ2ix, max_sent_len), 'data/eventime/120190202_glob_info_%s.pkl' % link_type)
+        pickle_data(train_tensor_dataset, 'data/eventime/%s/%s_train_tensor_%s.pkl' % (dataset, dataset, link_type))
+        pickle_data(val_tensor_dataset, 'data/eventime/%s/%s_val_tensor_%s.pkl' % (dataset, dataset, link_type))
+        pickle_data(test_tensor_dataset, 'data/eventime/%s/%s_test_tensor_%s.pkl' % (dataset, dataset, link_type))
+        pickle_data((dist2ix, targ2ix, max_sent_len), 'data/eventime/%s/%s_glob_info_%s.pkl' % (dataset, dataset, link_type))
 
 
 

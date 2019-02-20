@@ -244,10 +244,12 @@ def oracle_test(test_pkl="data/20190202_test.pkl"):
 
 def main2():
 
-    ed_pred = TempUtils.load_pickle(pickle_file='outputs/120190202_pred_Event-DCT.pkl')
-    et_pred = TempUtils.load_pickle(pickle_file='outputs/120190202_pred_Event-Timex.pkl')
+    dataset = '20190202'
 
-    event_gold, ed_links, et_links = TempUtils.load_pickle(pickle_file='data/eventime/20190202_test_gold.pkl')
+    ed_pred = TempUtils.load_pickle(pickle_file='outputs/%s_pred_Event-DCT.pkl' % dataset)
+    et_pred = TempUtils.load_pickle(pickle_file='outputs/%s_pred_Event-Timex.pkl' % dataset)
+
+    event_gold, ed_links, et_links = TempUtils.load_pickle(pickle_file='data/eventime/%s/%s_test_gold.pkl' % (dataset, dataset))
 
     correct_count = 0
 

@@ -388,14 +388,16 @@ def main():
         'margin_neg': [0.5],
     }
 
+    dataset = 'TBD'
+
     link_type = 'Event-Timex'
 
-    train_pkl = 'data/eventime/120190202_train_tensor_%s.pkl' % link_type
-    val_pkl = 'data/eventime/120190202_val_tensor_%s.pkl' % link_type
-    test_pkl = 'data/eventime/120190202_test_tensor_%s.pkl' % link_type
-    info_pkl = 'data/eventime/120190202_glob_info_%s.pkl' % link_type
-    embed_pkl = 'data/eventime/giga.d200.%s.embed' % link_type
-    pred_pkl = 'data/eventime/outputs/120190202_pred_%s.pkl' % link_type
+    train_pkl = 'data/eventime/%s/%s_train_tensor_%s.pkl' % (dataset, dataset, link_type)
+    val_pkl = 'data/eventime/%s/%s_val_tensor_%s.pkl' % (dataset, dataset, link_type)
+    test_pkl = 'data/eventime/%s/%s_test_tensor_%s.pkl' % (dataset, dataset, link_type)
+    info_pkl = 'data/eventime/%s/%s_glob_info_%s.pkl' % (dataset, dataset, link_type)
+    embed_pkl = 'data/eventime/%s/%s_giga.d200.%s.embed' % (dataset, dataset, link_type)
+    pred_pkl = 'outputs/%s_pred_%s.pkl' % (dataset, link_type)
 
     optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, param_space, max_evals=1)
 

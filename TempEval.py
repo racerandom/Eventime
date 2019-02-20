@@ -50,8 +50,8 @@ def batch_eval_ET(model, data_loader, loss_func, targ2ix, report=False):
         pred_index = [label2ix[t] for t in pred_label]
         targ_index = [label2ix[t] for t in targ_label]
 
-        print(classification_report(pred_index,
-                              targ_index,
+        print(classification_report(targ_index,
+                              pred_index,
                               target_names=[k for k, v in sorted(label2ix.items(), key=lambda d: d[1])]
                               ))
 
