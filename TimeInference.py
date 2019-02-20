@@ -207,9 +207,9 @@ def infer_time(event_time, norm_timex, rels):
     return event_time
 
 
-def main2():
+def oracle_test(test_pkl="data/20190202_test.pkl"):
 
-    doc_dic = load_doc("data/20190202_test.pkl")
+    doc_dic = load_doc(test_pkl)
 
     event_count, correct_time = 0, 0
 
@@ -240,6 +240,47 @@ def main2():
             if tuple(event_pred) == event.tanchor:
                 correct_time += 1
     print(correct_time, event_count, correct_time / event_count, sum(link_num) / event_count)
+
+
+def main2():
+
+    ed_pred = TempUtils.load_pickle(pickle_file='outputs/120190202_pred_Event-DCT.pkl')
+    et_pred = TempUtils.load_pickle(pickle_file='outputs/120190202_pred_Event-Timex.pkl')
+
+    event_gold, ed_links, et_links = TempUtils.load_pickle(pickle_file='data/eventime/20190202_test_gold.pkl')
+
+    correct_count = 0
+
+
+
+    for k, gold in event_gold.items():
+
+        pred_time = [None, None, None, None]
+
+        ed_l = ed_links[k]
+
+        ed_label = ed_pred[ed_l[0][0]]
+        ed_time = ed_l[0][1]
+        print('E-D:', ed_label, ed_time)
+
+        pred_time = infer_time(pred_time, ed_time, ed_label)
+
+        if k in et_links:
+            for et_l in et_links[k]:
+                et_label = et_pred[et_l[0]]
+                et_time = et_l[1]
+                pred_time = infer_time(pred_time, et_time, et_label)
+                print('E-T:', et_label, et_time)
+
+        print('gold:', gold)
+        print('pred', pred_time)
+        print()
+
+        if tuple(pred_time) == gold:
+            correct_count += 1
+
+    print('Exact Match: %.4f' % (correct_count / len(event_gold)))
+
 
 
 

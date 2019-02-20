@@ -394,8 +394,8 @@ def main():
     val_pkl = 'data/eventime/120190202_val_tensor_%s.pkl' % link_type
     test_pkl = 'data/eventime/120190202_test_tensor_%s.pkl' % link_type
     info_pkl = 'data/eventime/120190202_glob_info_%s.pkl' % link_type
-    embed_pkl = 'data/eventime/giga.d200.embed'
-    pred_pkl = 'data/eventime/120190202_pred_%s.pkl' % link_type
+    embed_pkl = 'data/eventime/giga.d200.%s.embed' % link_type
+    pred_pkl = 'data/eventime/outputs/120190202_pred_%s.pkl' % link_type
 
     optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, param_space, max_evals=1)
 

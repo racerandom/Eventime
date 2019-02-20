@@ -974,35 +974,53 @@ def split_full_doc_pkl(pkl_file, train_pkl, val_pkl, test_pkl, data_split=(3, 1,
     save_doc(test_dic, test_pkl)
 
 
+def prepare_full_doc_pkl(anchorml_dir, all_pkl, train_pkl, val_pkl, test_pkl):
+
+    anchorML_to_doc(anchorml_dir, all_pkl)
+    split_full_doc_pkl(all_pkl, train_pkl, val_pkl, test_pkl, data_split=(3, 1, 1), seed=13)
+
+
+def prepare_TBD_doc_pkl(TBD_dir, train_pkl, val_pkl, test_pkl):
+
+    anchorML_to_doc(os.path.join(TBD_dir, 'TBD_Train'), train_pkl)
+    anchorML_to_doc(os.path.join(TBD_dir, 'TBD_Val'), val_pkl)
+    anchorML_to_doc(os.path.join(TBD_dir, 'TBD_Test'), test_pkl)
+
+
 def main():
-    anchorml_train = "/Users/fei-c/Resources/timex/AnchorData/all_20190202/train"
-    anchorml_test = "/Users/fei-c/Resources/timex/AnchorData/all_20190202/test"
-    trainall_pkl = "data/20190202_trainall.pkl"
-    link_type = 'Event-Timex'
+
     oper = 3
-    sent_win=1
     addSEP=True
     reverse_rel=False
+    home = os.environ['HOME']
 
-    train_pkl = "data/20190202_train.pkl"
-    val_pkl = "data/20190202_val.pkl"
-    test_pkl = "data/20190202_test.pkl"
+    dataset = '20190202' # '20190202' or 'TBD'
 
-    anchorML_to_doc(anchorml_train, trainall_pkl)
-    # anchorML_to_doc(anchorml_test, test_pkl)
-    #
-    # distrib_labels(load_doc(test_pkl))
-    #
-    # split_doc_pkl(trainall_pkl, train_pkl, val_pkl, train_ratio=0.85, seed=23)
+    is_reset_doc = False
 
-    split_full_doc_pkl(trainall_pkl, train_pkl, val_pkl, test_pkl, data_split=(3, 1, 1), seed=13)
+    if dataset == '20190202':
+        anchorml_dir = os.path.join(home, "Resources/timex/AnchorData/all_20190202/train")
+        all_pkl = "data/20190202_trainall.pkl"
+        train_pkl = "data/20190202_train.pkl"
+        val_pkl = "data/20190202_val.pkl"
+        test_pkl = "data/20190202_test.pkl"
+        if is_reset_doc:
+            prepare_full_doc_pkl(anchorml_dir, all_pkl, train_pkl, val_pkl, test_pkl)
+    elif dataset == 'TBD':
+        tbd_dir = os.path.join(home, "Resources/timex/AnchorData/all_20190202")
+        train_pkl = "data/%s_train.pkl" % dataset
+        val_pkl = "data/%s_val.pkl" % dataset
+        test_pkl = "data/%s_test.pkl" % dataset
+        if is_reset_doc:
+            prepare_TBD_doc_pkl(tbd_dir, train_pkl, val_pkl, test_pkl)
+    else:
+        raise Exception('[ERROR] Unknown Dataset name...')
 
     # slim embedding
-    word2ix = read_word2ix_from_doc(trainall_pkl)
-    home = os.environ['HOME']
-    embed_file = os.path.join(home, "Resources/embed/giga-aacw.d200.bin")
-    embed_pickle_file = "data/eventime/giga.d200.embed"
-    slim_word_embed(word2ix, embed_file, embed_pickle_file)
+    # word2ix = read_word2ix_from_doc(all_pkl)
+    # embed_file = os.path.join(home, "Resources/embed/giga-aacw.d200.bin")
+    # embed_pickle_file = "data/eventime/giga.d200.embed"
+    # slim_word_embed(word2ix, embed_file, embed_pickle_file)
 
     train_doc_dic = preprocess_doc(train_pkl, oper=oper, sent_win=6, reverse_rel=reverse_rel)
 
