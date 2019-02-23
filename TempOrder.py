@@ -199,7 +199,7 @@ class InduceMethod():
         return operation
 
     @staticmethod
-    def induce_update_action0(event_time, norm_timex):
+    def induce_update_action0(event_time, norm_timex, reverse=None):
 
         if event_time is None or norm_timex is None:
             return None
@@ -210,11 +210,11 @@ class InduceMethod():
         for t_d in norm_timex:
             for e_d in event_time:
                 if e_d is None:
-                    update_label += '0'
+                    update_label += 'N'
                 elif e_d == t_d:
-                    update_label += '1'
+                    update_label += 'U'
                 else:
-                    update_label += '0'
+                    update_label += 'N'
         return update_label
 
     @staticmethod
@@ -285,8 +285,8 @@ class InduceMethod():
             if t_d is None:
                 update_label += 'VV'
             else:
-                for i in range(2):
-                    label = induce_day(event_time[i * 2], event_time[i * 2 + 1], t_d)
+                for a, b in [(0, 1), (2, 3)]:
+                    label = induce_day(event_time[a], event_time[b], t_d)
                     update_label += label if not reverse else reverse_label[label]
 
         return update_label

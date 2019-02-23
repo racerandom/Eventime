@@ -34,31 +34,54 @@ def save_checkpoint(state, is_best, filename):
         return ""
 
 
-def multilabel_loss(pred_prob, targets, average_size=True):
+def multilabel_loss(pred_prob, targets, update_label=1, average_size=True):
 
-    batch_size, pos_size = targets.shape
-    loss = F.nll_loss(pred_prob[:, 0, :], targets[:, 0])
-    for i in range(1, pred_prob.shape[1]):
-        loss += F.nll_loss(pred_prob[:, i, :], targets[:, i])
-    if average_size:
-        return loss / pos_size
-    else:
+    if update_label == 3:
+        batch_size, pos_size = targets.shape
+
+        loss = F.nll_loss(pred_prob[:, 0, :], targets[:, 0])
+        for i in range(1, pred_prob.shape[1]):
+            loss += F.nll_loss(pred_prob[:, i, :], targets[:, i])
+        if average_size:
+            return loss / pos_size
+        else:
+            return loss
+    elif update_label == 1:
+        loss_fn = torch.nn.BCELoss()
+        loss = loss_fn(pred_prob, targets.float())
         return loss
 
 
-def calc_multi_acc(pred_prob, targets):
-    pred_class = torch.argmax(pred_prob, dim=-1)
-    batch_size = pred_class.shape[0]
+def calc_multi_acc(pred_prob, targets, update_label=1, threshold=0.5):
+
+    batch_size = targets.shape[0]
     correct = 0
-    for i in range(batch_size):
-        if torch.equal(pred_class[i], targets[i]):
-            correct += 1
-    return correct / batch_size
+    if update_label == 3:
+        pred_class = torch.argmax(pred_prob, dim=-1)
+        for i in range(batch_size):
+            if torch.equal(pred_class[i], targets[i]):
+                correct += 1
+        return correct / batch_size
+    elif update_label == 1:
+        pred_class = (pred_prob >= threshold)
+        for i in range(batch_size):
+            if torch.equal(pred_class[i], targets[i]):
+                correct += 1
+        return correct / batch_size
+    else:
+        raise Exception('[ERROR] Unknown update label...')
 
 
-def calc_element_acc(pred_prob, targets):
-    pred_class = torch.argmax(pred_prob, dim=-1)
-    return (pred_class == targets).sum().item() / pred_class.numel()
+def calc_element_acc(pred_prob, targets, update_label=1, threshold=0.5):
+
+    if update_label == 3:
+        pred_class = torch.argmax(pred_prob, dim=-1)
+        return (pred_class == targets).sum().item() / pred_class.numel()
+    elif update_label == 1:
+        pred_class = (pred_prob >= threshold).long()
+        return (pred_class == targets).sum().item() / pred_class.numel()
+    else:
+        raise Exception('[ERROR] Unknown update label...')
 
 
 def pred_ix_to_label(pred_ix, ix2targ):

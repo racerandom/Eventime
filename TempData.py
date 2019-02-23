@@ -978,7 +978,7 @@ def split_full_doc_pkl(pkl_file, train_pkl, val_pkl, test_pkl, data_split=(3, 1,
 def prepare_full_doc_pkl(anchorml_dir, all_pkl, train_pkl, val_pkl, test_pkl):
 
     anchorML_to_doc(anchorml_dir, all_pkl)
-    split_full_doc_pkl(all_pkl, train_pkl, val_pkl, test_pkl, data_split=(3, 1, 1), seed=13)
+    split_full_doc_pkl(all_pkl, train_pkl, val_pkl, test_pkl, data_split=(4, 1, 1), seed=1337)
 
 
 def prepare_TBD_doc_pkl(TBD_dir, train_pkl, val_pkl, test_pkl):
@@ -990,7 +990,7 @@ def prepare_TBD_doc_pkl(TBD_dir, train_pkl, val_pkl, test_pkl):
 
 def main():
 
-    oper = 3
+    update_label = 3  # 1: {'0', '1'}, 3: {'A', 'B', 'S', 'V'}
     addSEP=True
     reverse_rel=False
     home = os.environ['HOME']
@@ -1023,11 +1023,11 @@ def main():
     # embed_pickle_file = "data/eventime/giga.d200.embed"
     # slim_word_embed(word2ix, embed_file, embed_pickle_file)
 
-    train_doc_dic = preprocess_doc(train_pkl, oper=oper, sent_win=10, reverse_rel=reverse_rel)
+    train_doc_dic = preprocess_doc(train_pkl, oper=update_label, sent_win=10, reverse_rel=reverse_rel)
 
-    val_doc_dic = preprocess_doc(val_pkl, oper=oper, sent_win=5, reverse_rel=reverse_rel)
+    val_doc_dic = preprocess_doc(val_pkl, oper=update_label, sent_win=2, reverse_rel=reverse_rel)
 
-    test_doc_dic = preprocess_doc(test_pkl, oper=oper, sent_win=1, reverse_rel=reverse_rel)
+    test_doc_dic = preprocess_doc(test_pkl, oper=update_label, sent_win=2, reverse_rel=reverse_rel)
 
     test_gold = prepare_gold(test_doc_dic)
 
@@ -1046,7 +1046,12 @@ def main():
         'data/eventime/%s/%s_test_gold.pkl' % (dataset, dataset)
     )
 
-    targ2ix = {'A': 0, 'B': 1, 'S': 2, 'V': 3}
+    if update_label == 3:
+        targ2ix = {'A': 0, 'B': 1, 'S': 2, 'V': 3}
+    elif update_label == 1:
+        targ2ix = {'U': 1, 'N': 0}
+    else:
+        raise Exception('[ERROR] Unknown update label...')
 
     for link_type in ['Event-DCT', 'Event-Timex']:
 
@@ -1057,14 +1062,21 @@ def main():
         else:
             raise Exception('[ERROR] Unknown link_type...')
 
-        word2ix, dist2ix, _, max_sent_len = prepare_global_ED(train_dataset,
-                                                        val_dataset,
-                                                        test_dataset)
+        word2ix, dist2ix, _, max_sent_len = prepare_global_ED(
+            train_dataset,
+            val_dataset,
+            test_dataset
+        )
+
         print(len(word2ix), len(dist2ix))
         print(targ2ix)
 
         embed_file = os.path.join(home, "Resources/embed/giga-aacw.d200.bin")
-        embed_pickle_file = "data/eventime/%s/%s_giga.d200.%s.embed" % (dataset, dataset, link_type)
+        embed_pickle_file = "data/eventime/%s/giga.d200.%s.l%i.embed" % (
+            dataset,
+            link_type,
+            update_label
+        )
         slim_word_embed(word2ix, embed_file, embed_pickle_file)
 
         train_tensor_dataset = prepare_tensors_ED(
@@ -1095,10 +1107,29 @@ def main():
               val_tensor_dataset[0].shape,
               test_tensor_dataset[0].shape)
 
-        pickle_data(train_tensor_dataset, 'data/eventime/%s/%s_train_tensor_%s.pkl' % (dataset, dataset, link_type))
-        pickle_data(val_tensor_dataset, 'data/eventime/%s/%s_val_tensor_%s.pkl' % (dataset, dataset, link_type))
-        pickle_data(test_tensor_dataset, 'data/eventime/%s/%s_test_tensor_%s.pkl' % (dataset, dataset, link_type))
-        pickle_data((dist2ix, targ2ix, max_sent_len), 'data/eventime/%s/%s_glob_info_%s.pkl' % (dataset, dataset, link_type))
+        pickle_data(train_tensor_dataset, 'data/eventime/%s/train_tensor_%s_l%i.pkl' % (
+            dataset,
+            link_type,
+            update_label
+        ))
+
+        pickle_data(val_tensor_dataset, 'data/eventime/%s/val_tensor_%s_l%i.pkl' % (
+            dataset,
+            link_type,
+            update_label
+        ))
+
+        pickle_data(test_tensor_dataset, 'data/eventime/%s/test_tensor_%s_l%i.pkl' % (
+            dataset,
+            link_type,
+            update_label
+        ))
+
+        pickle_data((dist2ix, targ2ix, max_sent_len), 'data/eventime/%s/glob_info_%s_l%i.pkl' % (
+            dataset,
+            link_type,
+            update_label
+        ))
 
 
 

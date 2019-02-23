@@ -13,7 +13,7 @@ logger = logging.getLogger('REOptimize')
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device("cpu")
 
 
-def batch_eval_ET(model, data_loader, loss_func, acc_func, targ2ix, report=False):
+def batch_eval_ET(model, data_loader, loss_func, acc_func, targ2ix, update_label, report=False):
 
     model.eval()
     with torch.no_grad():
@@ -32,16 +32,22 @@ def batch_eval_ET(model, data_loader, loss_func, acc_func, targ2ix, report=False
 
         assert pred_prob.shape[0] == targ.shape[0]
 
-    loss = loss_func(pred_prob, targ)
+    loss = loss_func(pred_prob, targ, update_label=update_label)
 
-    acc = acc_func(pred_prob, targ)
-
-    pred_ix = torch.argmax(pred_prob, dim=-1)
+    acc = acc_func(pred_prob, targ, update_label=update_label)
 
     ix2targ = {v: k for k, v in targ2ix.items()}
 
-    pred_label = ModuleOptim.pred_ix_to_label(pred_ix, ix2targ)
-    targ_label = ModuleOptim.pred_ix_to_label(targ, ix2targ)
+    if update_label == 3:
+        pred_ix = torch.argmax(pred_prob, dim=-1)
+        pred_label = ModuleOptim.pred_ix_to_label(pred_ix, ix2targ)
+        targ_label = ModuleOptim.pred_ix_to_label(targ, ix2targ)
+    elif update_label == 1:
+        pred_ix = (pred_prob >= 0.5).long()
+        pred_label = ModuleOptim.pred_ix_to_label(pred_ix, ix2targ)
+        targ_label = ModuleOptim.pred_ix_to_label(targ, ix2targ)
+    else:
+        raise Exception('[ERROR] Unknown update label...')
 
     if report:
         # pred = [''.join(str(i.item()) for i in t) for t in pred_ix]

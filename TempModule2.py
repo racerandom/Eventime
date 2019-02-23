@@ -164,6 +164,12 @@ class TempRNN(nn.Module):
 
         fc2_out = self.fc2_layer(fc1_out)
 
-        model_out = F.log_softmax(fc2_out.view(-1, 4, 4), dim=-1)
-
-        return model_out
+        # print(fc2_out.shape)
+        if self.params['update_label'] == 3:
+            pred_prob = F.log_softmax(fc2_out.view(-1, 4, 4), dim=-1)
+        elif self.params['update_label'] == 1:
+            m = torch.nn.Sigmoid()
+            pred_prob = m(fc2_out)
+        else:
+            raise Exception('[ERROR] Unknown update label...')
+        return pred_prob

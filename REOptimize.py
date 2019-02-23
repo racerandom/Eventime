@@ -83,7 +83,9 @@ def data_load_ET(train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl):
            word2ix, ldis2ix, targ2ix, max_sent_len, pretrained_embed
 
 
-def optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, param_space, max_evals=10):
+def optimize_model(link_type,
+                   train_pkl, val_pkl, test_pkl,
+                   info_pkl, embed_pkl, pred_pkl, param_space, max_evals=10):
 
     print('device:', device)
 
@@ -157,6 +159,8 @@ def optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl,
 
         logger.info('[Selected %i Params]: %s' % (eval_i, params))
 
+
+
         model, optimizer = model_instance_ET(len(word2ix), len(ldis2ix), targ2ix,
                                              max_sent_len, pretrained_embed, **params)
 
@@ -207,6 +211,7 @@ def optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl,
         model,
         val_data_loader,
         loss_func, acc_func, targ2ix,
+        param_space['update_label'][0],
         report=True
     )
 
@@ -214,6 +219,7 @@ def optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl,
         model,
         test_data_loader,
         loss_func, acc_func, targ2ix,
+        param_space['update_label'][0],
         report=True
     )
 
@@ -259,20 +265,19 @@ def train_model_ET(model, optimizer, kbest_scores,
 
             pred_prob = model(*train_feats)
 
-            train_loss = loss_func(pred_prob, train_targ)
-            # batch_size = pred_prob.shape[0]
-            # train_loss = F.nll_loss(pred_prob.view(batch_size * 4, -1), train_targ.view(-1))
+            train_loss = loss_func(pred_prob,
+                                   train_targ,
+                                   update_label=params['update_label'])
 
             train_loss.backward(retain_graph=True)
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=params['max_norm'])
             optimizer.step()
 
             epoch_losses.append(train_loss.item())
-            # pred_class = torch.gt(pred_prob, 0.5).long()
-            # train_acc = (pred_class == train_targ).sum().item() / float(pred_prob.shape[0] * 8)
-            # train_acc = ModuleOptim.calc_acc(pred_class, train_targ)
-            train_acc = acc_func(pred_prob, train_targ)
-            # print(torch.argmax(pred_prob, dim=-1)[0], train_targ[0])
+
+            train_acc = acc_func(pred_prob,
+                                 train_targ,
+                                 update_label=params['update_label'])
 
             epoch_acces.append(train_acc)
 
@@ -281,24 +286,22 @@ def train_model_ET(model, optimizer, kbest_scores,
                 val_loss, val_acc, _ = TempEval.batch_eval_ET(
                     model,
                     val_data_loader,
-                    loss_func, acc_func, targ2ix
+                    loss_func, acc_func, targ2ix,
+                    params['update_label']
                 )
 
                 test_loss, test_acc, _ = TempEval.batch_eval_ET(
                     model,
                     test_data_loader,
                     loss_func, acc_func,
-                    targ2ix
+                    targ2ix,
+                    params['update_label']
                 )
 
                 eval_history['val_loss'].append(val_loss)
                 eval_history['val_acc'].append(val_acc)
 
                 monitor_score = round(locals()[monitor], 6)
-
-                # global_is_best, global_best_score = ModuleOptim.is_best_score(monitor_score,
-                #                                                               global_best_score,
-                #                                                               monitor)
 
                 is_kbest, kbest_scores = ModuleOptim.update_kbest_scores(kbest_scores,
                                                                          monitor_score,
@@ -330,7 +333,8 @@ def train_model_ET(model, optimizer, kbest_scores,
                     model,
                     test_data_loader,
                     loss_func, acc_func,
-                    targ2ix
+                    targ2ix,
+                    params['update_label']
                 )
 
                 logger.debug(
@@ -384,8 +388,11 @@ def main():
 
     classification_model = 'TempRNN'   # 'baseRNN', 'attnRNN'
 
+    update_label = 3
+
     param_space = {
         'classification_model': [classification_model],
+        'update_label': [update_label],
         'freeze_mode': [False],
         'sdp_filter_nb': [100],     # SDP representation for each token
         'sdp_kernel_len': [3],
@@ -417,15 +424,36 @@ def main():
         'margin_neg': [0.5],
     }
 
+
     dataset = 'TBD'
 
     link_type = 'Event-DCT'
 
-    train_pkl = 'data/eventime/%s/%s_train_tensor_%s.pkl' % (dataset, dataset, link_type)
-    val_pkl = 'data/eventime/%s/%s_val_tensor_%s.pkl' % (dataset, dataset, link_type)
-    test_pkl = 'data/eventime/%s/%s_test_tensor_%s.pkl' % (dataset, dataset, link_type)
-    info_pkl = 'data/eventime/%s/%s_glob_info_%s.pkl' % (dataset, dataset, link_type)
-    embed_pkl = 'data/eventime/%s/%s_giga.d200.%s.embed' % (dataset, dataset, link_type)
+    train_pkl = 'data/eventime/%s/train_tensor_%s_l%i.pkl' % (
+        dataset,
+        link_type,
+        update_label
+    )
+    val_pkl = 'data/eventime/%s/val_tensor_%s_l%i.pkl' % (
+        dataset,
+        link_type,
+        update_label
+    )
+    test_pkl = 'data/eventime/%s/test_tensor_%s_l%i.pkl' % (
+        dataset,
+        link_type,
+        update_label
+    )
+    info_pkl = 'data/eventime/%s/glob_info_%s_l%i.pkl' % (
+        dataset,
+        link_type,
+        update_label
+    )
+    embed_pkl = 'data/eventime/%s/giga.d200.%s.l%i.embed' % (
+        dataset,
+        link_type,
+        update_label
+    )
     pred_pkl = 'outputs/%s_pred_%s.pkl' % (dataset, link_type)
 
     optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, param_space, max_evals=1)
