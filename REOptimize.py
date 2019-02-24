@@ -85,7 +85,9 @@ def data_load_ET(train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl):
 
 def optimize_model(link_type,
                    train_pkl, val_pkl, test_pkl,
-                   info_pkl, embed_pkl, pred_pkl, param_space, max_evals=10):
+                   info_pkl, embed_pkl,
+                   pred_pkl, targ_pkl,
+                   param_space, max_evals=10):
 
     print('device:', device)
 
@@ -207,7 +209,7 @@ def optimize_model(link_type,
 
     model.load_state_dict(best_checkpoint['state_dict'])
 
-    val_loss, val_acc, _ = TempEval.batch_eval_ET(
+    val_loss, val_acc, _, _ = TempEval.batch_eval_ET(
         model,
         val_data_loader,
         loss_func, acc_func, targ2ix,
@@ -215,7 +217,7 @@ def optimize_model(link_type,
         report=True
     )
 
-    test_loss, test_acc, test_pred = TempEval.batch_eval_ET(
+    test_loss, test_acc, test_pred, test_targ = TempEval.batch_eval_ET(
         model,
         test_data_loader,
         loss_func, acc_func, targ2ix,
@@ -226,6 +228,7 @@ def optimize_model(link_type,
     print(len(pred_pkl), pred_pkl[0])
 
     TempUtils.pickle_data(test_pred, pred_pkl)
+    TempUtils.pickle_data(test_targ, targ_pkl)
 
 
 def train_model_ET(model, optimizer, kbest_scores,
@@ -283,14 +286,14 @@ def train_model_ET(model, optimizer, kbest_scores,
 
             if (step != 0 and step % params['check_interval'] == 0) or step == step_num - 1:
 
-                val_loss, val_acc, _ = TempEval.batch_eval_ET(
+                val_loss, val_acc, _, _ = TempEval.batch_eval_ET(
                     model,
                     val_data_loader,
                     loss_func, acc_func, targ2ix,
                     params['update_label']
                 )
 
-                test_loss, test_acc, _ = TempEval.batch_eval_ET(
+                test_loss, test_acc, _, _ = TempEval.batch_eval_ET(
                     model,
                     test_data_loader,
                     loss_func, acc_func,
@@ -329,7 +332,7 @@ def train_model_ET(model, optimizer, kbest_scores,
                                                  monitor,
                                                  monitor_score))
 
-                test_loss, test_acc, _ = TempEval.batch_eval_ET(
+                test_loss, test_acc, _, _ = TempEval.batch_eval_ET(
                     model,
                     test_data_loader,
                     loss_func, acc_func,
@@ -390,6 +393,10 @@ def main():
 
     update_label = 3
 
+    dataset = 'TBD'
+
+    link_type = 'Event-DCT'
+
     param_space = {
         'classification_model': [classification_model],
         'update_label': [update_label],
@@ -424,11 +431,6 @@ def main():
         'margin_neg': [0.5],
     }
 
-
-    dataset = 'TBD'
-
-    link_type = 'Event-DCT'
-
     train_pkl = 'data/eventime/%s/train_tensor_%s_l%i.pkl' % (
         dataset,
         link_type,
@@ -454,9 +456,10 @@ def main():
         link_type,
         update_label
     )
-    pred_pkl = 'outputs/%s_pred_%s.pkl' % (dataset, link_type)
+    pred_pkl = 'outputs/%s_pred_l%i_%s.pkl' % (dataset, update_label, link_type)
+    targ_pkl = 'outputs/%s_targ_l%i_%s.pkl' % (dataset, update_label, link_type)
 
-    optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, param_space, max_evals=1)
+    optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, targ_pkl, param_space, max_evals=1)
 
 
 if __name__ == '__main__':

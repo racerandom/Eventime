@@ -61,7 +61,7 @@ def batch_eval_ET(model, data_loader, loss_func, acc_func, targ2ix, update_label
                               target_names=[k for k, v in sorted(label2ix.items(), key=lambda d: d[1])]
                               ))
 
-    return loss.item(), acc, pred_label
+    return loss.item(), acc, pred_label, targ_label
 
 
 

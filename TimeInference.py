@@ -154,56 +154,66 @@ def main():
     print("single accuracy %.3f, multiple accurracy %.3f" % (single_correct/single, multiple_correct/multiple))
 
 
-def infer_time(event_time, norm_timex, rels):
-    for i in range(len(rels)):
-        if i == 0:
-            if norm_timex[0] is None:
-                continue
-            if rels[i] == 'A':
-                if event_time[0] is None or event_time[0] < norm_timex[0]:
+def infer_time(event_time, norm_timex, rels, update_label=3):
+    if update_label == 3:
+        for i in range(len(rels)):
+            if i == 0:
+                if norm_timex[0] is None:
+                    continue
+                if rels[i] == 'A':
+                    if event_time[0] is None or event_time[0] < norm_timex[0]:
+                        event_time[0] = norm_timex[0]
+                elif rels[i] == 'B':
+                    if event_time[1] is None or event_time[1] > norm_timex[0]:
+                        event_time[1] = norm_timex[0]
+                elif rels[i] == 'S':
                     event_time[0] = norm_timex[0]
-            elif rels[i] == 'B':
-                if event_time[1] is None or event_time[1] > norm_timex[0]:
                     event_time[1] = norm_timex[0]
-            elif rels[i] == 'S':
-                event_time[0] = norm_timex[0]
-                event_time[1] = norm_timex[0]
-        elif i == 1:
-            if norm_timex[0] is None:
-                continue
-            if rels[i] == 'A':
-                if event_time[2] is None or event_time[2] < norm_timex[0]:
+            elif i == 1:
+                if norm_timex[0] is None:
+                    continue
+                if rels[i] == 'A':
+                    if event_time[2] is None or event_time[2] < norm_timex[0]:
+                        event_time[2] = norm_timex[0]
+                elif rels[i] == 'B':
+                    if event_time[3] is None or event_time[3] > norm_timex[0]:
+                        event_time[3] = norm_timex[0]
+                elif rels[i] == 'S':
                     event_time[2] = norm_timex[0]
-            elif rels[i] == 'B':
-                if event_time[3] is None or event_time[3] > norm_timex[0]:
                     event_time[3] = norm_timex[0]
-            elif rels[i] == 'S':
-                event_time[2] = norm_timex[0]
-                event_time[3] = norm_timex[0]
-        elif i == 2:
-            if norm_timex[1] is None:
-                continue
-            if rels[i] == 'A':
-                if event_time[0] is None or event_time[0] < norm_timex[1]:
+            elif i == 2:
+                if norm_timex[1] is None:
+                    continue
+                if rels[i] == 'A':
+                    if event_time[0] is None or event_time[0] < norm_timex[1]:
+                        event_time[0] = norm_timex[1]
+                elif rels[i] == 'B':
+                    if event_time[1] is None or event_time[1] > norm_timex[1]:
+                        event_time[1] = norm_timex[1]
+                elif rels[i] == 'S':
                     event_time[0] = norm_timex[1]
-            elif rels[i] == 'B':
-                if event_time[1] is None or event_time[1] > norm_timex[1]:
                     event_time[1] = norm_timex[1]
-            elif rels[i] == 'S':
-                event_time[0] = norm_timex[1]
-                event_time[1] = norm_timex[1]
-        elif i == 3:
-            if norm_timex[1] is None:
-                continue
-            if rels[i] == 'A':
-                if event_time[2] is None or event_time[2] < norm_timex[1]:
+            elif i == 3:
+                if norm_timex[1] is None:
+                    continue
+                if rels[i] == 'A':
+                    if event_time[2] is None or event_time[2] < norm_timex[1]:
+                        event_time[2] = norm_timex[1]
+                elif rels[i] == 'B':
+                    if event_time[3] is None or event_time[3] > norm_timex[1]:
+                        event_time[3] = norm_timex[1]
+                elif rels[i] == 'S':
                     event_time[2] = norm_timex[1]
-            elif rels[i] == 'B':
-                if event_time[3] is None or event_time[3] > norm_timex[1]:
                     event_time[3] = norm_timex[1]
-            elif rels[i] == 'S':
-                event_time[2] = norm_timex[1]
-                event_time[3] = norm_timex[1]
+    elif update_label == 1:
+        for i in range(len(rels)):
+            t_index = int(i / 4)
+            e_index = i % 4
+            if rels[i] == 'U':
+                event_time[e_index] = norm_timex[t_index]
+    else:
+        raise Exception('[ERROR] Unkown update label...')
+
     return event_time
 
 
@@ -246,8 +256,12 @@ def main2():
 
     dataset = 'TBD'
 
-    ed_pred = TempUtils.load_pickle(pickle_file='outputs/%s_pred_Event-DCT.pkl' % dataset)
-    et_pred = TempUtils.load_pickle(pickle_file='outputs/%s_pred_Event-Timex.pkl' % dataset)
+    set = 'pred' # 'pred' or 'targ'
+
+    update_label = 1
+
+    ed_pred = TempUtils.load_pickle(pickle_file='outputs/%s_%s_l%i_Event-DCT.pkl' % (dataset, set, update_label))
+    et_pred = TempUtils.load_pickle(pickle_file='outputs/%s_%s_l%i_Event-Timex.pkl' % (dataset, set, update_label))
 
     event_gold, ed_links, et_links, ed_targ, et_targ = TempUtils.load_pickle(pickle_file='data/eventime/%s/%s_test_gold.pkl' % (dataset, dataset))
 
@@ -265,15 +279,17 @@ def main2():
 
         pred_time = infer_time(pred_time, ed_time, ed_label)
 
-        if ed_label != 'SSSS':
+        at_dct_label = 'SSSS' if update_label == 3 else 'UUUUUUUU'
+
+        if ed_label != at_dct_label:
 
             if k in et_links:
                 for et_l in et_links[k]:
                     et_label = et_pred[et_l[0]]
                     et_time = et_l[1]
                     pred_time = infer_time(pred_time, et_time, et_label)
-                    if et_label == 'SSSS':
-                        continue
+                    if et_label == at_dct_label:
+                        break
                     # print('E-T:', et_label, et_time)
 
         # print('gold:', gold)

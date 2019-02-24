@@ -990,30 +990,36 @@ def prepare_TBD_doc_pkl(TBD_dir, train_pkl, val_pkl, test_pkl):
 
 def main():
 
-    update_label = 3  # 1: {'0', '1'}, 3: {'A', 'B', 'S', 'V'}
+    update_label = 1  # 1: {'0', '1'}, 3: {'A', 'B', 'S', 'V'}
     addSEP=True
     reverse_rel=False
     home = os.environ['HOME']
 
-    dataset = 'TBD' # '20190202' or 'TBD'
+    dataset = '20190222' # '20190202', '20190222' or 'TBD'
 
-    is_reset_doc = False
+    is_reset_doc = True
+
+    is_generate_date = False
 
     if dataset == '20190202':
         anchorml_dir = os.path.join(home, "Resources/timex/AnchorData/all_20190202/train")
-        all_pkl = "data/eventime/%s/%s_trainall.pkl" % (dataset, dataset)
-        train_pkl = "data/eventime/%s/%s_train.pkl" % (dataset, dataset)
-        val_pkl = "data/eventime/%s/%s_val.pkl" % (dataset, dataset)
-        test_pkl = "data/eventime/%s/%s_test.pkl" % (dataset, dataset)
+        all_pkl = "data/eventime/%s/trainall.pkl" % dataset
+        train_pkl = "data/eventime/%s/train.pkl" % dataset
+        val_pkl = "data/eventime/%s/val.pkl" % dataset
+        test_pkl = "data/eventime/%s/test.pkl" % dataset
         if is_reset_doc:
             prepare_full_doc_pkl(anchorml_dir, all_pkl, train_pkl, val_pkl, test_pkl)
     elif dataset == 'TBD':
         tbd_dir = os.path.join(home, "Resources/timex/AnchorData/all_20190202")
-        train_pkl = "data/eventime/%s/%s_train.pkl" % (dataset, dataset)
-        val_pkl = "data/eventime/%s/%s_val.pkl" % (dataset, dataset)
-        test_pkl = "data/eventime/%s/%s_test.pkl" % (dataset, dataset)
+        train_pkl = "data/eventime/%s/train.pkl" % dataset
+        val_pkl = "data/eventime/%s/val.pkl" % dataset
+        test_pkl = "data/eventime/%s/test.pkl" % dataset
         if is_reset_doc:
             prepare_TBD_doc_pkl(tbd_dir, train_pkl, val_pkl, test_pkl)
+    elif dataset == '20190222':
+        anchorml_dir = os.path.join(home, "Resources/timex/AnchorData/20190222/S-ALL全体")
+        data_pkl = "data/eventime/%s/data.pkl" % dataset
+        anchorML_to_doc(anchorml_dir, data_pkl)
     else:
         raise Exception('[ERROR] Unknown Dataset name...')
 
@@ -1022,114 +1028,114 @@ def main():
     # embed_file = os.path.join(home, "Resources/embed/giga-aacw.d200.bin")
     # embed_pickle_file = "data/eventime/giga.d200.embed"
     # slim_word_embed(word2ix, embed_file, embed_pickle_file)
+    if is_generate_date:
+        train_doc_dic = preprocess_doc(train_pkl, oper=update_label, sent_win=10, reverse_rel=reverse_rel)
 
-    train_doc_dic = preprocess_doc(train_pkl, oper=update_label, sent_win=10, reverse_rel=reverse_rel)
+        val_doc_dic = preprocess_doc(val_pkl, oper=update_label, sent_win=2, reverse_rel=reverse_rel)
 
-    val_doc_dic = preprocess_doc(val_pkl, oper=update_label, sent_win=2, reverse_rel=reverse_rel)
+        test_doc_dic = preprocess_doc(test_pkl, oper=update_label, sent_win=2, reverse_rel=reverse_rel)
 
-    test_doc_dic = preprocess_doc(test_pkl, oper=update_label, sent_win=2, reverse_rel=reverse_rel)
+        test_gold = prepare_gold(test_doc_dic)
 
-    test_gold = prepare_gold(test_doc_dic)
+        print(len(test_gold))
 
-    print(len(test_gold))
+        ed_train_dataset, et_train_dataset, _, _ = prepare_feats(train_doc_dic, addSEP=addSEP)
 
-    ed_train_dataset, et_train_dataset, _, _ = prepare_feats(train_doc_dic, addSEP=addSEP)
+        ed_val_dataset, et_val_dataset, _, _ = prepare_feats(val_doc_dic, addSEP=addSEP)
 
-    ed_val_dataset, et_val_dataset, _, _ = prepare_feats(val_doc_dic, addSEP=addSEP)
+        ed_test_dataset, et_test_dataset, test_indices, test_targ = prepare_feats(test_doc_dic, addSEP=addSEP)
 
-    ed_test_dataset, et_test_dataset, test_indices, test_targ = prepare_feats(test_doc_dic, addSEP=addSEP)
+        print(len(test_indices[0]), len(test_indices[1]))
 
-    print(len(test_indices[0]), len(test_indices[1]))
+        pickle_data(
+            (test_gold, test_indices[0], test_indices[1], test_targ[0], test_targ[1]),
+            'data/eventime/%s/%s_test_gold.pkl' % (dataset, dataset)
+        )
 
-    pickle_data(
-        (test_gold, test_indices[0], test_indices[1], test_targ[0], test_targ[1]),
-        'data/eventime/%s/%s_test_gold.pkl' % (dataset, dataset)
-    )
-
-    if update_label == 3:
-        targ2ix = {'A': 0, 'B': 1, 'S': 2, 'V': 3}
-    elif update_label == 1:
-        targ2ix = {'U': 1, 'N': 0}
-    else:
-        raise Exception('[ERROR] Unknown update label...')
-
-    for link_type in ['Event-DCT', 'Event-Timex']:
-
-        if link_type == 'Event-DCT':
-            train_dataset, val_dataset, test_dataset = ed_train_dataset, ed_val_dataset, ed_test_dataset
-        elif link_type == 'Event-Timex':
-            train_dataset, val_dataset, test_dataset = et_train_dataset, et_val_dataset, et_test_dataset
+        if update_label == 3:
+            targ2ix = {'A': 0, 'B': 1, 'S': 2, 'V': 3}
+        elif update_label == 1:
+            targ2ix = {'U': 1, 'N': 0}
         else:
-            raise Exception('[ERROR] Unknown link_type...')
+            raise Exception('[ERROR] Unknown update label...')
 
-        word2ix, dist2ix, _, max_sent_len = prepare_global_ED(
-            train_dataset,
-            val_dataset,
-            test_dataset
-        )
+        for link_type in ['Event-DCT', 'Event-Timex']:
 
-        print(len(word2ix), len(dist2ix))
-        print(targ2ix)
+            if link_type == 'Event-DCT':
+                train_dataset, val_dataset, test_dataset = ed_train_dataset, ed_val_dataset, ed_test_dataset
+            elif link_type == 'Event-Timex':
+                train_dataset, val_dataset, test_dataset = et_train_dataset, et_val_dataset, et_test_dataset
+            else:
+                raise Exception('[ERROR] Unknown link_type...')
 
-        embed_file = os.path.join(home, "Resources/embed/giga-aacw.d200.bin")
-        embed_pickle_file = "data/eventime/%s/giga.d200.%s.l%i.embed" % (
-            dataset,
-            link_type,
-            update_label
-        )
-        slim_word_embed(word2ix, embed_file, embed_pickle_file)
+            word2ix, dist2ix, _, max_sent_len = prepare_global_ED(
+                train_dataset,
+                val_dataset,
+                test_dataset
+            )
 
-        train_tensor_dataset = prepare_tensors_ED(
-            train_dataset,
-            word2ix,
-            dist2ix,
-            targ2ix,
-            max_sent_len
-        )
+            print(len(word2ix), len(dist2ix))
+            print(targ2ix)
 
-        val_tensor_dataset = prepare_tensors_ED(
-            val_dataset,
-            word2ix,
-            dist2ix,
-            targ2ix,
-            max_sent_len
-        )
+            embed_file = os.path.join(home, "Resources/embed/giga-aacw.d200.bin")
+            embed_pickle_file = "data/eventime/%s/giga.d200.%s.l%i.embed" % (
+                dataset,
+                link_type,
+                update_label
+            )
+            slim_word_embed(word2ix, embed_file, embed_pickle_file)
 
-        test_tensor_dataset = prepare_tensors_ED(
-            test_dataset,
-            word2ix,
-            dist2ix,
-            targ2ix,
-            max_sent_len
-        )
+            train_tensor_dataset = prepare_tensors_ED(
+                train_dataset,
+                word2ix,
+                dist2ix,
+                targ2ix,
+                max_sent_len
+            )
 
-        print(train_tensor_dataset[0].shape,
-              val_tensor_dataset[0].shape,
-              test_tensor_dataset[0].shape)
+            val_tensor_dataset = prepare_tensors_ED(
+                val_dataset,
+                word2ix,
+                dist2ix,
+                targ2ix,
+                max_sent_len
+            )
 
-        pickle_data(train_tensor_dataset, 'data/eventime/%s/train_tensor_%s_l%i.pkl' % (
-            dataset,
-            link_type,
-            update_label
-        ))
+            test_tensor_dataset = prepare_tensors_ED(
+                test_dataset,
+                word2ix,
+                dist2ix,
+                targ2ix,
+                max_sent_len
+            )
 
-        pickle_data(val_tensor_dataset, 'data/eventime/%s/val_tensor_%s_l%i.pkl' % (
-            dataset,
-            link_type,
-            update_label
-        ))
+            print(train_tensor_dataset[0].shape,
+                  val_tensor_dataset[0].shape,
+                  test_tensor_dataset[0].shape)
 
-        pickle_data(test_tensor_dataset, 'data/eventime/%s/test_tensor_%s_l%i.pkl' % (
-            dataset,
-            link_type,
-            update_label
-        ))
+            pickle_data(train_tensor_dataset, 'data/eventime/%s/train_tensor_%s_l%i.pkl' % (
+                dataset,
+                link_type,
+                update_label
+            ))
 
-        pickle_data((dist2ix, targ2ix, max_sent_len), 'data/eventime/%s/glob_info_%s_l%i.pkl' % (
-            dataset,
-            link_type,
-            update_label
-        ))
+            pickle_data(val_tensor_dataset, 'data/eventime/%s/val_tensor_%s_l%i.pkl' % (
+                dataset,
+                link_type,
+                update_label
+            ))
+
+            pickle_data(test_tensor_dataset, 'data/eventime/%s/test_tensor_%s_l%i.pkl' % (
+                dataset,
+                link_type,
+                update_label
+            ))
+
+            pickle_data((dist2ix, targ2ix, max_sent_len), 'data/eventime/%s/glob_info_%s_l%i.pkl' % (
+                dataset,
+                link_type,
+                update_label
+            ))
 
 
 
