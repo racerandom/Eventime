@@ -995,39 +995,44 @@ def main():
     reverse_rel=False
     home = os.environ['HOME']
 
-    dataset = '20190222' # '20190202', '20190222' or 'TBD'
+    data_dir = '20190222'
 
-    is_reset_doc = False
+    train_set = 'TBD_AQ' # '20190202', '20190222' or 'TBD'
+
+    test_set = 'TBD_TEST'
+
+    is_reset_doc = True
 
     is_generate_date = True
 
-    if dataset == '20190202':
+    if data_dir == '20190202':
         anchorml_train_dir = os.path.join(home, "Resources/timex/AnchorData/all_20190202/train")
         anchorml_test_dir = os.path.join(home, "Resources/timex/AnchorData/all_20190202/test")
-        all_pkl = "data/eventime/%s/trainall.pkl" % dataset
-        train_pkl = "data/eventime/%s/train.pkl" % dataset
-        val_pkl = "data/eventime/%s/val.pkl" % dataset
-        test_pkl = "data/eventime/%s/test.pkl" % dataset
+        all_pkl = "data/eventime/%s/trainall.pkl" % data_dir
+        train_pkl = "data/eventime/%s/train.pkl" % data_dir
+        val_pkl = "data/eventime/%s/val.pkl" % data_dir
+        test_pkl = "data/eventime/%s/test.pkl" % data_dir
         if is_reset_doc:
             anchorML_to_doc(anchorml_train_dir, all_pkl)
             anchorML_to_doc(anchorml_test_dir, test_pkl)
             split_train_doc_pkl(all_pkl, train_pkl, val_pkl, train_ratio=0.85)
         #     prepare_full_doc_pkl(anchorml_dir, all_pkl, train_pkl, val_pkl, test_pkl)
 
-    elif dataset == 'TBD':
+    elif data_dir == 'TBD':
         tbd_dir = os.path.join(home, "Resources/timex/AnchorData/all_20190202")
-        train_pkl = "data/eventime/%s/train.pkl" % dataset
-        val_pkl = "data/eventime/%s/val.pkl" % dataset
-        test_pkl = "data/eventime/%s/test.pkl" % dataset
+        train_pkl = "data/eventime/%s/train.pkl" % data_dir
+        val_pkl = "data/eventime/%s/val.pkl" % data_dir
+        test_pkl = "data/eventime/%s/test.pkl" % data_dir
         if is_reset_doc:
             prepare_TBD_doc_pkl(tbd_dir, train_pkl, val_pkl, test_pkl)
-    elif dataset == '20190222':
-        anchorml_train_dir = os.path.join(home, "Resources/timex/AnchorData/20190222/train")
-        anchorml_test_dir = os.path.join(home, "Resources/timex/AnchorData/20190222/test")
-        all_pkl = "data/eventime/%s/trainall.pkl" % dataset
-        train_pkl = "data/eventime/%s/train.pkl" % dataset
-        val_pkl = "data/eventime/%s/val.pkl" % dataset
-        test_pkl = "data/eventime/%s/test.pkl" % dataset
+
+    elif data_dir == '20190222':
+        anchorml_train_dir = os.path.join(home, "Resources/timex/AnchorData/20190222/%s" % train_set)
+        anchorml_test_dir = os.path.join(home, "Resources/timex/AnchorData/20190222/%s" % test_set)
+        all_pkl = "data/eventime/%s/%s_trainall.pkl" % (data_dir, train_set)
+        train_pkl = "data/eventime/%s/%s_train.pkl" % (data_dir, train_set)
+        val_pkl = "data/eventime/%s/%s_val.pkl" % (data_dir, train_set)
+        test_pkl = "data/eventime/%s/%s_test.pkl" % (data_dir, test_set)
         if is_reset_doc:
             anchorML_to_doc(anchorml_train_dir, all_pkl)
             anchorML_to_doc(anchorml_test_dir, test_pkl)
@@ -1061,7 +1066,7 @@ def main():
 
         pickle_data(
             (test_gold, test_indices[0], test_indices[1], test_targ[0], test_targ[1]),
-            'data/eventime/%s/test_gold.pkl' % dataset
+            'data/eventime/%s/%s_test_gold.pkl' % (data_dir, test_set)
         )
 
         if update_label == 3:
@@ -1090,8 +1095,10 @@ def main():
             print(targ2ix)
 
             embed_file = os.path.join(home, "Resources/embed/giga-aacw.d200.bin")
-            embed_pickle_file = "data/eventime/%s/giga.d200.%s.l%i.embed" % (
-                dataset,
+            embed_pickle_file = "data/eventime/%s/%s_%s_giga.d200.%s.l%i.embed" % (
+                data_dir,
+                train_set,
+                test_set,
                 link_type,
                 update_label
             )
@@ -1125,26 +1132,31 @@ def main():
                   val_tensor_dataset[0].shape,
                   test_tensor_dataset[0].shape)
 
-            pickle_data(train_tensor_dataset, 'data/eventime/%s/train_tensor_%s_l%i.pkl' % (
-                dataset,
+            pickle_data(train_tensor_dataset, 'data/eventime/%s/%s_train_t_%s_l%i.pkl' % (
+                data_dir,
+                train_set,
                 link_type,
                 update_label
             ))
 
-            pickle_data(val_tensor_dataset, 'data/eventime/%s/val_tensor_%s_l%i.pkl' % (
-                dataset,
+            pickle_data(val_tensor_dataset, 'data/eventime/%s/%s_val_t_%s_l%i.pkl' % (
+                data_dir,
+                train_set,
                 link_type,
                 update_label
             ))
 
-            pickle_data(test_tensor_dataset, 'data/eventime/%s/test_tensor_%s_l%i.pkl' % (
-                dataset,
+            pickle_data(test_tensor_dataset, 'data/eventime/%s/%s_test_t_%s_l%i.pkl' % (
+                data_dir,
+                test_set,
                 link_type,
                 update_label
             ))
 
-            pickle_data((dist2ix, targ2ix, max_sent_len), 'data/eventime/%s/glob_info_%s_l%i.pkl' % (
-                dataset,
+            pickle_data((dist2ix, targ2ix, max_sent_len), 'data/eventime/%s/%s_%s_glob_info_%s_l%i.pkl' % (
+                data_dir,
+                train_set,
+                test_set,
                 link_type,
                 update_label
             ))

@@ -394,10 +394,6 @@ def main():
 
     update_label = 3
 
-    dataset = 'TBD'
-
-    link_type = 'Event-DCT'
-
     param_space = {
         'classification_model': [classification_model],
         'update_label': [update_label],
@@ -410,20 +406,20 @@ def main():
         'dsdp_dim': [25],
         'dist_dim': [25],
         'input_dropout': [0.3],     # hyper-parameters of neural networks
-        'rnn_hidden_dim': [200],
+        'rnn_hidden_dim': range(200, 501, 20),
         'rnn_layer': [1],
-        'rnn_dropout': [0.3],
+        'rnn_dropout': [0.3, 0.4, 0.5],
         'attn_dropout': [0.3],
-        'fc1_hidden_dim': [200],
+        'fc1_hidden_dim': range(200, 501, 20),
         'fc1_dropout': [0.5],
-        'batch_size': [16],
-        'epoch_num': [200],
+        'batch_size': [64],
+        'epoch_num': [1],
         'lr': [1e-0],           # hyper-parameters of optimizer
         'weight_decay': [1e-4],
         'max_norm': [4],
         'patience': [10],       # early stopping
         'monitor': ['val_acc'],
-        'check_interval': [10],    # checkpoint based on val performance given a step interval
+        'check_interval': [20],    # checkpoint based on val performance given a step interval
         'kbest_checkpoint': [5],
         'ranking_loss': [False],    # ranking loss for the baseRNN model
         'omit_other': [False],
@@ -432,33 +428,65 @@ def main():
         'margin_neg': [0.5],
     }
 
-    train_pkl = 'data/eventime/%s/train_tensor_%s_l%i.pkl' % (
-        dataset,
+    data_dir = '20190222'
+
+    train_set = 'TBD_AQ'  # '20190202', '20190222' or 'TBD'
+
+    test_set = 'TBD_TEST'
+
+    link_type = 'Event-DCT'
+
+    train_pkl = 'data/eventime/%s/%s_train_t_%s_l%i.pkl' % (
+        data_dir,
+        train_set,
         link_type,
         update_label
     )
-    val_pkl = 'data/eventime/%s/val_tensor_%s_l%i.pkl' % (
-        dataset,
+
+    val_pkl = 'data/eventime/%s/%s_val_t_%s_l%i.pkl' % (
+        data_dir,
+        train_set,
         link_type,
         update_label
     )
-    test_pkl = 'data/eventime/%s/test_tensor_%s_l%i.pkl' % (
-        dataset,
+
+    test_pkl = 'data/eventime/%s/%s_test_t_%s_l%i.pkl' % (
+        data_dir,
+        test_set,
         link_type,
         update_label
     )
-    info_pkl = 'data/eventime/%s/glob_info_%s_l%i.pkl' % (
-        dataset,
+
+    info_pkl = 'data/eventime/%s/%s_%s_glob_info_%s_l%i.pkl' % (
+        data_dir,
+        train_set,
+        test_set,
         link_type,
         update_label
     )
-    embed_pkl = 'data/eventime/%s/giga.d200.%s.l%i.embed' % (
-        dataset,
+
+    embed_pkl = 'data/eventime/%s/%s_%s_giga.d200.%s.l%i.embed' % (
+        data_dir,
+        train_set,
+        test_set,
         link_type,
         update_label
     )
-    pred_pkl = 'outputs/%s_pred_l%i_%s.pkl' % (dataset, update_label, link_type)
-    targ_pkl = 'outputs/%s_targ_l%i_%s.pkl' % (dataset, update_label, link_type)
+    pred_pkl = 'outputs/%s_%s_%s_pred_%s_l%i.pkl' % (
+        data_dir,
+        train_set,
+        test_set,
+        link_type,
+        update_label
+    )
+
+    targ_pkl = 'outputs/%s_%s_%s_targ_%s_l%i.pkl' % (
+        data_dir,
+        train_set,
+        test_set,
+        link_type,
+        update_label
+    )
 
     optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, targ_pkl, param_space, max_evals=1)
 

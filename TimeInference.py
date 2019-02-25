@@ -254,14 +254,31 @@ def oracle_test(test_pkl="data/20190202_test.pkl"):
 
 def main2():
 
-    dataset = 'TBD'
+    data_dir = '20190222'
 
-    set = 'pred' # 'pred' or 'targ'
+    train_set = 'TBD_AQ'  # '20190202', '20190222' or 'TBD'
+
+    test_set = 'TBD_TEST'
+
+    mode = 'pred' # 'pred' or 'targ'
 
     update_label = 1
 
-    ed_pred = TempUtils.load_pickle(pickle_file='outputs/%s_%s_l%i_Event-DCT.pkl' % (dataset, set, update_label))
-    et_pred = TempUtils.load_pickle(pickle_file='outputs/%s_%s_l%i_Event-Timex.pkl' % (dataset, set, update_label))
+    ed_pred = TempUtils.load_pickle(pickle_file='outputs/%s_%s_%s_%s_Event-DCT_l%i.pkl' % (
+        data_dir,
+        train_set,
+        test_set,
+        mode,
+        update_label
+    ))
+
+    et_pred = TempUtils.load_pickle(pickle_file='outputs/%s_%s_%s_%s_Event-Timex_l%i.pkl' % (
+        data_dir,
+        train_set,
+        test_set,
+        mode,
+        update_label
+    ))
 
     event_gold, ed_links, et_links, ed_targ, et_targ = TempUtils.load_pickle(pickle_file='data/eventime/%s/%s_test_gold.pkl' % (dataset, dataset))
 
