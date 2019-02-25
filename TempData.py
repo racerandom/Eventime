@@ -995,7 +995,7 @@ def main():
     reverse_rel=False
     home = os.environ['HOME']
 
-    data_dir = '20190222'
+    data_dir = 'TBD'
 
     train_set = 'TBD_TRAIN' # '20190202', '20190222' or 'TBD'
 
