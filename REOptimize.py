@@ -406,11 +406,11 @@ def main():
         'dsdp_dim': [25],
         'dist_dim': [25],
         'input_dropout': [0.3],     # hyper-parameters of neural networks
-        'rnn_hidden_dim': range(200, 501, 20),
+        'rnn_hidden_dim': [200],
         'rnn_layer': [1],
-        'rnn_dropout': [0.3, 0.4, 0.5],
+        'rnn_dropout': [0.3],
         'attn_dropout': [0.3],
-        'fc1_hidden_dim': range(200, 501, 20),
+        'fc1_hidden_dim': [200],
         'fc1_dropout': [0.5],
         'batch_size': [32],
         'epoch_num': [200],
@@ -419,7 +419,7 @@ def main():
         'max_norm': [4],
         'patience': [10],       # early stopping
         'monitor': ['val_acc'],
-        'check_interval': [20],    # checkpoint based on val performance given a step interval
+        'check_interval': [50],    # checkpoint based on val performance given a step interval
         'kbest_checkpoint': [5],
     }
 
@@ -483,7 +483,7 @@ def main():
         update_label
     )
 
-    optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, targ_pkl, param_space, max_evals=20)
+    optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, targ_pkl, param_space, max_evals=1)
 
 
 if __name__ == '__main__':
