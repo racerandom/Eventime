@@ -277,7 +277,7 @@ def main2():
         ed_time = ed_l[0][1]
         # print('E-D:', ed_label, ed_time)
 
-        pred_time = infer_time(pred_time, ed_time, ed_label)
+        pred_time = infer_time(pred_time, ed_time, ed_label, update_label=update_label)
 
         at_dct_label = 'SSSS' if update_label == 3 else 'UUUUUUUU'
 
@@ -287,7 +287,7 @@ def main2():
                 for et_l in et_links[k]:
                     et_label = et_pred[et_l[0]]
                     et_time = et_l[1]
-                    pred_time = infer_time(pred_time, et_time, et_label)
+                    pred_time = infer_time(pred_time, et_time, et_label, update_label=update_label)
                     if et_label == at_dct_label:
                         break
                     # print('E-T:', et_label, et_time)

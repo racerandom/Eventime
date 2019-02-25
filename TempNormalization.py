@@ -166,7 +166,7 @@ def normalize_year_day(day_value, delta=1):
 
 def normalize_event_day(day_value):
 
-    day_value = day_value.replace('-EAR', '').replace('-LAT', '')
+    day_value = day_value.replace('-EAR', '').replace('-LAT', '').replace('-MID', '')
 
     if re.match(r'\d{4}-\d{1,2}-\d{1,2}$', day_value):
         norm_day = datetime.strptime(day_value, '%Y-%m-%d')
@@ -247,6 +247,8 @@ def normalize_tanchor(value):
             multimatch = re.compile(r"\(begin:(.+), end:(.+), freq:(.+)\)")
         elif 'dur' in value:
             multimatch = re.compile(r"\(begin:(.+), end:(.+), dur:(.+)\)")
+        elif 'dis' in value:
+            multimatch = re.compile(r"\(begin:(.+), end:(.+), dis=(.+)\)")
         else:
             multimatch = re.compile(r"\(begin:(.+), end:(.+)\)")
 
@@ -263,8 +265,6 @@ def normalize_tanchor(value):
             return None
 
     if 'AND' in value or 'OR' in value:
-        return None
-    if 'dis=' in value:
         return None
 
     # print(value)

@@ -163,6 +163,7 @@ def optimize_model(link_type,
 
 
 
+
         model, optimizer = model_instance_ET(len(word2ix), len(ldis2ix), targ2ix,
                                              max_sent_len, pretrained_embed, **params)
 

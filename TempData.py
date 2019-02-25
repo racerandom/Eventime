@@ -918,7 +918,7 @@ def prepare_tensors_ED(dataset, word2ix, ldis2ix, targ2ix, max_sent_len):
     return word_tensor, dist_tensor, targ_tensor
 
 
-def split_doc_pkl(pkl_file, train_pkl, val_pkl, train_ratio=0.85, seed=13):
+def split_train_doc_pkl(pkl_file, train_pkl, val_pkl, train_ratio=0.9, seed=13):
 
     doc_dic = load_doc(pkl_file)
 
@@ -990,25 +990,30 @@ def prepare_TBD_doc_pkl(TBD_dir, train_pkl, val_pkl, test_pkl):
 
 def main():
 
-    update_label = 1  # 1: {'0', '1'}, 3: {'A', 'B', 'S', 'V'}
+    update_label = 3  # 1: {'0', '1'}, 3: {'A', 'B', 'S', 'V'}
     addSEP=True
     reverse_rel=False
     home = os.environ['HOME']
 
-    dataset = '20190222' # '20190202', '20190222' or 'TBD'
+    dataset = '20190202' # '20190202', '20190222' or 'TBD'
 
-    is_reset_doc = True
+    is_reset_doc = False
 
-    is_generate_date = False
+    is_generate_date = True
 
     if dataset == '20190202':
-        anchorml_dir = os.path.join(home, "Resources/timex/AnchorData/all_20190202/train")
+        anchorml_train_dir = os.path.join(home, "Resources/timex/AnchorData/all_20190202/train")
+        anchorml_test_dir = os.path.join(home, "Resources/timex/AnchorData/all_20190202/test")
         all_pkl = "data/eventime/%s/trainall.pkl" % dataset
         train_pkl = "data/eventime/%s/train.pkl" % dataset
         val_pkl = "data/eventime/%s/val.pkl" % dataset
         test_pkl = "data/eventime/%s/test.pkl" % dataset
         if is_reset_doc:
-            prepare_full_doc_pkl(anchorml_dir, all_pkl, train_pkl, val_pkl, test_pkl)
+            anchorML_to_doc(anchorml_train_dir, all_pkl)
+            anchorML_to_doc(anchorml_test_dir, test_pkl)
+            split_train_doc_pkl(all_pkl, train_pkl, val_pkl, train_ratio=0.85)
+        #     prepare_full_doc_pkl(anchorml_dir, all_pkl, train_pkl, val_pkl, test_pkl)
+
     elif dataset == 'TBD':
         tbd_dir = os.path.join(home, "Resources/timex/AnchorData/all_20190202")
         train_pkl = "data/eventime/%s/train.pkl" % dataset
@@ -1017,9 +1022,16 @@ def main():
         if is_reset_doc:
             prepare_TBD_doc_pkl(tbd_dir, train_pkl, val_pkl, test_pkl)
     elif dataset == '20190222':
-        anchorml_dir = os.path.join(home, "Resources/timex/AnchorData/20190222/S-ALL全体")
-        data_pkl = "data/eventime/%s/data.pkl" % dataset
-        anchorML_to_doc(anchorml_dir, data_pkl)
+        anchorml_train_dir = os.path.join(home, "Resources/timex/AnchorData/20190222/train")
+        anchorml_test_dir = os.path.join(home, "Resources/timex/AnchorData/20190222/test")
+        all_pkl = "data/eventime/%s/trainall.pkl" % dataset
+        train_pkl = "data/eventime/%s/train.pkl" % dataset
+        val_pkl = "data/eventime/%s/val.pkl" % dataset
+        test_pkl = "data/eventime/%s/test.pkl" % dataset
+        if is_reset_doc:
+            anchorML_to_doc(anchorml_train_dir, all_pkl)
+            anchorML_to_doc(anchorml_test_dir, test_pkl)
+            split_train_doc_pkl(all_pkl, train_pkl, val_pkl, train_ratio=0.9)
     else:
         raise Exception('[ERROR] Unknown Dataset name...')
 
@@ -1049,7 +1061,7 @@ def main():
 
         pickle_data(
             (test_gold, test_indices[0], test_indices[1], test_targ[0], test_targ[1]),
-            'data/eventime/%s/%s_test_gold.pkl' % (dataset, dataset)
+            'data/eventime/%s/test_gold.pkl' % dataset
         )
 
         if update_label == 3:
