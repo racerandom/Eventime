@@ -256,31 +256,42 @@ def main2():
 
     data_dir = '20190222'
 
-    train_set = 'TBD_AQ'  # '20190202', '20190222' or 'TBD'
+    train_datasets = ['TBD_TRAIN']
 
-    test_set = 'TBD_TEST'
+    val_datasets = ['TBD_VAL']
+
+    test_datasets = ['TBD_TEST']
+
+    dataset_flag = 'T:%s:V:%s:T:%s' % (
+        '-'.join(train_datasets),
+        '-'.join(val_datasets),
+        '-'.join(test_datasets)
+    )
 
     mode = 'pred' # 'pred' or 'targ'
 
     update_label = 1
 
-    ed_pred = TempUtils.load_pickle(pickle_file='outputs/%s_%s_%s_%s_Event-DCT_l%i.pkl' % (
+    ed_pred = TempUtils.load_pickle(pickle_file='outputs/%s_%s_%s_Event-DCT_l%i.pkl' % (
         data_dir,
-        train_set,
-        test_set,
+        dataset_flag,
         mode,
         update_label
     ))
 
-    et_pred = TempUtils.load_pickle(pickle_file='outputs/%s_%s_%s_%s_Event-Timex_l%i.pkl' % (
+    et_pred = TempUtils.load_pickle(pickle_file='outputs/%s_%s_%s_Event-Timex_l%i.pkl' % (
         data_dir,
-        train_set,
-        test_set,
+        dataset_flag,
         mode,
         update_label
     ))
 
-    event_gold, ed_links, et_links, ed_targ, et_targ = TempUtils.load_pickle(pickle_file='data/eventime/%s/%s_test_gold.pkl' % (dataset, dataset))
+    event_gold, ed_links, et_links, ed_targ, et_targ = TempUtils.load_pickle(
+        pickle_file='data/eventime/%s/%s/test_gold.pkl' % (
+            data_dir,
+            dataset_flag
+        )
+    )
 
     correct_count = 0
 

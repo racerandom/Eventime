@@ -412,8 +412,8 @@ def main():
         'attn_dropout': [0.3],
         'fc1_hidden_dim': [200],
         'fc1_dropout': [0.5],
-        'batch_size': [32],
-        'epoch_num': [200],
+        'batch_size': [128],
+        'epoch_num': [1],
         'lr': [1e-0],           # hyper-parameters of optimizer
         'weight_decay': [1e-4],
         'max_norm': [4],
@@ -423,62 +423,67 @@ def main():
         'kbest_checkpoint': [5],
     }
 
+    link_type = 'Event-Timex'
+
     data_dir = '20190222'
 
-    train_set = 'TBD_AQ'  # '20190202', '20190222' or 'TBD'
+    train_datasets = ['TBD_TRAIN']
 
-    test_set = 'TBD_TEST'
+    val_datasets = ['TBD_VAL']
 
-    link_type = 'Event-DCT'
+    test_datasets = ['TBD_TEST']
 
-    train_pkl = 'data/eventime/%s/%s_train_t_%s_l%i.pkl' % (
+    dataset_flag = 'T:%s:V:%s:T:%s' % (
+        '-'.join(train_datasets),
+        '-'.join(val_datasets),
+        '-'.join(test_datasets)
+    )
+
+    train_pkl = 'data/eventime/%s/%s/train_t_%s_l%i.pkl' % (
         data_dir,
-        train_set,
+        dataset_flag,
         link_type,
         update_label
     )
 
-    val_pkl = 'data/eventime/%s/%s_val_t_%s_l%i.pkl' % (
+    val_pkl = 'data/eventime/%s/%s/val_t_%s_l%i.pkl' % (
         data_dir,
-        train_set,
+        dataset_flag,
         link_type,
         update_label
     )
 
-    test_pkl = 'data/eventime/%s/%s_test_t_%s_l%i.pkl' % (
+    test_pkl = 'data/eventime/%s/%s/test_t_%s_l%i.pkl' % (
         data_dir,
-        test_set,
+        dataset_flag,
         link_type,
         update_label
     )
 
-    info_pkl = 'data/eventime/%s/%s_%s_glob_info_%s_l%i.pkl' % (
+    info_pkl = 'data/eventime/%s/%s/glob_info_%s_l%i.pkl' % (
         data_dir,
-        train_set,
-        test_set,
+        dataset_flag,
         link_type,
         update_label
     )
 
-    embed_pkl = 'data/eventime/%s/%s_%s_giga.d200.%s.l%i.embed' % (
+    embed_pkl = "data/eventime/%s/%s/giga.d200.%s.l%i.embed" % (
         data_dir,
-        train_set,
-        test_set,
-        link_type,
-        update_label
-    )
-    pred_pkl = 'outputs/%s_%s_%s_pred_%s_l%i.pkl' % (
-        data_dir,
-        train_set,
-        test_set,
+        dataset_flag,
         link_type,
         update_label
     )
 
-    targ_pkl = 'outputs/%s_%s_%s_targ_%s_l%i.pkl' % (
+    pred_pkl = 'outputs/%s_%s_pred_%s_l%i.pkl' % (
         data_dir,
-        train_set,
-        test_set,
+        dataset_flag,
+        link_type,
+        update_label
+    )
+
+    targ_pkl = 'outputs/%s_%s_targ_%s_l%i.pkl' % (
+        data_dir,
+        dataset_flag,
         link_type,
         update_label
     )
