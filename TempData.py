@@ -995,7 +995,7 @@ def main():
     reverse_rel=False
     home = os.environ['HOME']
 
-    dataset = '20190202' # '20190202', '20190222' or 'TBD'
+    dataset = '20190222' # '20190202', '20190222' or 'TBD'
 
     is_reset_doc = False
 
