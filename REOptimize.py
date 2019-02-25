@@ -412,8 +412,8 @@ def main():
         'attn_dropout': [0.3],
         'fc1_hidden_dim': range(200, 501, 20),
         'fc1_dropout': [0.5],
-        'batch_size': [64],
-        'epoch_num': [1],
+        'batch_size': [32],
+        'epoch_num': [200],
         'lr': [1e-0],           # hyper-parameters of optimizer
         'weight_decay': [1e-4],
         'max_norm': [4],
@@ -421,11 +421,6 @@ def main():
         'monitor': ['val_acc'],
         'check_interval': [20],    # checkpoint based on val performance given a step interval
         'kbest_checkpoint': [5],
-        'ranking_loss': [False],    # ranking loss for the baseRNN model
-        'omit_other': [False],
-        'gamma': [2],
-        'margin_pos': [2.5],
-        'margin_neg': [0.5],
     }
 
     data_dir = '20190222'
@@ -488,7 +483,7 @@ def main():
         update_label
     )
 
-    optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, targ_pkl, param_space, max_evals=1)
+    optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, targ_pkl, param_space, max_evals=20)
 
 
 if __name__ == '__main__':
