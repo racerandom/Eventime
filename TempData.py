@@ -997,7 +997,7 @@ def main():
 
     data_dir = '20190222'
 
-    train_set = 'TBD_AQ' # '20190202', '20190222' or 'TBD'
+    train_set = 'TBD_TRAIN' # '20190202', '20190222' or 'TBD'
 
     test_set = 'TBD_TEST'
 
@@ -1036,7 +1036,7 @@ def main():
         if is_reset_doc:
             anchorML_to_doc(anchorml_train_dir, all_pkl)
             anchorML_to_doc(anchorml_test_dir, test_pkl)
-            split_train_doc_pkl(all_pkl, train_pkl, val_pkl, train_ratio=0.9)
+            split_train_doc_pkl(all_pkl, train_pkl, val_pkl, train_ratio=0.75)
     else:
         raise Exception('[ERROR] Unknown Dataset name...')
 
