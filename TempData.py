@@ -1001,7 +1001,7 @@ def main():
 
     test_set = 'TBD_TEST'
 
-    is_reset_doc = False
+    is_reset_doc = True
 
     is_generate_date = True
 
@@ -1028,15 +1028,17 @@ def main():
 
     elif data_dir == '20190222':
         anchorml_train_dir = os.path.join(home, "Resources/timex/AnchorData/20190222/%s" % train_set)
+        anchorml_val_dir = os.path.join(home, "Resources/timex/AnchorData/20190222/%s" % 'TBD_VAL')
         anchorml_test_dir = os.path.join(home, "Resources/timex/AnchorData/20190222/%s" % test_set)
         all_pkl = "data/eventime/%s/%s_trainall.pkl" % (data_dir, train_set)
         train_pkl = "data/eventime/%s/%s_train.pkl" % (data_dir, train_set)
         val_pkl = "data/eventime/%s/%s_val.pkl" % (data_dir, train_set)
         test_pkl = "data/eventime/%s/%s_test.pkl" % (data_dir, test_set)
         if is_reset_doc:
-            anchorML_to_doc(anchorml_train_dir, all_pkl)
+            anchorML_to_doc(anchorml_train_dir, train_pkl)
+            anchorML_to_doc(anchorml_val_dir, val_pkl)
             anchorML_to_doc(anchorml_test_dir, test_pkl)
-            split_train_doc_pkl(all_pkl, train_pkl, val_pkl, train_ratio=0.9)
+            # split_train_doc_pkl(all_pkl, train_pkl, val_pkl, train_ratio=0.9)
     else:
         raise Exception('[ERROR] Unknown Dataset name...')
 
