@@ -21,20 +21,20 @@ def setup_stream_logger(logger_name, level=logging.INFO):
     return logger
 
 
-def load_pre(embed_file, binary=True, addZeroPad=True):
-    word2ix = {}
-    start_time = time.time()
-    pre_model = gensim.models.KeyedVectors.load_word2vec_format(embed_file, binary=binary)
-    if addZeroPad:
-        word2ix['zeropadding'] = 0
-    for word, value in pre_model.vocab.items():
-        word2ix[word] = value.index + 1 if addZeroPad else 0
-    pre_vectors = pre_model.vectors
-    embed_size = pre_vectors.shape[-1]
-    print("[Pre-trained embeddings] file='%s' loaded, took %.5s seconds...]" % (embed_file, time.time() - start_time))
-    if addZeroPad:
-        pre_vectors = np.concatenate((np.zeros((1, embed_size)), pre_vectors), axis=0)
-    return pre_vectors, word2ix
+# def load_pre(embed_file, binary=True, addZeroPad=True):
+#     word2ix = {}
+#     start_time = time.time()
+#     pre_model = gensim.models.KeyedVectors.load_word2vec_format(embed_file, binary=binary)
+#     if addZeroPad:
+#         word2ix['zeropadding'] = 0
+#     for word, value in pre_model.vocab.items():
+#         word2ix[word] = value.index + 1 if addZeroPad else 0
+#     pre_vectors = pre_model.vectors
+#     embed_size = pre_vectors.shape[-1]
+#     print("[Pre-trained embeddings] file='%s' loaded, took %.5s seconds...]" % (embed_file, time.time() - start_time))
+#     if addZeroPad:
+#         pre_vectors = np.concatenate((np.zeros((1, embed_size)), pre_vectors), axis=0)
+#     return pre_vectors, word2ix
 
 
 def embed_txt2bin(embed_file):
@@ -264,27 +264,25 @@ def word2idx(doc_dic, link_types):
     return tok_idx
 
 
-def pickle_data(data, pickle_file='data/temp.pkl'):
+def save_to_pickle(data, pickle_file='data/temp.pkl'):
     with open(pickle_file, 'wb') as f:  # Python 3: open(..., 'wb')
         pickle.dump(data, f)
     print("Successfully save '%s'..." % pickle_file)
 
 
-def load_pickle(pickle_file='data/temp.pkl'):
+def load_from_pickle(pickle_file='data/temp.pkl'):
     with open(pickle_file, 'rb') as f:
         data = pickle.load(f)
     print("Successfully load data from pickle file '%s'..." % pickle_file)
     return data
 
 
-def pre2embed(pre_vectors, freeze_mode):
+def pre_to_embed(pre_vectors, freeze_mode):
     pre_weights = torch.FloatTensor(pre_vectors)
     return nn.Embedding.from_pretrained(pre_weights, freeze=freeze_mode)
 
 
 def slim_word_embed(word2ix, embed_file, embed_pickle_file):
-
-
 
     def load_pre_embed(embed_file, binary):
         if embed_file and os.path.isfile(os.path.join(os.getenv("HOME"), embed_file)):
@@ -325,7 +323,7 @@ def slim_word_embed(word2ix, embed_file, embed_pickle_file):
         return slim_weights
 
     embed_weights = pre_embed_to_weight(word2ix, embed_file)
-    pickle_data((word2ix, embed_weights), pickle_file=embed_pickle_file)
+    save_to_pickle(embed_weights, pickle_file=embed_pickle_file)
 
 
 def rel2idx(doc_dic, task):
@@ -401,28 +399,14 @@ def dict2str(dic):
     return ','.join(out)
 
 
-# def setup_logger(logger_name, log_file, level=logging.INFO):
-#     l = logging.getLogger(logger_name)
-#     formatter = logging.Formatter('%(message)s')
-#     fileHandler = logging.FileHandler(log_file, mode='w')
-#     fileHandler.setFormatter(formatter)
-#     streamHandler = logging.StreamHandler()
-#     streamHandler.setFormatter(formatter)
-#
-#     l.setLevel(level)
-#     l.addHandler(fileHandler)
-#     l.addHandler(streamHandler)
-#
-#
-# def setup_stream_logger(logger_name, level=logging.INFO):
-#     logger = logging.getLogger(logger_name)
-#     logger.setLevel(level)
-#
-#     formatter = logging.Formatter('%(message)s')
-#     streamHandler = logging.StreamHandler()
-#     streamHandler.setFormatter(formatter)
-#
-#     logger.addHandler(streamHandler)
+def update_entity_masks(sent_tokens, entity_ids, mask_id=1, masks=None):
+    if not masks:
+        masks = [0] * len(sent_tokens)
+    for s_id in range(len(sent_tokens)):
+        if sent_tokens[s_id].tok_id in entity_ids:
+            masks[s_id] = mask_id
+    return masks
+
 
 import unittest
 class TestTempUtils(unittest.TestCase):

@@ -1,8 +1,3 @@
-# from TempObject import Mention,Event,Timex
-# from TempNormalization import *
-# import TempUtils
-#
-# from nltk import sent_tokenize, word_tokenize
 
 
 class InduceMethod():

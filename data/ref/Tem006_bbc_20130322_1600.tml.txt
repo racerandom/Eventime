@@ -1,9 +1,0 @@
- Heavy <e1>snow</e1> is <e2>causing</e2> <e3>disruption</e3> to transport across the UK , with heavy <e1000>rainfall</e1000> <e5>bringing</e5> <e1001>flooding</e1001> to the south-west of England . 
- Rescuers <e6>searching</e6> for a woman <e7>trapped</e7> in a landslide at her home in Looe , Cornwall , <e8>said</e8> they had <e9>found</e9> a body . 
- Over 200,000 Belfast customers were <e10>affected</e10> by a <e28>blackout</e28> but power is <e11>starting</e11> to be <e12>restored</e12> . 
- Northern Ireland 's World Cup <e29>qualifier</e29> with Russia has been <e13>postponed</e13> until <T v='2013-03-23T15:00'>15:00 GMT Saturday</T> due to heavy snow . 
- There are 12 flood warnings in the South West , with Met Office warnings for snow <e30>covering</e30> much of the UK . 
- This <e14>comes</e14> just over <T v='P1W'>a week</T> before the <e15>start</e15> of British Summer <e31>Time</e31> . 
- BBC forecasters <e16>said</e16> the snow would <e17>cause</e17> travel <e19>disruption</e19> across northern parts of the UK on <T v='2013-03-22'>Friday</T> , with some 20cm-40cm ( 8in-16in ) <e20>falling</e20> in places . 
- Atrocious conditions could be <e21>expected</e21> on high ground , they <e22>said</e22> . 
- Roads in northern parts of Wales , the Midlands into the Pennines , southern Scotland and Northern Ireland would <e23>be</e23> the worst <e1002>affected</e1002> , while gale force winds would <e24>blow</e24> snow and drifts across trans-Pennine routes , they <e25>added</e25> .

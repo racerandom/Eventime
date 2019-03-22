@@ -20,12 +20,11 @@ def batch_eval_ET(model, data_loader, loss_func, acc_func, targ2ix, update_label
 
         pred_prob, targ = torch.FloatTensor().to(device), torch.LongTensor().to(device)
 
-        for batch in data_loader:
-            batch = ModuleOptim.batch_to_device(batch, device)
-            batch_feats = batch[:-1]
-            batch_targ = batch[-1]
+        for batch_data in data_loader:
+            batch_targ = batch_data.pop('labels')
+            batch_feats = batch_data
 
-            batch_prob = model(*batch_feats)
+            batch_prob = model(batch_feats)
 
             pred_prob = torch.cat((pred_prob, batch_prob), dim=0)
             targ = torch.cat((targ, batch_targ), dim=0)
@@ -50,18 +49,13 @@ def batch_eval_ET(model, data_loader, loss_func, acc_func, targ2ix, update_label
         raise Exception('[ERROR] Unknown update label...')
 
     if report:
-        # pred = [''.join(str(i.item()) for i in t) for t in pred_ix]
-        # targ = [''.join(str(i.item()) for i in t) for t in targ]
         label2ix = TempUtils.label_to_ix(pred_label + targ_label)
         pred_index = [label2ix[t] for t in pred_label]
         targ_index = [label2ix[t] for t in targ_label]
 
         print(classification_report(targ_index,
-                              pred_index,
-                              target_names=[k for k, v in sorted(label2ix.items(), key=lambda d: d[1])]
-                              ))
+                                    pred_index,
+                                    target_names=[k for k, v in sorted(label2ix.items(), key=lambda d: d[1])]
+                                    ))
 
     return loss.item(), acc, pred_label, targ_label
-
-
-

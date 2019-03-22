@@ -1,80 +1,11 @@
-from TempObject import *
 from TempUtils import *
 from TimeMLReader import *
 
-from collections import defaultdict
+from collections import *
+from typing import *
 import random
 import os
-import pickle
 import torch
-import torch.utils.data as Data
-
-#from allennlp.modules.elmo import Elmo, batch_to_ids
-
-
-TBD_TRAIN = ['ABC19980120.1830.0957', 'APW19980213.1380', 'APW19980219.0476', 'ea980120.1830.0456',
-             'APW19980227.0476', 'PRI19980121.2000.2591', 'CNN19980222.1130.0084', 'NYT19980206.0460',
-             'ABC19980114.1830.0611', 'APW19980213.1320', 'CNN19980227.2130.0067', 'NYT19980206.0466',
-             'PRI19980205.2000.1998', 'AP900816-0139', 'ABC19980108.1830.0711', 'PRI19980213.2000.0313',
-             'APW19980213.1310', 'ABC19980304.1830.1636', 'AP900815-0044', 'PRI19980205.2000.1890',
-             'APW19980227.0468', 'ea980120.1830.0071']
-
-
-TBD_DEV = ['APW19980227.0487',
-           'CNN19980223.1130.0960',
-           'NYT19980212.0019',
-           'PRI19980216.2000.0170',
-           'ed980111.1130.0089']
-
-
-TBD_TEST = ['APW19980227.0489',
-            'APW19980227.0494',
-            'APW19980308.0201',
-            'APW19980418.0210',
-            'CNN19980126.1600.1104',
-            'CNN19980213.2130.0155',
-            'NYT19980402.0453',
-            'PRI19980115.2000.0186',
-            'PRI19980306.2000.1675']
-
-
-TA_DEV = [ 'wsj_0924',
-           'APW19980626.0364',
-           'wsj_0527',
-           'APW19980227.0487',
-           'CNN19980223.1130.0960',
-           'NYT19980212.0019',
-           'PRI19980216.2000.0170',
-           'ed980111.1130.0089']
-
-
-TA_TEST = [ 'APW19980227.0489',
-            'APW19980227.0494',
-            'APW19980308.0201',
-            'APW19980418.0210',
-            'CNN19980126.1600.1104',
-            'CNN19980213.2130.0155',
-            'NYT19980402.0453',
-            'PRI19980115.2000.0186',
-            'PRI19980306.2000.1675']
-
-
-task_feats = {'basic': ['full_word_sent',
-                        'full_char_sent',
-                        'sour_dist_sent',
-                        'targ_dist_sent'],
-              'Event-DCT': ['sour_word_sdp',
-                            'sour_char_sdp',
-                            'sour_pos_sdp',
-                            'sour_dep_sdp',
-                            'sour_index_sdp',
-                            'sour_word_tok',
-                            'sour_char_tok',
-                            'sour_pos_tok',
-                            'sour_dep_tok',
-                            ],
-              'Event-Timex': [],
-              'Event-Event': []}
 
 
 def common_keys(dict1, dict2, lowercase):
@@ -87,50 +18,98 @@ def common_keys(dict1, dict2, lowercase):
     return common_dict
 
 
-def batch_to_device(data, device):
-    """
-    copy input list into device for GPU computation
-    :param data:
-    :param device:
-    :return:
-    """
-    device_inputs = []
-    for d in data:
-        device_inputs.append(d.to(device=device))
-    return device_inputs
+class Vocabulary:
+
+    def __init__(self, counter: Dict[str, Counter] = None) -> None:
+        self._counter = counter
+        self._token_to_index = None
+        self._index_to_token = None
+
+    def add_instance_to_namespace(self, instance: list, namespace: str = 'tokens') -> None:
+        self._counter[namespace].update(instance)
+
+    def index_token(self,
+                    min_count: Dict[str, int] = None,
+                    max_vocab_size: Dict[str, int] = None,
+                    zero_unk: Dict[str, bool] = None):
+
+        self._token_to_index = defaultdict(dict)
+        self._index_to_token = defaultdict(dict)
+        for namespace in self._counter.keys():
+            counter_size = len(self._counter[namespace])
+            filter_items = self._counter[namespace].most_common(counter_size if not max_vocab_size[namespace] else max_vocab_size[namespace])
+            filter_items = [item for item in filter_items if item[1] >= min_count[namespace]]
+            if zero_unk[namespace]:
+                self._token_to_index[namespace]['unk_token'] = 0
+            for token, freq in filter_items:
+                self._token_to_index[namespace][token] = len(self._token_to_index[namespace])
+
+            self._index_to_token[namespace] = {v: k for k, v in self._token_to_index[namespace].items()}
+
+    def add_token_to_namespace(self, token: str, namespace: str = 'tokens') -> None:
+        self._counter[namespace].update([token])
+
+    def get_token_to_index(self):
+        return self._token_to_index
+
+    def get_index_to_token(self):
+        return self._index_to_token
+
+    def get_index_from_token(self, token: str, unk_index: int = 0, namespace: str = 'tokens') -> int:
+        if token in self._token_to_index[namespace]:
+            return self._token_to_index[namespace][token]
+        else:
+            return unk_index
+
+    def get_token_from_index(self, index: int, namespace: str = 'tokens') -> str:
+        return self._index_to_token[namespace][index]
+
+    def get_vocab_size(self, namespace: str = 'tokens') -> int:
+        return len(self._token_to_index[namespace])
+
+    def get_label_dist(self, max_label_size: int = 10):
+        total_num = sum([c for c in self._counter['labels'].values()])
+        label_size = len(self._counter['labels'])
+        for label, count in self._counter['labels'].most_common(label_size if not max_label_size else max_label_size):
+            print(label, count / total_num)
 
 
-class MultipleDatasets(Data.Dataset):
-    """Dataset wrapping tensors.
+class DataInstance:
 
-    Each sample will be retrieved by indexing tensors along the first dimension.
+    def __init__(self, fields) -> None:
+        self._fields = fields
+        self._field_indices = None
 
-    Arguments:
-        *tensors (Tensor): tensors that have the same size of the first dimension.
-    """
-    def __init__(self, *tensors):
-        assert all(tensors[0].size(0) == tensor.size(0) for tensor in tensors)
-        self.tensors = tensors
+    def count_vocab_items(self, counter: Dict[str, Counter] = None):
+        if not counter:
+            counter = defaultdict(Counter)
+        for namespace, field in self._fields.items():
+            for data_line in field:
+                counter[namespace].update(data_line)
+        return counter
 
-    def __getitem__(self, index):
-        return tuple(tensor[index] for tensor in self.tensors)
+    def index_field(self, vocab: Vocabulary) -> None:
+        self._field_indices = defaultdict(list)
+        for namespace, field in self._fields.items():
+            for data_line in field:
+                self._field_indices[namespace].append(
+                    [vocab.get_index_from_token(token, namespace=namespace) for token in data_line]
+                )
 
-    def __len__(self):
-        return self.tensors[0].size(0)
+    def get_padding_lengths(self) -> Dict[str, List[int]]:
+        padding_lengths = defaultdict(list)
+        for namespace, field in self._fields.items():
+            for data_line in field:
+                padding_lengths[namespace].append(len(data_line))
+        return padding_lengths
 
-
-def load_doc(pickle_file):
-    with open(pickle_file, 'rb') as f:
-        data = pickle.load(f)
-    print("Successfully load data from pickle file '%s'..." % pickle_file)
-    return data
-
-
-def save_doc(data, pickle_file='data/doc_list.pkl'):
-
-    with open(pickle_file, 'wb') as f:  # Python 3: open(..., 'wb')
-        pickle.dump(data, f)
-    print("Successfully save '%s'..." % pickle_file)
+    def as_tensor_dict(self,
+                       padding_lengths: Dict[str, List[int]] = None) -> Dict[str, torch.Tensor]:
+        field_tensors = dict()
+        for namespace, indice in self._field_indices.items():
+            max_field_length = max(padding_lengths[namespace])
+            field_tensors[namespace] = torch.tensor(padding_2d(indice, max_field_length))
+        return field_tensors
 
 
 def prepare_artificial_classification():
@@ -149,7 +128,7 @@ def prepare_artificial_classification():
 
 def read_word2ix_from_doc(doc_pickle):
 
-    doc_dic = load_pickle(doc_pickle)
+    doc_dic = load_from_pickle(doc_pickle)
 
     doc_tokens = [[token.content for token in doc.tokens] for doc in doc_dic.values()]
 
@@ -161,7 +140,9 @@ def read_word2ix_from_doc(doc_pickle):
 def readPretrainedEmbedding(pretrained_file):
     if pretrained_file and os.path.isfile(os.path.join(os.getenv("HOME"), pretrained_file)):
         pre_model, word_idx = load_pre(os.path.join(os.getenv("HOME"), pretrained_file))
-    return pre_model, word_idx
+        return pre_model, word_idx
+    else:
+        raise Exception('[ERROR] Un-existing pretrain embedding file \'%s\'...' % pretrained_file)
 
 
 def slimEmbedding(embedding_file, pickle_file, word_idx, lowercase=False):
@@ -179,54 +160,9 @@ def slimEmbedding(embedding_file, pickle_file, word_idx, lowercase=False):
     print("[Embedding] slim embedding from %i to %i, %i tokens are uncovered..." % (pre_lookup_table.shape[0],
                                                                                     lookup_table.shape[0],
                                                                                     uncover))
-    save_doc((common_idx, lookup_table), pickle_file)
+    save_to_pickle((common_idx, lookup_table), pickle_file)
     assert len(common_idx) == lookup_table.shape[0]
     return common_idx, lookup_table
-
-
-# generate a list of feat tensor and target tensor of a given dataset
-def prepare_feats_dataset(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, max_sdp_len, max_tok_len, max_char_len, link_type, feat_types=['word_sdp',
-                                                                                                                                'sour_dist_sdp',
-                                                                                                                                'targ_dist_sdp',
-                                                                                                                                'sour_word_tok',
-                                                                                                                                'targ_word_tok',
-                                                                                                                                'sour_dist_tok',
-                                                                                                                                'targ_dist_tok']):
-
-    feats_list = []
-
-    for feat_type in feat_types:
-
-        # retrieve feats from link objects
-        feat = []
-        for doc_id, doc in doc_dic.items():
-            if doc_id not in dataset:
-                continue
-            for link in doc.get_links_by_type(link_type):
-                feat.append(link.feat_inputs[feat_type])
-
-        # initialize feats as tensors
-        if feat_type in ['word_sdp']:
-            feats_list.append(torch.tensor(padding_2d(prepare_seq_2d(feat, word_idx), max_sdp_len)))
-        elif feat_type in ['char_sdp']:
-            feats_list.append(torch.tensor(padding_3d(prepare_seq_3d(feat, char_idx), max_sdp_len, max_char_len)))
-        elif feat_type in ['sour_dist_sdp', 'targ_dist_sdp']:
-            feats_list.append(torch.tensor(padding_2d(prepare_seq_2d(feat, dist_idx), max_sdp_len)))
-        elif feat_type in ['sour_word_tok', 'targ_word_tok']:
-            feats_list.append(torch.tensor(padding_2d(prepare_seq_2d(feat, word_idx), max_tok_len)))
-        elif feat_type in ['sour_dist_tok', 'targ_dist_tok']:
-            feats_list.append(torch.tensor(padding_2d(prepare_seq_2d(feat, dist_idx), max_tok_len)))
-        else:
-            print("ERROR feat type: %s" % feat_type)
-
-    target_list = []
-    for doc_id, doc in doc_dic.items():
-        if doc_id not in dataset:
-            continue
-        for link in doc.get_links_by_type(link_type):
-            target_list.append(link.rel)
-    target_tensor = torch.tensor(prepare_seq_1d(target_list, rel_idx))
-    return feats_list, target_tensor
 
 
 def feat2tensorSDP(doc_dic, dataset, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
@@ -303,10 +239,10 @@ def feats2tensor_dict(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, m
 
     for feat_type in feat_types:
 
-        ## retrieve feats from link objects
+        # retrieve feats from link objects
         feat = doc2featList(doc_dic, feat_type, link_type)
 
-        ## initialize feats as tensors
+        # initialize feats as tensors
         if feat_type in ['word_sdp']:
             tensor_dict[feat_type] = torch.tensor(padding_2d(prepare_seq_2d(feat, word_idx), max_sdp_len))
         elif feat_type in ['char_sdp']:
@@ -330,11 +266,12 @@ def feats2tensor_dict(doc_dic, dataset, word_idx, char_idx, dist_idx, rel_idx, m
     return tensor_dict, target_tensor
 
 
-def prepare_feats(doc_dic, addSEP=None):
+def prepare_feats(doc_dic: Dict, addSEP=None) -> Tuple[Dict[str, List],
+                                                       Dict[str, List],
+                                                       Tuple[Dict[str, List], Dict[str, List]],
+                                                       Tuple[List, List]]:
 
-    ed_feat_dic, ed_targets = defaultdict(list), []
-    et_feat_dic, et_targets = defaultdict(list), []
-
+    ed_fields, et_fields = defaultdict(list), defaultdict(list)
     ed_indices, et_indices = defaultdict(list), defaultdict(list)
 
     for doc_id, doc in doc_dic.items():
@@ -350,41 +287,56 @@ def prepare_feats(doc_dic, addSEP=None):
 
                     if link_type == 'Event-DCT':
 
-                        ed_indices[key].append((len(ed_targets), TempUtils.norm_time_4to2(timex.tanchor)))
-                        ed_targets.append(link.rel)
+                        ed_indices[key].append((len(ed_fields['labels']), TempUtils.norm_time_4to2(timex.tanchor)))
+                        ed_fields['labels'].append(list(link.rel))
 
                         sent_tokens = doc.geneSentOfMention(link.sour, addSEP=addSEP)
+
                         if addSEP:
-                            ed_feat_dic['full_word_sent'].append(sent_tokens)
+                            ed_fields['tokens'].append(sent_tokens)
                         else:
-                            ed_feat_dic['full_word_sent'].append([token.content for token in sent_tokens])
-                            ed_feat_dic['sour_dist_sent'].append(getMentionDist(sent_tokens, link.sour, prefix='e'))
+
+                            event_masks = update_entity_masks(sent_tokens, link.sour.tok_ids, mask_id=1)
+
+                            ed_fields['tokens'].append([token.content.lower for token in sent_tokens])
+                            ed_fields['event_masks'].append(event_masks)
+                            ed_fields['event_dist'].append(getMentionDist(sent_tokens, link.sour, prefix='e'))
 
                     elif link_type == 'Event-Timex':
 
-                        et_indices[key].append((len(et_targets), TempUtils.norm_time_4to2(timex.tanchor)))
-                        et_targets.append(link.rel)
+                        et_indices[key].append((len(et_fields['labels']), TempUtils.norm_time_4to2(timex.tanchor)))
+                        et_fields['labels'].append(list(link.rel))
 
                         sent_tokens = doc.geneSentTokens(link.sour, link.targ, addSEP=addSEP)
+
                         if addSEP:
-                            et_feat_dic['full_word_sent'].append(sent_tokens)
+                            et_fields['tokens'].append(sent_tokens)
                         else:
-                            et_feat_dic['full_word_sent'].append([token.content for token in sent_tokens])
-                            sour_prefix = 'se' if link.sour.mention_type in ['Event'] else 'st'
-                            targ_prefix = 'te' if link.sour.mention_type in ['Event'] else 'tt'
-                            et_feat_dic['sour_dist_sent'].append(getMentionDist(sent_tokens, link.sour, prefix=sour_prefix))
-                            et_feat_dic['targ_dist_sent'].append(getMentionDist(sent_tokens, link.targ, prefix=targ_prefix))
+                            et_fields['tokens'].append([token.content.lower for token in sent_tokens])
+                            et_fields['event_dist'].append(getMentionDist(sent_tokens, event, prefix='e'))
+                            et_fields['timex_dist'].append(getMentionDist(sent_tokens, timex, prefix='t'))
+                            event_masks = update_entity_masks(
+                                sent_tokens,
+                                event.tok_ids,
+                                mask_id=1
+                            )
+                            timex_masks = update_entity_masks(
+                                sent_tokens,
+                                timex.tok_ids,
+                                mask_id=1,
+                            )
+                            et_fields['event_masks'].append(event_masks)
+                            et_fields['timex_masks'].append(timex_masks)
                     else:
                         raise Exception("[ERROR] Unknown link_type parameter!!!")
 
-    return (ed_feat_dic, ed_targets), (et_feat_dic, et_targets), (ed_indices, et_indices), (ed_targets, et_targets)
+    return ed_fields, et_fields, (ed_indices, et_indices), (ed_fields['labels'], et_fields['labels'])
 
 
 def prepare_gold(doc_dic):
 
     targets = {}
     for doc_id, doc in doc_dic.items():
-
         for link in doc.temp_links['Event-DCT']:
             event = link.sour if link.sour.mention_type == 'Event' else link.targ
             key = '%s ||| %s' % (doc_id, event.eid)
@@ -392,30 +344,36 @@ def prepare_gold(doc_dic):
     return targets
 
 
-def prepare_global_ED(train_dataset, val_dataset, test_dataset):
+def get_vocab_and_lengths(
+        train_instances: DataInstance,
+        val_instances: DataInstance,
+        test_instances: DataInstance,
+        min_count: Dict[str, int],
+        max_vocab_size: Dict[str, int],
+        zero_unk: Dict[str, bool]
+):
 
-    word2ix = feat_to_ix(train_dataset[0]['full_word_sent'] +
-                         val_dataset[0]['full_word_sent'] +
-                         test_dataset[0]['full_word_sent'])
+    vocab_counter = train_instances.count_vocab_items()
+    vocab_counter = val_instances.count_vocab_items(vocab_counter)
+    vocab_counter = test_instances.count_vocab_items(vocab_counter)
 
-    dist2ix = feat_to_ix(train_dataset[0]['sour_dist_sent'] +
-                         val_dataset[0]['sour_dist_sent'] +
-                         test_dataset[0]['sour_dist_sent'], feat2ix={})
+    vocab = Vocabulary(counter=vocab_counter)
 
-    if 'targ_dist_sent' in train_dataset[0]:
-        dist2ix = feat_to_ix(train_dataset[0]['targ_dist_sent'] +
-                             val_dataset[0]['targ_dist_sent'] +
-                             test_dataset[0]['targ_dist_sent'], feat2ix=dist2ix)
+    vocab.index_token(min_count=min_count,
+                      max_vocab_size=max_vocab_size,
+                      zero_unk=zero_unk)
 
-    targ2ix = feat_to_ix(train_dataset[1] +
-                         val_dataset[1] +
-                         test_dataset[1], feat2ix={})
+    train_padding_lengths = train_instances.get_padding_lengths()
+    val_padding_lengths = val_instances.get_padding_lengths()
+    test_padding_lengths = test_instances.get_padding_lengths()
 
-    max_sent_len = max_len_2d(train_dataset[0]['full_word_sent'] +
-                              val_dataset[0]['full_word_sent'] +
-                              test_dataset[0]['full_word_sent'])
+    padding_lengths = {
+        namespace: train_padding_lengths[namespace] +
+        val_padding_lengths[namespace] +
+        test_padding_lengths[namespace] for namespace in train_padding_lengths.keys()
+    }
 
-    return word2ix, dist2ix, targ2ix, max_sent_len
+    return vocab, padding_lengths
 
 
 def prepareGlobalSDP(doc_pkl_file, task):
@@ -427,7 +385,7 @@ def prepareGlobalSDP(doc_pkl_file, task):
     :return: a tuple of doc_dic, feat to index, max length for padding
     """
 
-    doc_dic = load_doc(doc_pkl_file)
+    doc_dic = load_from_pickle(doc_pkl_file)
 
     """
     step1: add feats into link.feat_inputs
@@ -438,13 +396,13 @@ def prepareGlobalSDP(doc_pkl_file, task):
         print("Preparing Global SDP feats for doc", doc_id)
         if task in ['day_len']:
             for event in doc.events.values():
-                ## sent feats
+                # sent feats
                 sent_tokens = doc.geneSentOfMention(event)
                 event.feat_inputs['full_word_sent'] = [tok.content for tok in sent_tokens]
                 # event.feat_inputs['full_char_sent'] = [list(tok.content.lower()) for tok in sent_tokens]
                 event.feat_inputs['sour_dist_sent'] = getMentionDist(sent_tokens, event)
                 event.feat_inputs['full_elmo_sent'] = [tok.content for tok in sent_tokens]
-                ## lexical feats
+                # lexical feats
                 sdp_conll_ids, event_conll_ids, dep_graph = doc.getSdpFromMentionToRoot(event)
                 event_word_sdp, event_pos_sdp, event_dep_sdp = doc.getSdpFeats(sdp_conll_ids, dep_graph)
                 event_word, event_pos, event_dep = doc.getSdpFeats(event_conll_ids, dep_graph)
@@ -613,7 +571,29 @@ def writeTimeML2txt(timeml_file, out_dir):
         fo.write(str_out)
 
 
-def anchorML_to_doc(anchorml_dir, pkl_file):
+def anchorML_to_doc_pickle(anchorml_dir, pkl_file):
+    """
+    1. load anchorml files and return a doc object
+    2. normalize the tanchors of all the timex entities
+    3. normalize the tanchors of all the events
+    4. induce relations of mention pairs
+    """
+
+    anchorml_list = [os.path.join(anchorml_dir, filename) for filename in sorted(os.listdir(anchorml_dir))]
+    doc_dic = {}
+    for filename in anchorml_list:
+        _, key = os.path.split(filename)
+        try:
+            doc = load_anchorml(filename)
+            doc_dic[key] = doc
+        except Exception as ex:
+            traceback.print_exc()
+            print(filename, ex)
+
+    save_to_pickle(doc_dic, pkl_file)
+
+
+def anchorML_to_doc(anchorml_dir):
     """
     1. load anchorml files and return a doc object
     2. normalize the tanchors of all the timex entities
@@ -632,9 +612,7 @@ def anchorML_to_doc(anchorml_dir, pkl_file):
             traceback.print_exc()
             print(filename, ex)
 
-    save_doc(doc_dic, pkl_file)
-    # print("Event num: %i" % sum([len(doc.events) for doc in doc_dic.values()]))
-    # print(", non event", non_count)
+    return doc_dic
 
 
 def refine_tanchor(tanchor):
@@ -727,7 +705,7 @@ def anchor_file2doc(timeml_dir, anchor_file, pkl_out, sent_win, oper=False):
         except Exception as ex:
             traceback.print_exc()
             print(filename, ex)
-    save_doc(doc_dic, pkl_out)
+    save_to_pickle(doc_dic, pkl_out)
 
 
 def count_mention_nb(timeml_dir):
@@ -747,14 +725,14 @@ def count_mention_nb(timeml_dir):
     print("Event numb: %i, Timex numb: %i, Signal numb: %i" % (event_nb, timex_nb, signal_nb) )
 
 
-## 1) read the doc list from pkl and
-## 2) create feat inputs for links
-## 3) make a preparation of embedding processing.
+# 1) read the doc list from pkl and
+# 2) create feat inputs for links
+# 3) make a preparation of embedding processing.
 def prepare_global(pkl_file, pretrained_file, link_type='Event-Timex'):
 
-    doc_dic = load_doc(pkl_file)
+    doc_dic = load_from_pickle(pkl_file)
 
-    ## add feats into link.feat_inputs
+    # add feats into link.feat_inputs
     for doc in doc_dic.values():
         for link in doc.get_links_by_type(link_type):
             if link_type in ['Event-Timex', 'Event-Event']:
@@ -887,36 +865,6 @@ def sample_train(full, dev, test, rate=1.0, seed=123):
     return train[: int(len(train) * rate)]
 
 
-def prepare_tensors_ED(dataset, word2ix, ldis2ix, targ2ix, max_sent_len):
-
-    # padding 2D index sequences to a fixed given length
-    def padding_2d(seq_2d, max_seq_len, padding=0, direct='right'):
-
-        for seq_1d in seq_2d:
-            for i in range(0, max_seq_len - len(seq_1d)):
-                if direct in ['right']:
-                    seq_1d.append(padding)
-                else:
-                    seq_1d.insert(0, padding)
-        return seq_2d
-
-    # convert 2D token sequences to token_index sequences
-    def prepare_seq_2d(seq_2d, to_ix, unk_ix=0):
-        ix_seq_2d = [[tok2ix(tok, to_ix, unk_ix) for tok in seq_1d] for seq_1d in seq_2d]
-        return ix_seq_2d
-
-    word_tensor = torch.tensor(padding_2d(prepare_seq_2d(dataset[0]['full_word_sent'],
-                                                         word2ix),
-                                          max_sent_len))
-    dist_tensor = torch.tensor(padding_2d(prepare_seq_2d(dataset[0]['sour_dist_sent'],
-                                                         ldis2ix),
-                                          max_sent_len))
-
-    targ_tensor = torch.tensor([[targ2ix[c] for c in list(targ)] for targ in dataset[1]])
-
-    return word_tensor, dist_tensor, targ_tensor
-
-
 def split_train_doc(doc_dic, train_ratio=0.8, seed=13):
 
     train_dic, val_dic = {}, {}
@@ -938,7 +886,7 @@ def split_train_doc(doc_dic, train_ratio=0.8, seed=13):
 
 def split_train_doc_pkl(pkl_file, train_pkl, val_pkl, train_ratio=0.9, seed=13):
 
-    doc_dic = load_doc(pkl_file)
+    doc_dic = load_from_pickle(pkl_file)
 
     train_dic, val_dic = {}, {}
 
@@ -954,20 +902,59 @@ def split_train_doc_pkl(pkl_file, train_pkl, val_pkl, train_ratio=0.9, seed=13):
     print("Event number: train %i, val %i" % (sum([len(doc.events) for doc in train_dic.values()]),
                                               sum([len(doc.events) for doc in val_dic.values()])))
 
-    save_doc(train_dic, train_pkl)
-    save_doc(val_dic, val_pkl)
+    save_to_pickle(train_dic, train_pkl)
+    save_to_pickle(val_dic, val_pkl)
 
 
-def split_full_doc_pkl(pkl_file, train_pkl, val_pkl, test_pkl, data_split=(3, 1, 1), seed=13):
+def split_full_doc(doc_pickle, data_split=(8, 1, 1), seed=13):
 
-    doc_dic = load_doc(pkl_file)
+    doc_dic = load_from_pickle(pickle_file=doc_pickle)
 
     train_dic, val_dic, test_dic = {}, {}, {}
 
     random.seed(seed)
 
     train_interval = data_split[0] / sum(data_split)
-    val_interval = (data_split[0] + data_split[1])/ sum(data_split)
+    val_interval = (data_split[0] + data_split[1]) / sum(data_split)
+
+    for doc_id, doc in doc_dic.items():
+        random_num = random.random()
+        if random_num <= train_interval:
+            train_dic[doc_id] = doc
+        elif train_interval < random_num <= val_interval:
+            val_dic[doc_id] = doc
+        else:
+            test_dic[doc_id] = doc
+
+    print("Split full doc data: train %i, val %i, test %i" % (
+        len(train_dic),
+        len(val_dic),
+        len(test_dic)
+    ))
+
+    print("Event number: train %i, val %i, test %i" % (
+        sum([len(doc.events) for doc in train_dic.values()]),
+        sum([len(doc.events) for doc in val_dic.values()]),
+        sum([len(doc.events) for doc in test_dic.values()])
+    ))
+
+    TBD_doc = {key: value for key, value in train_dic.items() if key.startswith('DNS')}
+    AQ_doc = {key: value for key, value in train_dic.items() if key.startswith('AQA')}
+    TB_doc = {key: value for key, value in train_dic.items() if key.startswith('S-ALL')}
+
+    return TBD_doc, AQ_doc, TB_doc, val_dic, test_dic
+
+
+def split_full_doc_pkl(pkl_file, train_pkl, val_pkl, test_pkl, data_split=(3, 1, 1), seed=13):
+
+    doc_dic = load_from_pickle(pkl_file)
+
+    train_dic, val_dic, test_dic = {}, {}, {}
+
+    random.seed(seed)
+
+    train_interval = data_split[0] / sum(data_split)
+    val_interval = (data_split[0] + data_split[1]) / sum(data_split)
 
     for doc_id, doc in doc_dic.items():
         random_num = random.random()
@@ -985,32 +972,55 @@ def split_full_doc_pkl(pkl_file, train_pkl, val_pkl, test_pkl, data_split=(3, 1,
     print("Event number: train %i, val %i, test %i" % (
         sum([len(doc.events) for doc in train_dic.values()]),
         sum([len(doc.events) for doc in val_dic.values()]),
-        sum([len(doc.events) for doc in test_dic.values()]
-    )))
+        sum([len(doc.events) for doc in test_dic.values()])
+    ))
 
-    save_doc(train_dic, train_pkl)
-    save_doc(val_dic, val_pkl)
-    save_doc(test_dic, test_pkl)
+    save_to_pickle(train_dic, train_pkl)
+    save_to_pickle(val_dic, val_pkl)
+    save_to_pickle(test_dic, test_pkl)
 
 
 def prepare_full_doc_pkl(anchorml_dir, all_pkl, train_pkl, val_pkl, test_pkl):
 
-    anchorML_to_doc(anchorml_dir, all_pkl)
+    anchorML_to_doc_pickle(anchorml_dir, all_pkl)
     split_full_doc_pkl(all_pkl, train_pkl, val_pkl, test_pkl, data_split=(4, 1, 1), seed=1337)
 
 
 def prepare_TBD_doc_pkl(TBD_dir, train_pkl, val_pkl, test_pkl):
 
-    anchorML_to_doc(os.path.join(TBD_dir, 'TBD_Train'), train_pkl)
-    anchorML_to_doc(os.path.join(TBD_dir, 'TBD_Val'), val_pkl)
-    anchorML_to_doc(os.path.join(TBD_dir, 'TBD_Test'), test_pkl)
+    anchorML_to_doc_pickle(os.path.join(TBD_dir, 'TBD_Train'), train_pkl)
+    anchorML_to_doc_pickle(os.path.join(TBD_dir, 'TBD_Val'), val_pkl)
+    anchorML_to_doc_pickle(os.path.join(TBD_dir, 'TBD_Test'), test_pkl)
+
+
+def main2():
+
+    full_anchorml_dir = os.path.join(os.environ['HOME'], 'Resources/timex/AnchorData/20190222/ALL')
+    full_pickle = "data/eventime/20190222/doc_data/FULL.pkl"
+
+    TBD_doc, AQ_doc, TB_doc, val_doc, test_doc = split_full_doc(
+        full_pickle,
+        data_split=(8, 1, 1),
+        seed=303
+    )
+    print(len(TBD_doc))
+    save_to_pickle(TBD_doc, "data/eventime/%s/doc_data/%s.pkl" % ('20190222', 'F_TBD'))
+    print(len(AQ_doc))
+    save_to_pickle(AQ_doc, "data/eventime/%s/doc_data/%s.pkl" % ('20190222', 'F_AQ'))
+    print(len(TB_doc))
+    save_to_pickle(TB_doc, "data/eventime/%s/doc_data/%s.pkl" % ('20190222', 'F_TB'))
+    print(len(val_doc))
+    save_to_pickle(val_doc, "data/eventime/%s/doc_data/%s.pkl" % ('20190222', 'F_VAL'))
+    print(len(test_doc))
+    save_to_pickle(test_doc, "data/eventime/%s/doc_data/%s.pkl" % ('20190222', 'F_TEST'))
+    print(len(TBD_doc) + len(AQ_doc) + len(TB_doc) + len(val_doc) + len(test_doc))
 
 
 def main():
 
     update_label = 3  # 1: {'0', '1'}, 3: {'A', 'B', 'S', 'V'}
-    addSEP=True
-    reverse_rel=False
+    addSEP = False
+    reverse_rel = False
     home = os.environ['HOME']
 
     is_reset_doc = False
@@ -1021,11 +1031,11 @@ def main():
 
     all_datasets = ['TB', 'AQ', 'TBD_TRAIN', 'TBD_VAL', 'TBD_TEST', 'TE3_TEST']
 
-    train_datasets = ['TBD_TRAIN', 'TBD_VAL', 'TBD_TEST', 'TB']
+    train_datasets = ['TBD_TRAIN']
 
-    val_datasets = []
+    val_datasets = ['TBD_VAL']
 
-    test_datasets = ['TE3_TEST']
+    test_datasets = ['TBD_TEST']
 
     if data_dir == '20190222':
 
@@ -1033,7 +1043,7 @@ def main():
             for dataset in all_datasets:
                 anchorml_dir = os.path.join(home, "Resources/timex/AnchorData/20190222/%s" % dataset)
                 pickle_doc = "data/eventime/%s/doc_data/%s.pkl" % (data_dir, dataset)
-                anchorML_to_doc(anchorml_dir, pickle_doc)
+                anchorML_to_doc_pickle(anchorml_dir, pickle_doc)
 
     if is_generate_date:
 
@@ -1052,18 +1062,18 @@ def main():
 
         for dataset in train_datasets:
             pickle_doc = "data/eventime/%s/doc_data/%s.pkl" % (data_dir, dataset)
-            data_doc = load_pickle(pickle_file=pickle_doc)
+            data_doc = load_from_pickle(pickle_file=pickle_doc)
             train_doc = {**train_doc, **data_doc}
 
         for dataset in test_datasets:
             pickle_doc = "data/eventime/%s/doc_data/%s.pkl" % (data_dir, dataset)
-            data_doc = load_pickle(pickle_file=pickle_doc)
+            data_doc = load_from_pickle(pickle_file=pickle_doc)
             test_doc = {**test_doc, **data_doc}
 
         if val_datasets:
             for dataset in val_datasets:
                 pickle_doc = "data/eventime/%s/doc_data/%s.pkl" % (data_dir, dataset)
-                data_doc = load_pickle(pickle_file=pickle_doc)
+                data_doc = load_from_pickle(pickle_file=pickle_doc)
                 val_doc = {**val_doc, **data_doc}
         else:
             train_doc, val_doc = split_train_doc(train_doc, train_ratio=0.8, seed=13)
@@ -1078,43 +1088,42 @@ def main():
 
         print(len(test_gold))
 
-        ed_train_dataset, et_train_dataset, _, _ = prepare_feats(train_doc_dic, addSEP=addSEP)
+        ed_train_fields, et_train_fields, _, _ = prepare_feats(train_doc_dic, addSEP=addSEP)
 
-        ed_val_dataset, et_val_dataset, _, _ = prepare_feats(val_doc_dic, addSEP=addSEP)
+        ed_val_fields, et_val_fields, _, _ = prepare_feats(val_doc_dic, addSEP=addSEP)
 
-        ed_test_dataset, et_test_dataset, test_indices, test_targ = prepare_feats(test_doc_dic, addSEP=addSEP)
+        ed_test_fields, et_test_fields, test_indices, test_targ = prepare_feats(test_doc_dic, addSEP=addSEP)
 
         print(len(test_indices[0]), len(test_indices[1]))
+        print(ed_train_fields.keys(), et_train_fields.keys())
 
-        pickle_data(
+        save_to_pickle(
             (test_gold, test_indices[0], test_indices[1], test_targ[0], test_targ[1]),
             'data/eventime/%s/%s/test_gold.pkl' % (data_dir, dataset_flag)
         )
 
-        if update_label == 3:
-            targ2ix = {'A': 0, 'B': 1, 'S': 2, 'V': 3}
-        elif update_label == 1:
-            targ2ix = {'U': 1, 'N': 0}
-        else:
-            raise Exception('[ERROR] Unknown update label...')
-
         for link_type in ['Event-DCT', 'Event-Timex']:
 
-            if link_type == 'Event-DCT':
-                train_dataset, val_dataset, test_dataset = ed_train_dataset, ed_val_dataset, ed_test_dataset
-            elif link_type == 'Event-Timex':
-                train_dataset, val_dataset, test_dataset = et_train_dataset, et_val_dataset, et_test_dataset
-            else:
-                raise Exception('[ERROR] Unknown link_type...')
+            train_instances = DataInstance(locals()['%s_train_fields' % ('ed' if link_type == 'Event-DCT' else 'et')])
+            val_instances = DataInstance(locals()['%s_val_fields' % ('ed' if link_type == 'Event-DCT' else 'et')])
+            test_instances = DataInstance(locals()['%s_test_fields' % ('ed' if link_type == 'Event-DCT' else 'et')])
 
-            word2ix, dist2ix, _, max_sent_len = prepare_global_ED(
-                train_dataset,
-                val_dataset,
-                test_dataset
+            min_count = defaultdict(lambda: 0)
+            max_vocab_size = defaultdict(lambda: 0)
+            zero_unk = defaultdict(lambda: True)
+            zero_unk['labels'] = False
+
+            vocab, padding_lengths = get_vocab_and_lengths(
+                train_instances,
+                val_instances,
+                test_instances,
+                min_count,
+                max_vocab_size,
+                zero_unk
             )
 
-            print(len(word2ix), len(dist2ix))
-            print(targ2ix)
+            print(len(vocab.get_token_to_index()['tokens']))
+            print(vocab.get_token_to_index()['labels'])
 
             embed_file = os.path.join(home, "Resources/embed/giga-aacw.d200.bin")
             embed_pickle_file = "data/eventime/%s/%s/giga.d200.%s.l%i.embed" % (
@@ -1123,77 +1132,51 @@ def main():
                 link_type,
                 update_label
             )
-            slim_word_embed(word2ix, embed_file, embed_pickle_file)
 
-            train_tensor_dataset = prepare_tensors_ED(
-                train_dataset,
-                word2ix,
-                dist2ix,
-                targ2ix,
-                max_sent_len
-            )
+            slim_word_embed(vocab.get_token_to_index()['tokens'], embed_file, embed_pickle_file)
 
-            val_tensor_dataset = prepare_tensors_ED(
-                val_dataset,
-                word2ix,
-                dist2ix,
-                targ2ix,
-                max_sent_len
-            )
+            train_instances.index_field(vocab)
+            val_instances.index_field(vocab)
+            test_instances.index_field(vocab)
 
-            test_tensor_dataset = prepare_tensors_ED(
-                test_dataset,
-                word2ix,
-                dist2ix,
-                targ2ix,
-                max_sent_len
-            )
+            train_tensor_dataset = train_instances.as_tensor_dict(padding_lengths)
 
-            print(train_tensor_dataset[0].shape,
-                  val_tensor_dataset[0].shape,
-                  test_tensor_dataset[0].shape)
+            val_tensor_dataset = val_instances.as_tensor_dict(padding_lengths)
 
-            pickle_data(train_tensor_dataset, 'data/eventime/%s/%s/train_t_%s_l%i.pkl' % (
+            test_tensor_dataset = test_instances.as_tensor_dict(padding_lengths)
+
+            print(train_tensor_dataset.keys())
+            print(train_tensor_dataset['tokens'].shape,
+                  val_tensor_dataset['tokens'].shape,
+                  test_tensor_dataset['tokens'].shape)
+
+            save_to_pickle(train_tensor_dataset, 'data/eventime/%s/%s/train_t_%s_l%i.pkl' % (
                 data_dir,
                 dataset_flag,
                 link_type,
                 update_label
             ))
 
-            pickle_data(val_tensor_dataset, 'data/eventime/%s/%s/val_t_%s_l%i.pkl' % (
+            save_to_pickle(val_tensor_dataset, 'data/eventime/%s/%s/val_t_%s_l%i.pkl' % (
                 data_dir,
                 dataset_flag,
                 link_type,
                 update_label
             ))
 
-            pickle_data(test_tensor_dataset, 'data/eventime/%s/%s/test_t_%s_l%i.pkl' % (
+            save_to_pickle(test_tensor_dataset, 'data/eventime/%s/%s/test_t_%s_l%i.pkl' % (
                 data_dir,
                 dataset_flag,
                 link_type,
                 update_label
             ))
 
-            pickle_data((dist2ix, targ2ix, max_sent_len), 'data/eventime/%s/%s/glob_info_%s_l%i.pkl' % (
+            save_to_pickle((vocab, padding_lengths), 'data/eventime/%s/%s/glob_info_%s_l%i.pkl' % (
                 data_dir,
                 dataset_flag,
                 link_type,
                 update_label
             ))
-
-
-
-    # pickle_doc(anchorml, pkl_file, link_type)
-
-    # timeml_dir = "/Users/fei-c/Downloads/AQ+TE3/AQUAINT"
-    # count_mention_nb(timeml_dir)
-
-    # doc_dic, word_idx, pos_idx, rel_idx, max_len, pre_model = prepare_global(pkl_file, None)
-    # print(len(doc_dic), len(word_idx), len(rel_idx), max_len)
-    # prepare_data(doc_dic, TA_TEST, word_idx, pos_idx, rel_idx, max_len, link_type)
-    #
-    # TA_TRAIN = sample_train(doc_dic.keys(), TA_DEV, TA_TEST, rate=0.5)
-    # print(len(TA_TRAIN), len(TA_DEV), len(TA_TEST), (len(TA_TRAIN) + len(TA_DEV) + len(TA_TEST)))
 
 
 if __name__ == '__main__':

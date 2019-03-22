@@ -5,14 +5,17 @@ import logging
 import time
 import random
 from collections import defaultdict
+from typing import *
 
 import torch
 import torch.utils.data as Data
+from torch import nn
 
 import ModuleOptim
 import TempEval
 import TempModule2
 import TempUtils
+from TempData import Vocabulary
 
 warnings.simplefilter("ignore", UserWarning)
 
@@ -33,54 +36,66 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 
 
-def get_checkpoint_file(checkpoint_base, monitor, score):
-    return "%s_%s_%f.pth" % (checkpoint_base,
-                             monitor,
-                             score)
+def prepare_embedding_dict(vocab: Vocabulary,
+                           pretrained_embed,
+                           params: Dict):
+
+    embedding_dict = dict()
+
+    embedding_dict['tokens'] = TempUtils.pre_to_embed(
+        pretrained_embed,
+        freeze_mode=params['freeze_mode']
+    )
+    if 'event_dist' in vocab.get_token_to_index():
+        embedding_dict['event_dist'] = nn.Embedding(
+            len(vocab.get_token_to_index()['event_dist']),
+            params['dist_dim']
+        )
+    elif 'timex_dist' in vocab.get_token_to_index():
+        embedding_dict['timex_dist'] = nn.Embedding(
+            len(vocab.get_token_to_index()['timex_dist']),
+            params['dist_dim']
+        )
+    elif 'event_dsdp' in vocab.get_token_to_index():
+        embedding_dict['event_dsdp'] = nn.Embedding(
+            len(vocab.get_token_to_index()['event_dsdp']),
+            params['dsdp_dim']
+        )
+    elif 'timex_dsdp' in vocab.get_token_to_index():
+        embedding_dict['timex_dsdp'] = nn.Embedding(
+            len(vocab.get_token_to_index()['timex_dsdp']),
+            params['dsdp_dim']
+        )
+    return embedding_dict
 
 
-def model_instance_ET(word_size, dist_size, targ2ix,
-                      max_sent_len, pre_embed, **params):
+def prepare_model_components(link_type, vocab, params):
+
+    model_in_dim = params['word_dim'] + params['dist_dim'] + params['dsdp_dim']
 
     model = getattr(TempModule2, params['classification_model'])(
-        word_size, dist_size, targ2ix,
-        max_sent_len, pre_embed, **params
-    ).to(device=device)
+        model_in_dim,
+        params['rnn_hidden_dim'],
+        num_layer=params['rnn_layer'],
+        out_droprate=params['rnn_dropout']
+    )
 
-    optimizer = torch.optim.Adadelta(filter(lambda p: p.requires_grad, model.parameters()),
-                                     lr=params['lr'],
-                                     weight_decay=params['weight_decay'])
-    # optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()),
-    #                              lr=params['lr'],
-    #                              weight_decay=params['weight_decay'])
+    attn_layer = None
+    if params['use_attn']:
+        attn_in_dim = (2 * model_in_dim) if link_type == 'Event-DCT' else (3 * model_in_dim)
+        attn_layer = TempModule2.EntityAttn(attn_in_dim,
+                                            params['attn_fc_dim'],
+                                            params['attn_fc_drop'],
+                                            params['attn_out_drop'])
 
-    logger.debug(model)
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            logger.debug('* %s' % name)
-        else:
-            logger.debug('%s' % name)
+    out_layer = TempModule2.OutLayer(
+        params['rnn_hidden_dim'],
+        params['fc1_hidden_dim'],
+        params['fc1_dropout'],
+        vocab
+    )
 
-    logger.debug("Parameters: %i" % ModuleOptim.count_parameters(model))
-
-    return model, optimizer
-
-
-def data_load_ET(train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl):
-
-
-    train_dataset = TempUtils.load_pickle(train_pkl)
-
-    val_dataset = TempUtils.load_pickle(val_pkl)
-
-    test_dataset = TempUtils.load_pickle(test_pkl)
-
-    word2ix, pretrained_embed = TempUtils.load_pickle(embed_pkl)
-
-    ldis2ix, targ2ix, max_sent_len = TempUtils.load_pickle(info_pkl)
-
-    return train_dataset, val_dataset, test_dataset, \
-           word2ix, ldis2ix, targ2ix, max_sent_len, pretrained_embed
+    return model, attn_layer, out_layer
 
 
 def optimize_model(link_type,
@@ -99,50 +114,45 @@ def optimize_model(link_type,
         int(time.time())
     )
 
-    # train_dataset, val_dataset, test_dataset, \
-    # word2ix, dsdp2ix, targ2ix, max_sent_len, max_sdp_len = data_load_RE(train_file, test_file, embed_file, feat_dict)
+    train_dataset = TempUtils.load_from_pickle(train_pkl)
 
-    train_dataset, val_dataset, test_dataset, \
-    word2ix, ldis2ix, targ2ix, max_sent_len, pretrained_embed = data_load_ET(train_pkl,
-                                                                             val_pkl,
-                                                                             test_pkl,
-                                                                             info_pkl,
-                                                                             embed_pkl)
+    val_dataset = TempUtils.load_from_pickle(val_pkl)
 
-    logger.info('Word size %i, ldis size %i, max sentence len %i...' % (
-        len(word2ix),
-        len(ldis2ix),
-        max_sent_len
+    test_dataset = TempUtils.load_from_pickle(test_pkl)
+
+    pretrained_weights = TempUtils.load_from_pickle(embed_pkl)
+
+    param_space['word_dim'] = [pretrained_weights.shape[1]]
+
+    vocab, padding_lengths = TempUtils.load_from_pickle(info_pkl)
+
+    logger.info('Word size %i, event_dist size %i, max sentence len %i...' % (
+        len(vocab.get_token_to_index()['tokens']),
+        0 if 'dists' not in vocab.get_token_to_index() else len(vocab.get_token_to_index()['event_dist']),
+        max(padding_lengths['tokens'])
     ))
-    logger.info('Train/Val/Test data size: %s / %s / %s' % (train_dataset[0].shape,
-                                                            val_dataset[0].shape,
-                                                            test_dataset[0].shape))
+    logger.info('Train/Val/Test data size: %s / %s / %s' % (train_dataset['tokens'].shape,
+                                                            val_dataset['tokens'].shape,
+                                                            test_dataset['tokens'].shape))
 
-    if len(ldis2ix) == 0:
-        train_dataset = (train_dataset[0], train_dataset[-1])
-        val_dataset = (val_dataset[0], val_dataset[-1])
-        test_dataset = (test_dataset[0], test_dataset[-1])
-
-
+    # fix-ordered val/test dataloader
     test_data_loader = Data.DataLoader(
-        dataset=ModuleOptim.CustomizedDatasets(*test_dataset),
+        dataset=ModuleOptim.DictDatasets(
+            ModuleOptim.batch_to_device(test_dataset, device)
+        ),
         batch_size=128,
-        collate_fn=ModuleOptim.collate_fn,
-        shuffle=False,
+        collate_fn=ModuleOptim.dict_collate_fn,
         num_workers=1,
     )
 
     val_data_loader = Data.DataLoader(
-        dataset=ModuleOptim.CustomizedDatasets(*val_dataset),
+        dataset=ModuleOptim.DictDatasets(
+            ModuleOptim.batch_to_device(val_dataset, device)
+        ),
         batch_size=128,
-        collate_fn=ModuleOptim.collate_fn,
-        shuffle=False,
+        collate_fn=ModuleOptim.dict_collate_fn,
         num_workers=1,
     )
-
-    global_eval_history = defaultdict(list)
-
-    monitor_score_history = global_eval_history['monitor_score']
 
     params_history = []
 
@@ -153,7 +163,7 @@ def optimize_model(link_type,
 
     for eval_i in range(1, max_evals + 1):
 
-        params = {}
+        params = dict()
 
         while not params or params in params_history:
             for key, values in param_space.items():
@@ -161,25 +171,46 @@ def optimize_model(link_type,
 
         logger.info('[Selected %i Params]: %s' % (eval_i, params))
 
+        # preparing the classifier components: embedding layer, model
 
+        embedding_dict = prepare_embedding_dict(vocab, pretrained_weights, params)
 
+        model, attn_layer, out_layer = prepare_model_components(link_type, vocab, params)
 
-        model, optimizer = model_instance_ET(len(word2ix), len(ldis2ix), targ2ix,
-                                             max_sent_len, pretrained_embed, **params)
+        classifier = TempModule2.TempClassifier(
+            embedding_dict,
+            model,
+            attn_layer,
+            out_layer
+        ).to(device)
+
+        logger.debug(classifier)
+        for name, param in classifier.named_parameters():
+            if param.requires_grad:
+                logger.debug('* %s' % name)
+            else:
+                logger.debug('%s' % name)
+
+        logger.debug("Parameters: %i" % ModuleOptim.count_parameters(model))
+
+        optimizer = torch.optim.Adadelta(filter(lambda p: p.requires_grad, classifier.parameters()),
+                                         lr=params['lr'],
+                                         weight_decay=params['weight_decay'])
 
         train_data_loader = Data.DataLoader(
-            dataset=ModuleOptim.CustomizedDatasets(*train_dataset),
+            dataset=ModuleOptim.DictDatasets(
+                ModuleOptim.batch_to_device(train_dataset, device)
+            ),
             batch_size=params['batch_size'],
-            collate_fn=ModuleOptim.collate_fn,
+            collate_fn=ModuleOptim.dict_collate_fn,
             shuffle=True,
             num_workers=1,
         )
 
-
-        kbest_scores = train_model_ET(
-            model, optimizer, kbest_scores,
+        kbest_scores = train_model(
+            classifier, optimizer, kbest_scores,
             train_data_loader, val_data_loader, test_data_loader,
-            targ2ix,
+            vocab.get_token_to_index()['labels'],
             loss_func,
             acc_func,
             checkpoint_base,
@@ -188,9 +219,9 @@ def optimize_model(link_type,
 
         logger.info("Kbest scores: %s" % kbest_scores)
 
-    best_index = 0 if monitor.endswith('loss') else -1
+    best_index = 0 if monitor.endswith('loss') else - 1
 
-    best_checkpoint_file = get_checkpoint_file(checkpoint_base, monitor, kbest_scores[best_index])
+    best_checkpoint_file = ModuleOptim.get_checkpoint_filename(checkpoint_base, monitor, kbest_scores[best_index])
 
     best_checkpoint = torch.load(best_checkpoint_file,
                                  map_location=lambda storage,
@@ -203,41 +234,47 @@ def optimize_model(link_type,
 
     params = best_checkpoint['params']
 
-    model = getattr(TempModule2, params['classification_model'])(
-        len(word2ix), len(ldis2ix), targ2ix,
-        max_sent_len, pretrained_embed, **params
+    embedding_dict = prepare_embedding_dict(vocab, pretrained_weights, params)
+
+    model, attn_layer, out_layer = prepare_model_components(link_type, vocab, params)
+
+    classifier = TempModule2.TempClassifier(
+        embedding_dict,
+        model,
+        attn_layer,
+        out_layer
     ).to(device)
 
-    model.load_state_dict(best_checkpoint['state_dict'])
+    classifier.load_state_dict(best_checkpoint['state_dict'])
 
     val_loss, val_acc, _, _ = TempEval.batch_eval_ET(
-        model,
+        classifier,
         val_data_loader,
-        loss_func, acc_func, targ2ix,
+        loss_func, acc_func, vocab.get_token_to_index()['labels'],
         param_space['update_label'][0],
         report=True
     )
 
     test_loss, test_acc, test_pred, test_targ = TempEval.batch_eval_ET(
-        model,
+        classifier,
         test_data_loader,
-        loss_func, acc_func, targ2ix,
+        loss_func, acc_func, vocab.get_token_to_index()['labels'],
         param_space['update_label'][0],
         report=True
     )
 
     print(len(pred_pkl), pred_pkl[0])
 
-    TempUtils.pickle_data(test_pred, pred_pkl)
-    TempUtils.pickle_data(test_targ, targ_pkl)
+    TempUtils.save_to_pickle(test_pred, pred_pkl)
+    TempUtils.save_to_pickle(test_targ, targ_pkl)
 
 
-def train_model_ET(model, optimizer, kbest_scores,
-                   train_data_loader, val_data_loader, test_data_loader,
-                   targ2ix,
-                   loss_func,
-                   acc_func,
-                   checkpoint_base, **params):
+def train_model(classifier, optimizer, kbest_scores,
+                train_data_loader, val_data_loader, test_data_loader,
+                targ2ix,
+                loss_func,
+                acc_func,
+                checkpoint_base, **params):
 
     monitor = params['monitor']
 
@@ -260,21 +297,20 @@ def train_model_ET(model, optimizer, kbest_scores,
 
             start_time = time.time()
 
-            train_batch = ModuleOptim.batch_to_device(train_batch, device)
-            train_feats = train_batch[:-1]
-            train_targ = train_batch[-1]
+            train_targ = train_batch.pop('labels')
+            train_feats = train_batch
 
-            model.train()
-            model.zero_grad()
+            classifier.train()
+            classifier.zero_grad()
 
-            pred_prob = model(*train_feats)
+            pred_prob = classifier(train_feats)
 
             train_loss = loss_func(pred_prob,
                                    train_targ,
                                    update_label=params['update_label'])
 
             train_loss.backward(retain_graph=True)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=params['max_norm'])
+            torch.nn.utils.clip_grad_norm_(classifier.parameters(), max_norm=params['max_norm'])
             optimizer.step()
 
             epoch_losses.append(train_loss.item())
@@ -288,14 +324,14 @@ def train_model_ET(model, optimizer, kbest_scores,
             if (step != 0 and step % params['check_interval'] == 0) or step == step_num - 1:
 
                 val_loss, val_acc, _, _ = TempEval.batch_eval_ET(
-                    model,
+                    classifier,
                     val_data_loader,
                     loss_func, acc_func, targ2ix,
                     params['update_label']
                 )
 
                 test_loss, test_acc, _, _ = TempEval.batch_eval_ET(
-                    model,
+                    classifier,
                     test_data_loader,
                     loss_func, acc_func,
                     targ2ix,
@@ -305,7 +341,7 @@ def train_model_ET(model, optimizer, kbest_scores,
                 eval_history['val_loss'].append(val_loss)
                 eval_history['val_acc'].append(val_acc)
 
-                monitor_score = round(locals()[monitor], 6)
+                monitor_score = round(locals()[monitor], 8)
 
                 is_kbest, kbest_scores = ModuleOptim.update_kbest_scores(kbest_scores,
                                                                          monitor_score,
@@ -316,25 +352,25 @@ def train_model_ET(model, optimizer, kbest_scores,
                 if is_kbest and len(kbest_scores) == params['kbest_checkpoint'] + 1:
                     removed_index = -1 if monitor.endswith('loss') else 0
                     removed_score = kbest_scores.pop(removed_index)
-                    ModuleOptim.delete_checkpoint(get_checkpoint_file(checkpoint_base,
-                                                                      monitor,
-                                                                      removed_score))
+                    ModuleOptim.delete_checkpoint(ModuleOptim.get_checkpoint_filename(checkpoint_base,
+                                                                                      monitor,
+                                                                                      removed_score))
                     assert len(kbest_scores) == params['kbest_checkpoint']
 
                 global_save_info = ModuleOptim.save_checkpoint({
                     'params': params,
-                    'state_dict': model.state_dict(),
+                    'state_dict': classifier.state_dict(),
                     'optimizer': optimizer.state_dict(),
                     'monitor': monitor,
                     'best_score': monitor_score,
                     'val_loss': val_loss,
                     'val_acc': val_acc,
-                }, is_kbest, get_checkpoint_file(checkpoint_base,
-                                                 monitor,
-                                                 monitor_score))
+                }, is_kbest, ModuleOptim.get_checkpoint_filename(checkpoint_base,
+                                                                 monitor,
+                                                                 monitor_score))
 
                 test_loss, test_acc, _, _ = TempEval.batch_eval_ET(
-                    model,
+                    classifier,
                     test_data_loader,
                     loss_func, acc_func,
                     targ2ix,
@@ -390,7 +426,7 @@ def train_model_ET(model, optimizer, kbest_scores,
 
 def main():
 
-    classification_model = 'TempRNN'   # 'baseRNN', 'attnRNN'
+    classification_model = 'Lstm2vec'   # 'baseRNN', 'attnRNN'
 
     update_label = 3
 
@@ -403,27 +439,30 @@ def main():
         'sdp_cnn_droprate': [0.3],
         'sdp_fc_dim': [100],
         'sdp_fc_droprate': [0.3],
-        'dsdp_dim': [25],
+        'dsdp_dim': [0],
         'dist_dim': [25],
         'input_dropout': [0.3],     # hyper-parameters of neural networks
         'rnn_hidden_dim': [200],
         'rnn_layer': [1],
         'rnn_dropout': [0.3],
-        'attn_dropout': [0.3],
+        'use_attn':[True],
+        'attn_fc_dim': [200],
+        'attn_fc_drop': [0.3],
+        'attn_out_drop': [0.3],
         'fc1_hidden_dim': [200],
         'fc1_dropout': [0.5],
-        'batch_size': [128],
+        'batch_size': [32],
         'epoch_num': [1],
-        'lr': [1e-0],           # hyper-parameters of optimizer
+        'lr': [0.95e-0],           # hyper-parameters of optimizer
         'weight_decay': [1e-4],
         'max_norm': [4],
         'patience': [10],       # early stopping
         'monitor': ['val_acc'],
-        'check_interval': [50],    # checkpoint based on val performance given a step interval
+        'check_interval': [10],    # checkpoint based on val performance given a step interval
         'kbest_checkpoint': [5],
     }
 
-    link_type = 'Event-Timex'
+    link_type = 'Event-DCT'
 
     data_dir = '20190222'
 
@@ -488,7 +527,10 @@ def main():
         update_label
     )
 
-    optimize_model(link_type, train_pkl, val_pkl, test_pkl, info_pkl, embed_pkl, pred_pkl, targ_pkl, param_space, max_evals=1)
+    optimize_model(link_type,
+                   train_pkl, val_pkl, test_pkl,
+                   info_pkl, embed_pkl, pred_pkl, targ_pkl, param_space,
+                   max_evals=1)
 
 
 if __name__ == '__main__':

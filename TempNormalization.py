@@ -18,6 +18,7 @@ def dayLengthOfMention(tanchor):
     else:
         return 'Unknown'
 
+
 def last_day_of_month(date):
     if date.month == 12:
         return date.replace(day=31)

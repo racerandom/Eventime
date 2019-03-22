@@ -140,7 +140,7 @@ class baseNN(nn.Module):
         """
         if isinstance(pre_embed, np.ndarray):
             self.word_dim = pre_embed.shape[1]
-            self.word_embeddings = TempUtils.pre2embed(pre_embed)
+            self.word_embeddings = TempUtils.pre_to_embed(pre_embed)
 
         self.char_dim = self.params['char_dim']
         if self.params['char_dim']:
@@ -687,7 +687,7 @@ class TempBranchRNN(nn.Module):
 
         if isinstance(pre_embed, np.ndarray):
             self.word_dim = pre_embed.shape[1]
-            self.word_embeddings = TempUtils.pre2embed(pre_embed)
+            self.word_embeddings = TempUtils.pre_to_embed(pre_embed)
 
         self.char_dim = params['char_dim']
         if self.char_dim:
@@ -1026,7 +1026,7 @@ class TempClassifier(nn.Module):
 
 
         if isinstance(pre_model, np.ndarray):
-            self.word_embeddings = TempUtils.pre2embed(pre_model)
+            self.word_embeddings = TempUtils.pre_to_embed(pre_model)
         else:
             self.word_embeddings = nn.Embedding(wvocab_size, params['word_dim'], padding_idx=0)
         self.position_embeddings = nn.Embedding(pos_size, params['pos_dim'], padding_idx=0)

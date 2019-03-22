@@ -106,15 +106,15 @@ def optimize_model(pretrained_file, task, param_space, max_evals):
         train_data, dev_data, test_data = splitData(doc_dic, word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
                                                     max_sent_len, max_seq_len, max_mention_len, max_word_len, task)
 
-        save_doc((train_data, dev_data, test_data,
-                  word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
-                  max_sent_len, max_seq_len, max_mention_len, max_word_len), pickle_data)
+        save_to_pickle((train_data, dev_data, test_data,
+                        word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx,
+                        max_sent_len, max_seq_len, max_mention_len, max_word_len), pickle_data)
 
-    word_idx, embedding = load_doc(pickle_embedding)
+    word_idx, embedding = load_from_pickle(pickle_embedding)
 
     train_data, dev_data, test_data, \
     word_idx, char_idx, pos_idx, dep_idx, dist_idx, rel_idx, \
-    max_sent_len, max_seq_len, max_mention_len, max_word_len = load_doc(pickle_data)
+    max_sent_len, max_seq_len, max_mention_len, max_word_len = load_from_pickle(pickle_data)
 
     monitor_score, test_loss, test_acc, test_param = [], [], [], []
 

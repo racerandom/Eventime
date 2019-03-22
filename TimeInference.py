@@ -125,7 +125,7 @@ def main():
 
     anchor_file2doc(timeml_dir, anchor_file, pkl_file, sent_win, oper=True)
 
-    doc_dic = load_doc(pkl_file)
+    doc_dic = load_from_pickle(pkl_file)
 
     single_correct, multiple_correct, single, multiple = 0, 0, 0, 0
 
@@ -219,7 +219,7 @@ def infer_time(event_time, norm_timex, rels, update_label=3):
 
 def oracle_test(test_pkl="data/20190202_test.pkl"):
 
-    doc_dic = load_doc(test_pkl)
+    doc_dic = load_from_pickle(test_pkl)
 
     event_count, correct_time = 0, 0
 
@@ -272,21 +272,21 @@ def main2():
 
     update_label = 1
 
-    ed_pred = TempUtils.load_pickle(pickle_file='outputs/%s_%s_%s_Event-DCT_l%i.pkl' % (
+    ed_pred = TempUtils.load_from_pickle(pickle_file='outputs/%s_%s_%s_Event-DCT_l%i.pkl' % (
         data_dir,
         dataset_flag,
         mode,
         update_label
     ))
 
-    et_pred = TempUtils.load_pickle(pickle_file='outputs/%s_%s_%s_Event-Timex_l%i.pkl' % (
+    et_pred = TempUtils.load_from_pickle(pickle_file='outputs/%s_%s_%s_Event-Timex_l%i.pkl' % (
         data_dir,
         dataset_flag,
         mode,
         update_label
     ))
 
-    event_gold, ed_links, et_links, ed_targ, et_targ = TempUtils.load_pickle(
+    event_gold, ed_links, et_links, ed_targ, et_targ = TempUtils.load_from_pickle(
         pickle_file='data/eventime/%s/%s/test_gold.pkl' % (
             data_dir,
             dataset_flag

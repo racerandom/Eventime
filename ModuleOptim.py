@@ -2,6 +2,7 @@
 import warnings
 import os
 from bisect import bisect
+from typing import Dict, Tuple, Sequence, List, Generic
 
 import numpy as np
 import torch
@@ -131,6 +132,12 @@ def calc_acc(pred_class, targs):
     return correct / pred_class.shape[0]
 
 
+def get_checkpoint_filename(checkpoint_base, monitor, score):
+    return "%s_%s_%f.pth" % (checkpoint_base,
+                             monitor,
+                             score)
+
+
 def delete_checkpoint(filename):
     if os.path.isfile(filename):
         os.remove(filename)
@@ -159,10 +166,18 @@ def batch_to_device(data, device):
     :param device:
     :return:
     """
-    device_inputs = []
-    for d in data:
-        device_inputs.append(d.to(device=device))
-    return device_inputs
+    if isinstance(data, List):
+        device_inputs = []
+        for d in data:
+            device_inputs.append(d.to(device=device))
+        return device_inputs
+    elif isinstance(data, Dict):
+        device_inputs = {}
+        for k, d in data.items():
+            device_inputs[k] = d.to(device=device)
+        return device_inputs
+    else:
+        raise Exception('[ERROR] Unknown data types during batch_to_device...')
 
 
 def copyData2device(data, device):
@@ -190,6 +205,25 @@ class CustomizedDatasets(Data.Dataset):
 
     def __len__(self):
         return len(self.listData[0])
+
+
+class DictDatasets(Data.Dataset):
+    """Dataset wrapping dict.
+
+    Each sample will be retrieved by indexing tensors along the first dimension.
+
+    Arguments:
+        *tensors (Tensor): tensors that have the same size of the first dimension.
+    """
+    def __init__(self, dictData: Dict[str, torch.tensor]) -> None:
+        assert all(len(dictData['labels']) == len(data) for data in dictData.values())
+        self.dictData = dictData
+
+    def __getitem__(self, index: int) -> Dict[str, torch.tensor]:
+        return {key: data[index] for key, data in self.dictData.items()}
+
+    def __len__(self):
+        return len(self.dictData['labels'])
 
 
 def collate_fn(batch_data):
@@ -221,3 +255,24 @@ def collate_fn(batch_data):
 
     return out_list
 
+
+def dict_collate_fn(batch_data):
+    """Creates mini-batch tensors from the list of tuples (image, caption).
+
+    We should build custom collate_fn rather than using default collate_fn,
+    because merging caption (including padding) is not supported in default.
+    Args:
+        batch_data: list of dict(tokens: tensor, feat1: tensor, feat2: tensor, labels: tensor).
+            - targets: torch tensor of shape (batch); variable length.
+    """
+
+    out_dict = {}
+
+    for key in batch_data[0].keys():
+        feat_list = [d[key] for d in batch_data]
+        if isinstance(feat_list[0], torch.Tensor):
+            out_dict[key] = torch.stack(feat_list)
+        else:
+            raise Exception("[ERROR] Unknown data type in 'dict_collate_fn'...")
+
+    return out_dict
