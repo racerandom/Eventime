@@ -6,3 +6,6 @@ outputs/
 data/
 logs/
 *.log
+dqn.py
+EventimeDRL.ipynb
+EventimeDRL.py
